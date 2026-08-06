@@ -97,15 +97,28 @@ function buildHeadTags(head: HeadMeta): string {
 }
 
 // ── Compose final HTML ─────────────────────────────────────────────────────
+// ── Lynx widget on Lynx's own site (dogfooding) ─────────────────────────────
+// When SITE_WIDGET_API_KEY is set, the chat bubble appears on every PUBLIC
+// page of this site, powered by that chatbot — so the owner can train it in
+// /dashboard/training and see the result live on the landing.
+function siteWidgetTag(url: string): string {
+  const key = process.env.SITE_WIDGET_API_KEY;
+  if (!key) return "";
+  // Never on the app itself — only on public marketing pages
+  if (url.startsWith("/dashboard") || url.startsWith("/login") || url.startsWith("/register") || url.startsWith("/api")) return "";
+  return `<script src="/widget.js" data-api-key="${key.replace(/"/g, "")}" defer></script>`;
+}
+
 function composeHtml(
   template: string,
   appHtml: string,
   head: HeadMeta,
-  dehydratedState: unknown
+  dehydratedState: unknown,
+  url = ""
 ): string {
   const esc = (s: string) => s.replace(/</g, "\\u003c");
   const headTags = buildHeadTags(head);
-  const stateScript = `<script>window.__RQ_STATE__ = ${esc(JSON.stringify(superjson.serialize(dehydratedState)))}</script>`;
+  const stateScript = `<script>window.__RQ_STATE__ = ${esc(JSON.stringify(superjson.serialize(dehydratedState)))}</script>${siteWidgetTag(url)}`;
   // Inject state BEFORE appHtml (app content may contain literal "</body>")
   return template
     .replace("</body>", () => `${stateScript}</body>`)
@@ -161,7 +174,7 @@ export async function setupVite(app: Express, server: Server) {
         .status(head.notFound ? 404 : 200)
         .set("Cache-Control", "no-cache")
         .type("html")
-        .end(composeHtml(template, html, head, dehydratedState));
+        .end(composeHtml(template, html, head, dehydratedState, url));
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
       console.error("[SSR] dev render failed:", e);
@@ -236,7 +249,7 @@ export function serveStatic(app: Express) {
         .status(head.notFound ? 404 : 200)
         .set("Cache-Control", "no-cache")
         .type("html")
-        .end(composeHtml(template, html, head, dehydratedState));
+        .end(composeHtml(template, html, head, dehydratedState, req.originalUrl));
     } catch (e) {
       // Alert on this log line in monitoring: invisible to human QA but
       // crawlers get a degraded page (no title/description/canonical).
