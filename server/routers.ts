@@ -231,12 +231,72 @@ export const appRouter = router({
           return links;
         }
 
+        // ─── Helper: find informational page links (FAQ, about, policies…) ────
+        function findInfoPageLinks(html: string, baseUrl: string): string[] {
+          const base = new URL(baseUrl);
+          const infoPatterns = [
+            /faq/i, /preguntas/i, /about/i, /nosotros/i, /quienes/i,
+            /contact/i, /contacto/i, /shipping/i, /envio/i, /delivery/i,
+            /returns?/i, /devolucion/i, /refund/i, /reembolso/i,
+            /policy|policies/i, /politica/i, /terms/i, /terminos/i,
+            /privacy/i, /privacidad/i, /help|ayuda/i, /support|soporte/i,
+            /pricing|precios/i, /services?|servicios?/i,
+          ];
+          const seen = new Set<string>();
+          const links: string[] = [];
+          const hrefMatches = Array.from(html.matchAll(/href=["']([^"'#?]+)["']/gi));
+          for (const m of hrefMatches) {
+            try {
+              const href = new URL(m[1], baseUrl);
+              if (href.hostname !== base.hostname) continue;
+              const path = href.pathname;
+              if (path === "/" || seen.has(path)) continue;
+              if (infoPatterns.some(pt => pt.test(path))) {
+                seen.add(path);
+                links.push(href.href);
+                if (links.length >= 12) break;
+              }
+            } catch { /* invalid URL */ }
+          }
+          return links;
+        }
+
+        // ─── Helper: strip HTML to readable text ──────────────────────────────
+        function htmlToText(raw: string, maxChars: number): string {
+          return raw
+            .replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<style[\s\S]*?<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/g, " ")
+            .replace(/\s{2,}/g, " ")
+            .trim()
+            .slice(0, maxChars);
+        }
+
+        // ─── Per-plan crawl budget (total pages incl. home) ───────────────────
+        const crawlBudget =
+          ctx.user.plan === "whitelabel" ? 15 :
+          ctx.user.plan === "embedded" ? 10 :
+          ctx.user.plan === "cloud" ? 6 : 3;
+
         // 1. Fetch HTML from the target URL via server-side request
         let htmlContent = "";
         let seoContext = "";
         let allProducts: ProductEntry[] = [];
+        let rawHome = "";                    // raw home HTML kept for scoring
+        let measuredLoadSpeed = 0;           // seconds, real fetch timing
+        let realMobileScore = 0;             // heuristic from real HTML signals
+        const pageExtracts: Array<{ path: string; text: string }> = [];
         try {
+          const fetchStart = Date.now();
           const { text: raw } = await safeFetchText(input.url);
+          measuredLoadSpeed = Math.round(((Date.now() - fetchStart) / 1000) * 100) / 100;
+          rawHome = raw;
+
+          // ── Real mobile signals (heuristic, but from actual HTML) ──────────
+          const hasViewport = /<meta[^>]+name=["']viewport["']/i.test(raw);
+          const hasSrcset = /srcset=|<picture/i.test(raw);
+          realMobileScore = Math.min(100, 30 + (hasViewport ? 50 : 0) + (hasSrcset ? 20 : 0));
 
           // Extract technical SEO context BEFORE stripping tags
           const metaDesc = raw.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']*)["'][^>]*/i)?.[1]
@@ -289,19 +349,86 @@ export const appRouter = router({
             }
           }
 
-          // Strip HTML tags and collapse whitespace for a clean text context
-          htmlContent = raw
-            .replace(/<script[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[\s\S]*?<\/style>/gi, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/\s{2,}/g, " ")
-            .trim()
-            .slice(0, 3000);
+          // ── Crawl informational pages (FAQ, about, policies, shipping…) ────
+          // These are the pages visitors ask about most; budget is plan-based.
+          const infoLinks = findInfoPageLinks(raw, input.url);
+          const remainingBudget = Math.max(0, crawlBudget - 1); // home already fetched
+          for (const link of infoLinks.slice(0, remainingBudget)) {
+            try {
+              const { text: pageHtml } = await safeFetchText(link, { timeoutMs: 8000 });
+              const text = htmlToText(pageHtml, 1500);
+              if (text.length > 100) {
+                pageExtracts.push({ path: new URL(link).pathname, text });
+              }
+            } catch { /* skip inaccessible pages */ }
+          }
+
+          htmlContent = htmlToText(raw, 3000);
         } catch (err) {
           console.warn("[Scanner] Could not fetch URL:", err);
           htmlContent = `Site at ${input.url} (content could not be fetched, analyze based on URL structure)`;
           seoContext = "(HTML not accessible — analyze based on URL structure only)";
         }
+
+        // ── Deterministic SEO score from REAL extracted signals ──────────────
+        // (The LLM writes summary/keywords/suggestions; numbers come from here.)
+        function computeRealSeoScore(raw: string, loadSec: number): number {
+          const hasTitle = /<title[^>]*>[^<]+<\/title>/i.test(raw);
+          const hasMetaDesc = /<meta[^>]+name=["']description["']/i.test(raw);
+          const hasH1 = /<h1[\s>]/i.test(raw);
+          const hasJsonLdX = /<script[^>]+application\/ld\+json/i.test(raw);
+          const hasOg = /<meta[^>]+property=["']og:/i.test(raw);
+          const hasCanonical = /<link[^>]+rel=["']canonical["']/i.test(raw);
+          const hasViewportX = /<meta[^>]+name=["']viewport["']/i.test(raw);
+          const noindex = /<meta[^>]+name=["']robots["'][^>]*noindex/i.test(raw);
+          const imgs = (raw.match(/<img/gi) ?? []).length;
+          const imgsAlt = (raw.match(/<img[^>]+alt=["'][^"']+["']/gi) ?? []).length;
+          const altRatio = imgs > 0 ? imgsAlt / imgs : 1;
+          let score = 0;
+          if (hasTitle) score += 10;
+          if (hasMetaDesc) score += 15;
+          if (hasH1) score += 10;
+          if (hasJsonLdX) score += 10;
+          if (hasOg) score += 10;
+          if (hasCanonical) score += 10;
+          if (hasViewportX) score += 5;
+          score += Math.round(altRatio * 15);
+          if (loadSec > 0 && loadSec < 2.5) score += 10;
+          else if (loadSec > 0 && loadSec < 5) score += 5;
+          if (!noindex) score += 5;
+          return Math.min(100, score);
+        }
+        const realSeoScore = rawHome ? computeRealSeoScore(rawHome, measuredLoadSpeed) : 0;
+
+        // ── Real top pages from widget analytics (page_view events, 30 days) ─
+        let realTopPages: Array<{ url: string; title: string; visits: number; bounceRate: number }> = [];
+        try {
+          const dbA = await getDb();
+          if (dbA) {
+            const { sql: sqlOp, eq: eqA, and: andA, gte: gteA } = await import("drizzle-orm");
+            const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            const existingBot = await getChatbotByUserId(ctx.user.id);
+            if (!existingBot) throw new Error("no chatbot yet");
+            const rows = await dbA
+              .select({ pageUrl: analyticsEvents.pageUrl, visits: sqlOp<number>`COUNT(*)` })
+              .from(analyticsEvents)
+              .where(andA(
+                eqA(analyticsEvents.chatbotId, existingBot.id),
+                eqA(analyticsEvents.eventType, "page_view"),
+                gteA(analyticsEvents.createdAt, since),
+              ))
+              .groupBy(analyticsEvents.pageUrl)
+              .orderBy(sqlOp`COUNT(*) DESC`)
+              .limit(6);
+            realTopPages = rows
+              .filter(r => r.pageUrl)
+              .map(r => {
+                let path = r.pageUrl as string;
+                try { path = new URL(r.pageUrl as string).pathname; } catch { /* keep raw */ }
+                return { url: path, title: path === "/" ? "Homepage" : path, visits: Number(r.visits), bounceRate: 0 };
+              });
+          }
+        } catch { /* analytics optional */ }
 
         // 2. Ask LLM to analyze the site
         const prompt = `You are an expert SEO and web content analyst. Analyze the following website and return a structured JSON report.
@@ -445,26 +572,33 @@ Return ONLY valid JSON matching this exact schema:
           productCatalogSection = `\n\n=== PRODUCT CATALOG (${allProducts.length} products detected) ===\n${productLines.join("\n")}`;
         }
 
-        // 4. Save site context to chatbot (includes product catalog if found)
+        // 4. Save site context to chatbot (includes product catalog + info pages)
+        const infoPagesSection = pageExtracts.length > 0
+          ? pageExtracts.map(pg => `=== PAGE ${pg.path} ===\n${pg.text}`).join("\n\n")
+          : "";
         const siteContextText = [
           analysis.summary,
           `Topics: ${(analysis.topics ?? []).join(", ")}`,
           htmlContent.slice(0, 2000),
+          infoPagesSection,
           productCatalogSection,
         ].filter(Boolean).join("\n\n").slice(0, 60000); // MySQL TEXT limit
         await updateChatbotSiteContext(chatbot.id, input.url, siteContextText);
 
         // 5. Save SEO report
+        // Real, measured metrics override anything the LLM estimated
+        const finalScore = realSeoScore > 0 ? realSeoScore : (analysis.seoScore ?? 0);
+        const finalTopPages = realTopPages.length > 0 ? realTopPages : [];
         await saveSeoReport({
           chatbotId: chatbot.id,
           siteUrl: input.url,
-          score: analysis.seoScore ?? 0,
+          score: finalScore,
           keywords: analysis.keywords ?? [],
           suggestions: analysis.suggestions ?? [],
-          topPages: analysis.topPages ?? [],
+          topPages: finalTopPages,
           metaIssues: analysis.metaIssues ?? [],
-          loadSpeed: analysis.loadSpeed ?? 0,
-          mobileScore: analysis.mobileScore ?? 0,
+          loadSpeed: measuredLoadSpeed,
+          mobileScore: realMobileScore,
         });
 
         // 6. Save to seo_history for trend tracking
@@ -475,9 +609,9 @@ Return ONLY valid JSON matching this exact schema:
               userId: ctx.user.id,
               chatbotId: chatbot.id,
               siteUrl: input.url,
-              score: analysis.seoScore ?? 0,
-              loadSpeed: analysis.loadSpeed ?? null,
-              mobileScore: analysis.mobileScore ?? null,
+              score: finalScore,
+              loadSpeed: measuredLoadSpeed || null,
+              mobileScore: realMobileScore || null,
               issuesCount: (analysis.suggestions ?? []).filter((s: { priority: string }) => s.priority === "high").length,
             });
           }
@@ -488,11 +622,21 @@ Return ONLY valid JSON matching this exact schema:
           userId: ctx.user.id,
           type: "scan_complete",
           title: "Site scan completed",
-          message: `${input.url} was scanned successfully. SEO score: ${analysis.seoScore ?? "N/A"}/100.`,
-          metadata: { url: input.url, score: analysis.seoScore },
+          message: `${input.url} was scanned successfully. SEO score: ${finalScore}/100.`,
+          metadata: { url: input.url, score: finalScore },
         });
 
-        return { ...analysis, chatbotId: chatbot.id, productsFound: allProducts.length, products: allProducts.slice(0, 10) };
+        return {
+          ...analysis,
+          seoScore: finalScore,
+          loadSpeed: measuredLoadSpeed,
+          mobileScore: realMobileScore,
+          topPages: finalTopPages,
+          pagesCrawled: 1 + pageExtracts.length,
+          chatbotId: chatbot.id,
+          productsFound: allProducts.length,
+          products: allProducts.slice(0, 10),
+        };
       }),
 
     getLastReport: protectedProcedure.query(async ({ ctx }) => {
