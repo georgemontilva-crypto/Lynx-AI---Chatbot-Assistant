@@ -5,7 +5,6 @@ import { createServer } from "http";
 import net from "net";
 import rateLimit from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { registerWidgetRoutes } from "../widgetRouter";
 import { registerBillingRoutes } from "../billingRouter";
@@ -83,14 +82,12 @@ async function startServer() {
     legacyHeaders: false,
     message: { error: "Too many authentication attempts, please try again later." },
   });
-  app.use("/api/oauth", authLimiter);
   app.use("/api/auth", authLimiter);
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ limit: "2mb", extended: true }));
   registerStorageProxy(app);
-  registerOAuthRoutes(app);
   app.use("/api/auth", authRouter);
   registerWidgetRoutes(app);
   registerBillingRoutes(app);
