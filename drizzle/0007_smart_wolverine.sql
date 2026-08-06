@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `clientSlots` int DEFAULT 0 NOT NULL;

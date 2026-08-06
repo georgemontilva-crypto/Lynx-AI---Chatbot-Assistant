@@ -1,0 +1,21 @@
+CREATE TABLE `web_setup_requests` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`userId` int NOT NULL,
+	`businessName` varchar(256) NOT NULL,
+	`businessType` varchar(128),
+	`websiteDomain` varchar(256),
+	`primaryColor` varchar(16) DEFAULT '#3b82f6',
+	`secondaryColor` varchar(16) DEFAULT '#1e40af',
+	`logoUrl` text,
+	`aiIconUrl` text,
+	`chatbotName` varchar(128),
+	`chatbotWelcome` text,
+	`targetAudience` text,
+	`keyPages` text,
+	`additionalNotes` text,
+	`contactEmail` varchar(320),
+	`contactPhone` varchar(64),
+	`status` enum('pending','in_progress','delivered','cancelled') NOT NULL DEFAULT 'pending',
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	CONSTRAINT `web_setup_requests_id` PRIMARY KEY(`id`)
+);

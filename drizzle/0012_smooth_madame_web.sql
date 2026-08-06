@@ -1,0 +1,1 @@
+ALTER TABLE `conversations` ADD `leadCompany` varchar(256);

@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /test-payment
+
+# Sitemap
+Sitemap: https://lynxaiassistant.com/sitemap.xml
+
+# Crawl-delay for bots
+Crawl-delay: 10
