@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/lib/trpc";
-import { Users, Search, Download, Mail, Star, Calendar, Globe, Building2 } from "lucide-react";
+import { Users, Search, Download, Mail, Star, Calendar, Globe, Building2, MessageSquare, X } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
 type LeadRow = {
@@ -46,6 +46,12 @@ function exportCsv(leads: LeadRow[]) {
 
 function LeadsContent() {
   const [search, setSearch] = useState("");
+  const [openLead, setOpenLead] = useState<LeadRow | null>(null);
+
+  const transcriptQuery = trpc.leads.getTranscript.useQuery(
+    { conversationId: openLead?.id ?? 0 },
+    { enabled: openLead !== null }
+  );
 
   const { data: rawLeads, isLoading } = trpc.leads.list.useQuery();
   const leads: LeadRow[] = (rawLeads ?? []) as LeadRow[];
@@ -158,6 +164,7 @@ function LeadsContent() {
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden md:table-cell">Página</th>
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden sm:table-cell">Rating</th>
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Fecha</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Chat</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -213,6 +220,14 @@ function LeadsContent() {
                             <span title={format(new Date(lead.createdAt), "PPpp")}>{timeAgo(new Date(lead.createdAt))}</span>
                           </div>
                         </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <Button
+                            variant="ghost" size="sm" className="h-7 gap-1.5 text-xs"
+                            onClick={() => setOpenLead(lead)}
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" /> Ver
+                          </Button>
+                        </td>
                       </motion.tr>
                     ))}
                   </tbody>
@@ -222,6 +237,54 @@ function LeadsContent() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Transcript panel ── */}
+      {openLead && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setOpenLead(null)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+            className="bg-background border border-border/60 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+              <div className="min-w-0">
+                <p className="font-semibold truncate">{openLead.leadName ?? "Lead"}</p>
+                <p className="text-xs text-muted-foreground truncate">{openLead.leadEmail}</p>
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setOpenLead(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {transcriptQuery.isLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-3/4 rounded-lg" />)}
+                </div>
+              ) : (transcriptQuery.data?.messages?.length ?? 0) === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No hay mensajes guardados para este lead.<br />
+                  <span className="text-xs">Los transcripts se guardan para las conversaciones nuevas del widget.</span>
+                </p>
+              ) : (
+                transcriptQuery.data!.messages.map((m, i) => (
+                  <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
+                      m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+                    }`}>
+                      {m.content}
+                      {m.timestamp ? (
+                        <div className={`text-[10px] mt-1 ${m.role === "user" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                          {format(new Date(m.timestamp), "HH:mm")}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
     </DashboardShell>
   );
 }

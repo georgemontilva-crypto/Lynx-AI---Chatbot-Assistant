@@ -786,6 +786,32 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
         .orderBy(desc(conversations.createdAt));
       return rows;
     }),
+
+    getTranscript: protectedProcedure
+      .input(z.object({ conversationId: z.number().int() }))
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.plan === "free") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "FREE_PLAN_NO_LEADS: Upgrade your plan to access leads." });
+        }
+        const chatbot = await getChatbotByUserId(ctx.user.id);
+        if (!chatbot) return { messages: [] };
+        const db = await getDb();
+        if (!db) return { messages: [] };
+        const { eq: eqT, and: andT } = await import("drizzle-orm");
+        const rows = await db
+          .select({ messages: conversations.messages })
+          .from(conversations)
+          // Ownership check: the conversation must belong to THIS user's chatbot
+          .where(andT(eqT(conversations.id, input.conversationId), eqT(conversations.chatbotId, chatbot.id)))
+          .limit(1);
+        let msgs: Array<{ role: string; content: string; timestamp: number }> = [];
+        const rawMsgs = rows[0]?.messages;
+        if (Array.isArray(rawMsgs)) msgs = rawMsgs;
+        else if (typeof rawMsgs === "string") {
+          try { const parsed = JSON.parse(rawMsgs); if (Array.isArray(parsed)) msgs = parsed; } catch { /* corrupt */ }
+        }
+        return { messages: msgs };
+      }),
   }),
 
   // ─── SEO ───────────────────────────────────────────────────────────────────
