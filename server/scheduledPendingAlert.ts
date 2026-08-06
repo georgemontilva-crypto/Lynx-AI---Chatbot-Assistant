@@ -7,11 +7,9 @@
  * alert email to the admin.
  */
 
-import type { Request, Response } from "express";
 import { lt, eq, and, isNotNull } from "drizzle-orm";
 import { getDb } from "./db";
 import { users } from "../drizzle/schema";
-import { sdk } from "./_core/sdk";
 import { ENV } from "./_core/env";
 import { sendPendingSubscriptionAlertEmail } from "./email";
 
@@ -39,21 +37,16 @@ async function getPayPalToken(): Promise<string | null> {
   }
 }
 
-export async function pendingSubscriptionAlertHandler(req: Request, res: Response) {
-  try {
-    // ── Auth: only Manus scheduled cron tasks may call this endpoint ──────
-    let caller;
-    try {
-      caller = await sdk.authenticateRequest(req);
-    } catch {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    if (!caller.isCron) {
-      return res.status(403).json({ error: "Forbidden: only cron tasks may call this endpoint" });
-    }
+export type PendingCheckResult = { checked: number; activated: number; alerted: number };
 
+/**
+ * Core logic, now invoked by the in-process hourly scheduler in index.ts
+ * (previously a Manus cron hitting an HTTP endpoint).
+ */
+export async function runPendingSubscriptionCheck(): Promise<PendingCheckResult> {
+  {
     const db = await getDb();
-    if (!db) return res.json({ checked: 0, activated: 0, alerted: 0 });
+    if (!db) return { checked: 0, activated: 0, alerted: 0 };
 
     // Find users with pending subscription older than 1 hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -80,7 +73,7 @@ export async function pendingSubscriptionAlertHandler(req: Request, res: Respons
 
     if (pendingUsers.length === 0) {
       console.log("[PendingAlert] No pending subscriptions found.");
-      return res.json({ checked: 0, activated: 0, alerted: 0 });
+      return { checked: 0, activated: 0, alerted: 0 };
     }
 
     console.log(`[PendingAlert] Found ${pendingUsers.length} pending subscription(s). Checking PayPal...`);
@@ -158,9 +151,6 @@ export async function pendingSubscriptionAlertHandler(req: Request, res: Respons
       console.log(`[PendingAlert] Sent alert email for ${alerted} user(s) still pending.`);
     }
 
-    return res.json({ checked: pendingUsers.length, activated, alerted });
-  } catch (err) {
-    console.error("[PendingAlert] Error:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    return { checked: pendingUsers.length, activated, alerted };
   }
 }

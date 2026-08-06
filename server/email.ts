@@ -569,3 +569,27 @@ export async function sendPendingSubscriptionAlertEmail(
 </html>`,
   });
 }
+
+// ─── Owner notification (replaces the Manus notification service) ────────────
+export async function sendOwnerNotificationEmail(
+  to: string,
+  title: string,
+  content: string
+): Promise<boolean> {
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #111;">${escapeHtml(title)}</h2>
+      <div style="color: #333; white-space: pre-wrap; line-height: 1.5;">${escapeHtml(content)}</div>
+      <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+      <p style="color: #999; font-size: 12px;">Notificación automática de Lynx AI</p>
+    </div>
+  `;
+  return sendEmail({ to, subject: title, html });
+}

@@ -111,7 +111,7 @@ export function registerWidgetRoutes(app: Express) {
       try {
         const visitorIp = ((req.headers["x-forwarded-for"] as string) ?? "").split(",")[0]?.trim() || req.socket.remoteAddress || "";
         if (visitorIp && visitorIp !== "127.0.0.1" && visitorIp !== "::1") {
-          const geoRes = await fetch(`http://ip-api.com/json/${visitorIp}?fields=timezone,countryCode`, { signal: AbortSignal.timeout(1500) });
+          const geoRes = await fetch(`https://ipwho.is/${encodeURIComponent(visitorIp)}?fields=timezone`, { signal: AbortSignal.timeout(1500) });
           if (geoRes.ok) {
             const geo = await geoRes.json() as { timezone?: string; countryCode?: string };
             if (geo.timezone) detectedTimezone = geo.timezone;
@@ -307,7 +307,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
       try {
         const visitorIp = ((req.headers["x-forwarded-for"] as string) ?? "").split(",")[0]?.trim() || req.socket.remoteAddress || "";
         if (visitorIp && visitorIp !== "127.0.0.1" && visitorIp !== "::1") {
-          const geoRes = await fetch(`http://ip-api.com/json/${visitorIp}?fields=timezone,countryCode`, { signal: AbortSignal.timeout(1500) });
+          const geoRes = await fetch(`https://ipwho.is/${encodeURIComponent(visitorIp)}?fields=timezone`, { signal: AbortSignal.timeout(1500) });
           if (geoRes.ok) {
             const geo = await geoRes.json() as { timezone?: string; countryCode?: string };
             if (geo.timezone) detectedTimezone = geo.timezone;

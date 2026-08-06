@@ -23,7 +23,9 @@ import {
 } from "./email";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { ENV } from "./_core/env";
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { COOKIE_NAME } from "@shared/const";
+
+const SESSION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export const authRouter = Router();
 
@@ -37,7 +39,7 @@ async function signSessionJwt(userId: number, email: string, name: string): Prom
   const secret = new TextEncoder().encode(ENV.cookieSecret);
   return new SignJWT({ userId, email, name })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-    .setExpirationTime(Math.floor((Date.now() + ONE_YEAR_MS) / 1000))
+    .setExpirationTime(Math.floor((Date.now() + SESSION_MS) / 1000))
     .sign(secret);
 }
 
@@ -104,7 +106,7 @@ authRouter.post("/register", async (req: Request, res: Response) => {
     // Sign in immediately (no email verification gate for now — user can use the app)
     const token = await signSessionJwt(user.id, user.email!, user.name ?? "");
     const cookieOptions = getSessionCookieOptions(req);
-    res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+    res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: SESSION_MS });
 
     res.json({
       success: true,
@@ -150,7 +152,7 @@ authRouter.post("/login", async (req: Request, res: Response) => {
 
     const token = await signSessionJwt(user.id, user.email!, user.name ?? "");
     const cookieOptions = getSessionCookieOptions(req);
-    res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+    res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: SESSION_MS });
 
     res.json({
       success: true,

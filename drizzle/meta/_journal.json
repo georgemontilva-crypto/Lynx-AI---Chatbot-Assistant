@@ -127,6 +127,13 @@
       "when": 1784411111790,
       "tag": "0017_fluffy_titanium_man",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1786033150482,
+      "tag": "0018_wooden_longshot",
+      "breakpoints": true
     }
   ]
 }

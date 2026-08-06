@@ -11,9 +11,7 @@ import { registerWidgetRoutes } from "../widgetRouter";
 import { registerBillingRoutes } from "../billingRouter";
 import { registerUploadRoutes } from "../uploadRouter";
 import { registerSeoRoutes } from "../seoRouter";
-import { autoBlogHandler } from "../scheduledBlog";
-import { pendingSubscriptionAlertHandler } from "../scheduledPendingAlert";
-import { createHeartbeatJob, listHeartbeatJobs } from "./heartbeat";
+import { runPendingSubscriptionCheck } from "../scheduledPendingAlert";
 import { pushRouter } from "../pushRouter";
 import { authRouter } from "../authRouter";
 import { appRouter } from "../routers";
@@ -89,8 +87,8 @@ async function startServer() {
   app.use("/api/auth", authLimiter);
 
   // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.json({ limit: "2mb" }));
+  app.use(express.urlencoded({ limit: "2mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   app.use("/api/auth", authRouter);
@@ -101,29 +99,13 @@ async function startServer() {
   // Push notifications
   app.use("/api/push", pushRouter);
   // Scheduled endpoints (AGENT cron callbacks)
-  app.post("/api/scheduled/auto-blog", autoBlogHandler);
-  app.post("/api/scheduled/pending-subscription-alert", pendingSubscriptionAlertHandler);
 
-  // Register heartbeat jobs on startup (idempotent — skip if already exists)
-  void (async () => {
-    try {
-      const existing = await listHeartbeatJobs("");
-      const jobList = existing?.jobs ?? [];
-      const alreadyExists = jobList.some(j => j.name === "pending-subscription-alert");
-      if (!alreadyExists) {
-        await createHeartbeatJob({
-          name: "pending-subscription-alert",
-          cron: "0 0 * * * *", // every hour
-          path: "/api/scheduled/pending-subscription-alert",
-          method: "POST",
-          description: "Detect subscriptions stuck in pending > 1h and alert admin",
-        }, "");
-        console.log("[Heartbeat] Registered pending-subscription-alert job");
-      }
-    } catch (err) {
-      console.warn("[Heartbeat] Could not register pending-subscription-alert job:", err);
-    }
-  })();
+  // ── Internal scheduler: check pending PayPal subscriptions every hour ──
+  setInterval(() => {
+    runPendingSubscriptionCheck().catch(err =>
+      console.warn("[PendingAlert] Scheduled check failed:", err)
+    );
+  }, 60 * 60 * 1000);
   // tRPC API
   app.use(
     "/api/trpc",
