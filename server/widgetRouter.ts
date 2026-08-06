@@ -11,7 +11,7 @@
  */
 
 import type { Express, Request, Response } from "express";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb, checkAndIncrementUsage, PLAN_LIMITS, saveAnalyticsEvent } from "./db";
 import { chatbots, users, conversations } from "../drizzle/schema";
 import { invokeLLM } from "./_core/llm";
@@ -42,6 +42,96 @@ async function getChatbotByApiKey(apiKey: string) {
 }
 
 // ─── Register widget routes ───────────────────────────────────────────────────
+
+
+// ─── Conversation persistence ────────────────────────────────────────────────
+// Appends a user/assistant message pair to the visitor's active conversation
+// (same visitor within the last 12h), creating the row if needed. This is the
+// single source of truth for transcripts — it runs server-side on every chat
+// turn, so the dashboard always has the full history regardless of client
+// behavior.
+const CONVERSATION_WINDOW_MS = 12 * 60 * 60 * 1000;
+const MAX_STORED_MESSAGES = 200;
+
+async function persistChatTurn(params: {
+  chatbotId: number;
+  visitorId: string | null;
+  visitorIp: string | null;
+  pageUrl: string | null;
+  userMessage: string;
+  assistantMessage: string;
+}): Promise<number | null> {
+  try {
+    const db = await getDb();
+    if (!db) return null;
+
+    const now = Date.now();
+    const newEntries = [
+      { role: "user", content: params.userMessage.slice(0, 2000), timestamp: now },
+      { role: "assistant", content: params.assistantMessage.slice(0, 4000), timestamp: now },
+    ];
+
+    // Find the visitor's most recent conversation for this chatbot
+    let existing: { id: number; messages: unknown; createdAt: Date; updatedAt: Date } | undefined;
+    if (params.visitorId) {
+      const rows = await db
+        .select({
+          id: conversations.id,
+          messages: conversations.messages,
+          createdAt: conversations.createdAt,
+          updatedAt: conversations.updatedAt,
+        })
+        .from(conversations)
+        .where(and(
+          eq(conversations.chatbotId, params.chatbotId),
+          eq(conversations.visitorId, params.visitorId),
+        ))
+        .orderBy(desc(conversations.updatedAt))
+        .limit(1);
+      const candidate = rows[0];
+      if (candidate && now - new Date(candidate.updatedAt).getTime() < CONVERSATION_WINDOW_MS) {
+        existing = candidate;
+      }
+    }
+
+    if (existing) {
+      // mysql2 may return the JSON column as a raw string — parse defensively
+      let prior: unknown[] = [];
+      if (Array.isArray(existing.messages)) {
+        prior = existing.messages;
+      } else if (typeof existing.messages === "string") {
+        try {
+          const parsed = JSON.parse(existing.messages);
+          if (Array.isArray(parsed)) prior = parsed;
+        } catch { /* corrupt JSON — start fresh */ }
+      }
+      const merged = [...prior, ...newEntries].slice(-MAX_STORED_MESSAGES);
+      const durationSec = Math.round((now - new Date(existing.createdAt).getTime()) / 1000);
+      await db
+        .update(conversations)
+        .set({
+          messages: merged as never,
+          pageUrl: params.pageUrl ?? undefined,
+          duration: durationSec,
+        })
+        .where(eq(conversations.id, existing.id));
+      return existing.id;
+    }
+
+    const result = await db.insert(conversations).values({
+      chatbotId: params.chatbotId,
+      visitorId: params.visitorId ? params.visitorId.slice(0, 64) : null,
+      visitorIp: params.visitorIp ? params.visitorIp.slice(0, 64) : null,
+      pageUrl: params.pageUrl ? params.pageUrl.slice(0, 500) : null,
+      messages: newEntries as never,
+      duration: 0,
+    });
+    return (result as unknown as { insertId?: number }).insertId ?? null;
+  } catch (err) {
+    console.warn("[Widget] Failed to persist chat turn:", err);
+    return null;
+  }
+}
 
 export function registerWidgetRoutes(app: Express) {
   // Handle CORS preflight for all widget endpoints
@@ -103,7 +193,7 @@ export function registerWidgetRoutes(app: Express) {
   // Returns: { reply: string }
   app.post("/api/widget/chat", async (req: Request, res: Response) => {
     setCorsHeaders(res);
-    const { apiKey, message, history, pageUrl, visitorTimezone } = req.body ?? {};
+    const { apiKey, message, history, visitorId, pageUrl, visitorTimezone } = req.body ?? {};
 
     // Detect visitor timezone: use client-sent Intl value first, then IP-based lookup
     let detectedTimezone: string | null = (typeof visitorTimezone === "string" && visitorTimezone) ? visitorTimezone : null;
@@ -285,6 +375,17 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
           : reply;
       }
 
+      // Persist the turn server-side so the dashboard always has transcripts
+      const clientIp = ((req.headers["x-forwarded-for"] as string) ?? "").split(",")[0]?.trim() || req.socket.remoteAddress || null;
+      void persistChatTurn({
+        chatbotId: chatbot.id,
+        visitorId: typeof visitorId === "string" ? visitorId : null,
+        visitorIp: clientIp,
+        pageUrl: typeof pageUrl === "string" ? pageUrl : null,
+        userMessage: message.trim(),
+        assistantMessage: reply,
+      });
+
       return res.json({ reply, quickReplies, usage: { used: usage.used, limit: usage.limit, plan: userPlan } });
     } catch (err) {
       console.error("[Widget] Chat error:", err);
@@ -299,7 +400,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
   //   data: {"done": true, "quickReplies": [...], "usage": {...}} at the end
   app.post("/api/widget/chat/stream", async (req: Request, res: Response) => {
     setCorsHeaders(res);
-    const { apiKey, message, history, pageUrl, visitorTimezone } = req.body ?? {};
+    const { apiKey, message, history, pageUrl, visitorId, visitorTimezone } = req.body ?? {};
 
     // Detect visitor timezone
     let detectedTimezone: string | null = (typeof visitorTimezone === "string" && visitorTimezone) ? visitorTimezone : null;
@@ -504,6 +605,17 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
           }).catch(console.error);
       }
 
+      // Persist the turn server-side so the dashboard always has transcripts
+      const clientIp = ((req.headers["x-forwarded-for"] as string) ?? "").split(",")[0]?.trim() || req.socket.remoteAddress || null;
+      void persistChatTurn({
+        chatbotId: chatbot.id,
+        visitorId: typeof visitorId === "string" ? visitorId : null,
+        visitorIp: clientIp,
+        pageUrl: typeof pageUrl === "string" ? pageUrl : null,
+        userMessage: message.trim(),
+        assistantMessage: fullReply,
+      });
+
       sendEvent({ done: true, quickReplies, usage: { used: usage.used, limit: usage.limit, plan: userPlan } });
       res.end();
     } catch (err) {
@@ -517,7 +629,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
   // Saves visitor lead info and returns conversationId for message tracking
   app.post("/api/widget/lead", async (req: Request, res: Response) => {
     setCorsHeaders(res);
-    const { apiKey, name, email, pageUrl, company } = req.body ?? {};
+    const { apiKey, name, email, pageUrl, company, visitorId } = req.body ?? {};
 
     if (!apiKey || typeof apiKey !== "string") {
       return res.status(400).json({ error: "apiKey is required" });
@@ -539,16 +651,43 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
       const db = await getDb();
       let conversationId: number | null = null;
       if (db) {
-        const result = await db.insert(conversations).values({
-          chatbotId: chatbot.id,
+        // Attach the lead to the visitor's active conversation (so the owner
+        // can read the full transcript behind each lead). Falls back to a new
+        // row when the visitor has no recent conversation.
+        const leadFields = {
           isLead: true,
           leadName: name.trim().slice(0, 256),
           leadEmail: email.trim().toLowerCase().slice(0, 320),
           leadCompany: companyTrimmed,
           pageUrl: typeof pageUrl === "string" ? pageUrl.slice(0, 500) : null,
-          messages: [],
-        });
-        conversationId = (result as unknown as { insertId: number }).insertId ?? null;
+        };
+
+        if (typeof visitorId === "string" && visitorId) {
+          const rows = await db
+            .select({ id: conversations.id, updatedAt: conversations.updatedAt })
+            .from(conversations)
+            .where(and(
+              eq(conversations.chatbotId, chatbot.id),
+              eq(conversations.visitorId, visitorId),
+            ))
+            .orderBy(desc(conversations.updatedAt))
+            .limit(1);
+          const recent = rows[0];
+          if (recent && Date.now() - new Date(recent.updatedAt).getTime() < CONVERSATION_WINDOW_MS) {
+            await db.update(conversations).set(leadFields).where(eq(conversations.id, recent.id));
+            conversationId = recent.id;
+          }
+        }
+
+        if (conversationId === null) {
+          const result = await db.insert(conversations).values({
+            chatbotId: chatbot.id,
+            visitorId: typeof visitorId === "string" ? visitorId.slice(0, 64) : null,
+            ...leadFields,
+            messages: [],
+          });
+          conversationId = (result as unknown as { insertId: number }).insertId ?? null;
+        }
       }
 
       // Notify owner by email + push (non-blocking)
@@ -640,7 +779,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
   // Saves star rating to the conversations table (latest conversation for this chatbot)
   app.post("/api/widget/rate", async (req: Request, res: Response) => {
     setCorsHeaders(res);
-    const { apiKey, rating, pageUrl } = req.body ?? {};
+    const { apiKey, rating, pageUrl, visitorId } = req.body ?? {};
 
     if (!apiKey || typeof apiKey !== "string") {
       return res.status(400).json({ error: "apiKey is required" });
@@ -659,12 +798,17 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
       const db = await getDb();
       if (db) {
         const { desc } = await import("drizzle-orm");
-        // Find the most recent conversation for this chatbot
+        // Find the visitor's own most recent conversation (falls back to the
+        // chatbot's latest only when no visitorId was provided by the widget)
         const recent = await db
           .select({ id: conversations.id })
           .from(conversations)
-          .where(eq(conversations.chatbotId, chatbot.id))
-          .orderBy(desc(conversations.createdAt))
+          .where(
+            typeof visitorId === "string" && visitorId
+              ? and(eq(conversations.chatbotId, chatbot.id), eq(conversations.visitorId, visitorId))
+              : eq(conversations.chatbotId, chatbot.id)
+          )
+          .orderBy(desc(conversations.updatedAt))
           .limit(1);
 
         if (recent[0]) {
@@ -1070,7 +1214,7 @@ function buildWidgetScript(): string {
         fetch(BASE_URL + '/api/widget/lead', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey: API_KEY, name: name, email: email, company: company, pageUrl: window.location.href }),
+          body: JSON.stringify({ apiKey: API_KEY, name: name, email: email, company: company, pageUrl: window.location.href, visitorId: visitorId }),
         }).then(function(r) { return r.json(); }).then(function(data) {
           if (data && data.conversationId) conversationId = data.conversationId;
         }).catch(function() {});
@@ -1130,7 +1274,7 @@ function buildWidgetScript(): string {
         fetch(BASE_URL + '/api/widget/rate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey: API_KEY, rating: rating, pageUrl: window.location.href }),
+          body: JSON.stringify({ apiKey: API_KEY, rating: rating, pageUrl: window.location.href, visitorId: visitorId }),
         }).catch(function() {});
         // Hide the rating card after 1.5s with fade-out
         setTimeout(function() {
@@ -1345,6 +1489,7 @@ function buildWidgetScript(): string {
         message: text,
         history: history.slice(-20),
         pageUrl: window.location.href,
+        visitorId: visitorId,
         visitorTimezone: tz,
       }),
     }).then(function(res) {
@@ -1424,7 +1569,7 @@ function buildWidgetScript(): string {
       fetch(BASE_URL + '/api/widget/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: API_KEY, message: text, history: history.slice(-20), pageUrl: window.location.href, visitorTimezone: tz }),
+        body: JSON.stringify({ apiKey: API_KEY, message: text, history: history.slice(-20), pageUrl: window.location.href, visitorId: visitorId, visitorTimezone: tz }),
       }).then(function(r) { return r.json(); }).then(function(data) {
         hideTyping();
         var reply = data.reply || 'Sorry, I could not process your request.';
