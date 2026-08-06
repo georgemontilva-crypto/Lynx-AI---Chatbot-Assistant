@@ -63,6 +63,9 @@ export const chatbots = mysqlTable("chatbots", {
   siteUrl: text("siteUrl"),
   siteContext: text("siteContext"),
   lastScannedAt: timestamp("lastScannedAt"),
+  // ── Training (per-user customization) ──
+  customInstructions: text("customInstructions"),
+  knowledgeBase: json("knowledgeBase").$type<Array<{ title: string; content: string }>>(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

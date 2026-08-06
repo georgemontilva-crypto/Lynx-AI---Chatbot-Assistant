@@ -30,6 +30,7 @@ import {
   BookOpen,
   RefreshCw,
   Rocket,
+  GraduationCap,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { usePlanFeatures } from "@/hooks/usePlanFeatures";
@@ -49,6 +50,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard",               icon: LayoutDashboard, label: "Overview",        exact: true },
   { href: "/dashboard/chatbot",        icon: Bot,             label: "Chatbot",         featureKey: "chatbot" },
   { href: "/dashboard/scanner",        icon: Globe,           label: "Site Scanner",    featureKey: "scanner" },
+  { href: "/dashboard/training",       icon: GraduationCap,   label: "Training" },
   { href: "/dashboard/seo",            icon: BarChart3,       label: "SEO Analysis",    featureKey: "seoAnalysis",      requiredPlan: "embedded" },
   { href: "/dashboard/conversations",  icon: MessageSquare,   label: "Conversations",   featureKey: "conversations",    requiredPlan: "embedded" },
   { href: "/dashboard/leads",           icon: Users,           label: "Leads",           featureKey: "conversations" },

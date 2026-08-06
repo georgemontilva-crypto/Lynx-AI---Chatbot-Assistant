@@ -12,6 +12,7 @@
 
 import type { Express, Request, Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
+import { buildTrainingPromptSection } from "./routers";
 import { getDb, checkAndIncrementUsage, PLAN_LIMITS, saveAnalyticsEvent } from "./db";
 import { chatbots, users, conversations } from "../drizzle/schema";
 import { invokeLLM } from "./_core/llm";
@@ -304,7 +305,7 @@ RULES (strictly follow):
 4. Suggest 3-4 natural follow-up questions as quickReplies the visitor might want to ask. Keep each under 40 chars.
 5. If you don't know something, say so briefly and redirect to what you DO know that's valuable.
 6. Mirror the visitor's language: if they write in Spanish, reply in Spanish; if English, reply in English.
-${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
+${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for any time/schedule references — NEVER ask the visitor for their timezone).` : ""}`;
 
@@ -479,7 +480,7 @@ RULES (strictly follow):
 4. Do NOT include quick reply suggestions in your text response — they will be generated separately.
 5. If you don't know something, say so briefly and redirect to what you DO know that's valuable.
 6. Mirror the visitor's language: if they write in Spanish, reply in Spanish; if English, reply in English.
-${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
+${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
 

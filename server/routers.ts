@@ -44,6 +44,47 @@ import { conversations, clients, chatbots, analyticsEvents, seoHistory, webSetup
 import { TRPCError } from "@trpc/server";
 import { randomBytes } from "crypto";
 
+
+// ─── Training helpers ────────────────────────────────────────────────────────
+export function trainingLimitsForPlan(plan: string) {
+  switch (plan) {
+    case "whitelabel":
+      return { instructionsEnabled: true, knowledgeEnabled: true, maxInstructionsChars: 4000, maxKnowledgeEntries: 50 };
+    case "embedded":
+      return { instructionsEnabled: true, knowledgeEnabled: true, maxInstructionsChars: 2000, maxKnowledgeEntries: 20 };
+    case "cloud":
+      return { instructionsEnabled: true, knowledgeEnabled: false, maxInstructionsChars: 1000, maxKnowledgeEntries: 0 };
+    default: // free
+      return { instructionsEnabled: false, knowledgeEnabled: false, maxInstructionsChars: 0, maxKnowledgeEntries: 0 };
+  }
+}
+
+export function parseKnowledgeBase(raw: unknown): Array<{ title: string; content: string }> {
+  let value = raw;
+  if (typeof value === "string") {
+    try { value = JSON.parse(value); } catch { return []; }
+  }
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((e): e is { title: string; content: string } =>
+      !!e && typeof e === "object" && typeof (e as { title?: unknown }).title === "string" && typeof (e as { content?: unknown }).content === "string")
+    .slice(0, 100);
+}
+
+export function buildTrainingPromptSection(chatbot: { customInstructions?: string | null; knowledgeBase?: unknown }): string {
+  const parts: string[] = [];
+  const instructions = (chatbot.customInstructions ?? "").trim();
+  if (instructions) {
+    parts.push(`=== OWNER INSTRUCTIONS (follow these with top priority) ===\n${instructions}`);
+  }
+  const kb = parseKnowledgeBase(chatbot.knowledgeBase);
+  if (kb.length > 0) {
+    const entries = kb.map(e => `- ${e.title}: ${e.content}`).join("\n");
+    parts.push(`=== KNOWLEDGE BASE (authoritative answers provided by the site owner) ===\n${entries}`);
+  }
+  return parts.length > 0 ? `\n\n${parts.join("\n\n")}` : "";
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -461,6 +502,62 @@ Return ONLY valid JSON matching this exact schema:
     }),
   }),
 
+
+  // ─── Training (custom instructions + knowledge base, plan-gated) ───────────
+  training: router({
+    get: protectedProcedure.query(async ({ ctx }) => {
+      const chatbot = await getChatbotByUserId(ctx.user.id);
+      const limits = trainingLimitsForPlan(ctx.user.plan);
+      if (!chatbot) return { customInstructions: "", knowledgeBase: [], limits };
+      return {
+        customInstructions: chatbot.customInstructions ?? "",
+        knowledgeBase: parseKnowledgeBase(chatbot.knowledgeBase),
+        limits,
+      };
+    }),
+
+    update: protectedProcedure
+      .input(z.object({
+        customInstructions: z.string().max(4000).optional(),
+        knowledgeBase: z.array(z.object({
+          title: z.string().min(1).max(120),
+          content: z.string().min(1).max(2000),
+        })).max(100).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const limits = trainingLimitsForPlan(ctx.user.plan);
+        if (!limits.instructionsEnabled) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "FREE_PLAN_NO_TRAINING: Upgrade your plan to train your chatbot." });
+        }
+        if (input.knowledgeBase !== undefined) {
+          if (!limits.knowledgeEnabled) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "PLAN_NO_KNOWLEDGE_BASE: Your plan does not include the knowledge base. Upgrade to add entries." });
+          }
+          if (input.knowledgeBase.length > limits.maxKnowledgeEntries) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `KNOWLEDGE_LIMIT: Your plan allows up to ${limits.maxKnowledgeEntries} knowledge entries.` });
+          }
+        }
+        if (input.customInstructions !== undefined && input.customInstructions.length > limits.maxInstructionsChars) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `INSTRUCTIONS_LIMIT: Your plan allows up to ${limits.maxInstructionsChars} characters of instructions.` });
+        }
+
+        const chatbot = await getChatbotByUserId(ctx.user.id);
+        if (!chatbot) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Create your chatbot first." });
+        }
+
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+        const { eq: eqOp } = await import("drizzle-orm");
+        await db.update(chatbots).set({
+          ...(input.customInstructions !== undefined ? { customInstructions: input.customInstructions } : {}),
+          ...(input.knowledgeBase !== undefined ? { knowledgeBase: input.knowledgeBase as never } : {}),
+        }).where(eqOp(chatbots.id, chatbot.id));
+
+        return { saved: true };
+      }),
+  }),
+
   // ─── Chatbot AI chat ───────────────────────────────────────────────────────
   chatbot: router({
     chat: protectedProcedure
@@ -472,10 +569,15 @@ Return ONLY valid JSON matching this exact schema:
       }))
       .mutation(async ({ ctx, input }) => {
         checkTestChatRateLimit(ctx.user.id);
-        const systemPrompt = `You are ${input.chatbotName ?? "Lynx AI"}, an intelligent AI assistant installed on a website.
+        // Include the user's real training (instructions + knowledge base) so
+        // the dashboard test chat behaves exactly like the live widget.
+        const ownChatbot = await getChatbotByUserId(ctx.user.id);
+        const trainingSection = ownChatbot ? buildTrainingPromptSection(ownChatbot) : "";
+        const effectiveContext = input.siteContext ?? ownChatbot?.siteContext ?? "";
+        const systemPrompt = `You are ${input.chatbotName ?? ownChatbot?.name ?? "Lynx AI"}, an intelligent AI assistant installed on a website.
 Your mission is to help visitors with questions about the site, its products, policies and services.
-Always respond concisely, in a friendly and helpful manner. If you don't know something, say so honestly.
-${input.siteContext ? `\n\nSite context:\n${input.siteContext}` : ""}`;
+Always respond concisely, in a friendly and helpful manner. If you don't know something, say so honestly.${trainingSection}
+${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
         const messages = [
           { role: "system" as const, content: systemPrompt },
           ...(input.history ?? []).map(m => ({ role: m.role as "user" | "assistant", content: m.content })),

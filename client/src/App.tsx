@@ -11,6 +11,7 @@ import DashboardChatbot from "./pages/dashboard/ChatbotConfig";
 import DashboardScanner from "./pages/dashboard/Scanner";
 import DashboardSEO from "./pages/dashboard/SEO";
 import DashboardConversations from "./pages/dashboard/Conversations";
+import DashboardTraining from "./pages/dashboard/Training";
 import DashboardSnippet from "./pages/dashboard/Snippet";
 import DashboardNotifications from "./pages/dashboard/Notifications";
 import DashboardBilling from "./pages/dashboard/Billing";
@@ -44,6 +45,7 @@ function Router() {
       <Route path="/dashboard" component={DashboardOverview} />
       <Route path="/dashboard/chatbot" component={DashboardChatbot} />
       <Route path="/dashboard/scanner" component={DashboardScanner} />
+      <Route path="/dashboard/training" component={DashboardTraining} />
       <Route path="/dashboard/seo" component={DashboardSEO} />
       <Route path="/dashboard/conversations" component={DashboardConversations} />
       <Route path="/dashboard/snippet" component={DashboardSnippet} />
