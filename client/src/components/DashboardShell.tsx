@@ -46,19 +46,46 @@ interface NavItem {
   requiredPlan?: "embedded" | "whitelabel";
 }
 
-const navItems: NavItem[] = [
-  { href: "/dashboard",               icon: LayoutDashboard, label: "Overview",        exact: true },
-  { href: "/dashboard/chatbot",        icon: Bot,             label: "Chatbot",         featureKey: "chatbot" },
-  { href: "/dashboard/scanner",        icon: Globe,           label: "Site Scanner",    featureKey: "scanner" },
-  { href: "/dashboard/training",       icon: GraduationCap,   label: "Training" },
-  { href: "/dashboard/seo",            icon: BarChart3,       label: "SEO Analysis",    featureKey: "seoAnalysis",      requiredPlan: "embedded" },
-  { href: "/dashboard/conversations",  icon: MessageSquare,   label: "Conversations",   featureKey: "conversations",    requiredPlan: "embedded" },
-  { href: "/dashboard/leads",           icon: Users,           label: "Leads",           featureKey: "conversations" },
-  { href: "/dashboard/snippet",        icon: Code2,           label: "Install Snippet", featureKey: "snippet" },
-  { href: "/dashboard/notifications",  icon: Bell,            label: "Notifications",   featureKey: "notifications",    requiredPlan: "embedded" },
-  { href: "/dashboard/clients",        icon: Users2,          label: "My Clients",      featureKey: "whitelabelClients", requiredPlan: "whitelabel" },
-  { href: "/dashboard/billing",        icon: CreditCard,      label: "Billing" },
-  { href: "/dashboard/web-setup",       icon: Rocket,          label: "Get Your Website", requiredPlan: "whitelabel" },
+type NavSection = { title: string; items: NavItem[] };
+
+const navSections: NavSection[] = [
+  {
+    title: "General",
+    items: [
+      { href: "/dashboard",           icon: LayoutDashboard, label: "Overview",        exact: true },
+      { href: "/dashboard/chatbot",   icon: Bot,             label: "Chatbot",         featureKey: "chatbot" },
+      { href: "/dashboard/training",  icon: GraduationCap,   label: "Training" },
+      { href: "/dashboard/snippet",   icon: Code2,           label: "Install Snippet", featureKey: "snippet" },
+    ],
+  },
+  {
+    title: "SEO",
+    items: [
+      { href: "/dashboard/scanner",   icon: Globe,           label: "Site Scanner",    featureKey: "scanner" },
+      { href: "/dashboard/seo",       icon: BarChart3,       label: "SEO Analysis",    featureKey: "seoAnalysis",   requiredPlan: "embedded" },
+    ],
+  },
+  {
+    title: "Visitantes",
+    items: [
+      { href: "/dashboard/conversations", icon: MessageSquare, label: "Conversations", featureKey: "conversations", requiredPlan: "embedded" },
+      { href: "/dashboard/leads",         icon: Users,         label: "Leads",         featureKey: "conversations" },
+      { href: "/dashboard/notifications", icon: Bell,          label: "Notifications", featureKey: "notifications", requiredPlan: "embedded" },
+    ],
+  },
+  {
+    title: "White-Label",
+    items: [
+      { href: "/dashboard/clients",   icon: Users2,          label: "My Clients",       featureKey: "whitelabelClients", requiredPlan: "whitelabel" },
+      { href: "/dashboard/web-setup", icon: Rocket,          label: "Get Your Website", requiredPlan: "whitelabel" },
+    ],
+  },
+  {
+    title: "Cuenta",
+    items: [
+      { href: "/dashboard/billing",   icon: CreditCard,      label: "Billing" },
+    ],
+  },
 ];
 
 // ─── Upgrade badge labels ─────────────────────────────────────────────────────
@@ -227,9 +254,12 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {/* Admin item — only for admins */}
+        {/* Admin section — only for admins */}
         {user?.role === "admin" && (
           <>
+            <p className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+              Administración
+            </p>
             <Link href="/dashboard/admin">
               <motion.div
                 whileHover={{ x: 2 }}
@@ -266,7 +296,15 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
             </Link>
           </>
         )}
-        {navItems.map((item) => {
+        {navSections.map((section) => {
+          const visibleItems = section.items;
+          if (visibleItems.length === 0) return null;
+          return (
+            <div key={section.title}>
+              <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                {section.title}
+              </p>
+              {visibleItems.map((item) => {
           const active = isActivePath(item.href, item.exact);
           const locked = isLocked(item);
 
@@ -312,6 +350,9 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
                 {active && <ChevronRight className="w-3 h-3 text-primary" />}
               </motion.div>
             </Link>
+          );
+              })}
+            </div>
           );
         })}
       </nav>

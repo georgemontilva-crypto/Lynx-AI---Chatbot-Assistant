@@ -2,7 +2,7 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
-import DashboardLayout from "@/components/DashboardLayout";
+import DashboardShell from "@/components/DashboardShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -233,7 +233,7 @@ export default function DashboardBlog() {
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <DashboardLayout>
+    <DashboardShell>
       <div className="p-6 max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
@@ -535,6 +535,6 @@ export default function DashboardBlog() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </DashboardLayout>
+    </DashboardShell>
   );
 }
