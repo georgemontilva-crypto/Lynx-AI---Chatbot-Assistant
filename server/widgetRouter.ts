@@ -553,6 +553,7 @@ STYLE:
 9. Mirror the visitor's language: Spanish → Spanish, English → English.
 10. Suggest 3-4 natural follow-up questions as quickReplies (under 40 chars each).
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
+12. When the visitor says goodbye or wraps up (thanks, that's all, bye), close warmly in one short sentence and ask how satisfied they were with the help — star buttons will appear right below your message for them to tap.
 ${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for any time/schedule references — NEVER ask the visitor for their timezone).` : ""}${emailResult.codeSent ? `\n\nSYSTEM NOTE: We just emailed a 6-digit verification code to ${emailResult.email}. Tell the visitor (in their language) to check their inbox and type the code here to restore their previous conversation.` : ""}`;
@@ -760,6 +761,7 @@ STYLE:
 9. Mirror the visitor's language: Spanish → Spanish, English → English.
 10. Do NOT include quick reply suggestions in your text response — they will be generated separately.
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
+12. When the visitor says goodbye or wraps up (thanks, that's all, bye), close warmly in one short sentence and ask how satisfied they were with the help — star buttons will appear right below your message for them to tap.
 ${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailResult.codeSent ? `\n\nSYSTEM NOTE: We just emailed a 6-digit verification code to ${emailResult.email}. Tell the visitor (in their language) to check their inbox and type the code here to restore their previous conversation.` : ""}`;
@@ -1312,6 +1314,7 @@ function buildWidgetScript(): string {
   var leadCompany = '';           // captured visitor company (optional)
   var messageCount = 0;           // total assistant messages sent
   var ratingShown = false;        // true once rating UI was shown
+  var farewellDetected = false;   // visitor said goodbye/thanks — offer rating after bot reply
   var conversationId = null;       // ID of the conversation record in DB
 
   // ── Analytics tracking helper ──────────────────────────────────────────────
@@ -1344,7 +1347,7 @@ function buildWidgetScript(): string {
     '#lynx-widget-btn:active{transform:scale(0.96);}',
     '#lynx-widget-btn.right{right:24px;}',
     '#lynx-widget-btn.left{left:24px;}',
-    '#lynx-widget-panel{position:fixed;bottom:92px;z-index:2147483646;width:360px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 120px);background:#fff;border-radius:16px;box-shadow:0 8px 48px rgba(0,0,0,0.18);display:none;flex-direction:column;overflow:hidden;transition:opacity 0.22s cubic-bezier(0.23,1,0.32,1),transform 0.22s cubic-bezier(0.23,1,0.32,1);opacity:0;transform:scale(0.95) translateY(12px);pointer-events:none;}',
+    '#lynx-widget-panel{position:fixed;bottom:92px;overscroll-behavior:contain;z-index:2147483646;width:360px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 120px);background:#fff;border-radius:16px;box-shadow:0 8px 48px rgba(0,0,0,0.18);display:none;flex-direction:column;overflow:hidden;transition:opacity 0.22s cubic-bezier(0.23,1,0.32,1),transform 0.22s cubic-bezier(0.23,1,0.32,1);opacity:0;transform:scale(0.95) translateY(12px);pointer-events:none;}',
     '#lynx-widget-panel.open{display:flex;opacity:1;transform:scale(1) translateY(0);pointer-events:all;}',
     '#lynx-widget-panel.right{right:24px;}',
     '#lynx-widget-panel.left{left:24px;}',
@@ -1353,11 +1356,11 @@ function buildWidgetScript(): string {
     '#lynx-widget-header .lynx-title{font-size:15px;font-weight:700;flex:1;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:block;color:#fff;letter-spacing:-0.01em;}',
     '#lynx-widget-header .lynx-close{display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:rgba(255,255,255,0.15);border:none;border-radius:50%;cursor:pointer;color:#fff;flex-shrink:0;transition:background 0.15s;}',
     '#lynx-widget-header .lynx-close:hover{background:rgba(255,255,255,0.25);}',
-    '#lynx-widget-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth;}',
+    '#lynx-widget-messages{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;padding:16px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth;}',
     '#lynx-widget-messages::-webkit-scrollbar{width:4px;}',
     '#lynx-widget-messages::-webkit-scrollbar-track{background:transparent;}',
     '#lynx-widget-messages::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px;}',
-    '.lynx-msg{max-width:82%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;word-break:break-word;}',
+    '.lynx-msg{max-width:82%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;word-break:break-word;flex-shrink:0;}',
     '.lynx-msg.user{align-self:flex-end;color:#fff;border-bottom-right-radius:4px;}',
     '.lynx-msg.assistant{align-self:flex-start;background:#f3f4f6;color:#111827;border-bottom-left-radius:4px;}',
     '.lynx-msg.welcome{align-self:flex-start;background:#f3f4f6;color:#111827;border-bottom-left-radius:4px;}',
@@ -1370,7 +1373,7 @@ function buildWidgetScript(): string {
     '#lynx-widget-disclaimer{font-size:10.5px;color:#9ca3af;text-align:center;padding:4px 14px 2px;line-height:1.35;background:#fff;flex-shrink:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}',
     '.lynx-msg a{color:inherit;text-decoration:underline;word-break:break-all;}',
     '.lynx-msg img.lynx-product-img{display:block;max-width:100%;border-radius:10px;margin-top:6px;}',
-    '@media (max-width:480px){#lynx-widget-panel{bottom:0 !important;left:0 !important;right:0 !important;width:100vw !important;max-width:100vw !important;height:100% !important;max-height:100% !important;border-radius:0 !important;}#lynx-widget-messages{padding:12px 12px !important;}.lynx-msg{font-size:14px !important;max-width:86% !important;}#lynx-widget-input-row{padding:10px 10px calc(10px + env(safe-area-inset-bottom));}#lynx-widget-input-row textarea{font-size:16px !important;}}',
+    '@media (max-width:480px){#lynx-widget-panel{bottom:0 !important;left:0 !important;right:0 !important;width:100vw !important;max-width:100vw !important;height:100% !important;height:100dvh !important;max-height:100% !important;max-height:100dvh !important;border-radius:0 !important;}#lynx-widget-messages{padding:12px 12px !important;}.lynx-msg{font-size:14px !important;max-width:86% !important;}#lynx-widget-input-row{padding:10px 10px calc(10px + env(safe-area-inset-bottom));}#lynx-widget-input-row textarea{font-size:16px !important;}}',
     '#lynx-widget-input{flex:1;border:1.5px solid #e5e7eb;border-radius:10px;padding:9px 12px;font-size:14px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;resize:none;max-height:100px;outline:none;transition:border-color 0.15s;background:#fff;color:#111827;}',
     '#lynx-widget-input:focus{border-color:#3b82f6;}',
     '#lynx-widget-send{width:36px;height:36px;border-radius:9px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity 0.15s,transform 0.15s;color:#fff;}',
@@ -1386,12 +1389,12 @@ function buildWidgetScript(): string {
     '.lynx-qr-btn:active{transform:scale(0.96);}',
     // Lead capture form
     // Rating
-    '#lynx-rating-card{padding:14px 16px;border-top:1px solid #e5e7eb;background:#f9fafb;flex-shrink:0;text-align:center;}',
-    '#lynx-rating-card p{font-size:13px;color:#374151;margin:0 0 10px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-weight:500;}',
-    '#lynx-rating-stars{display:flex;justify-content:center;gap:8px;margin-bottom:8px;}',
+    '.lynx-rating-bubble{background:#f3f4f6;border-radius:14px;padding:10px 14px;max-width:80%;align-self:flex-start;}',
+    '.lynx-rating-bubble p{font-size:12.5px;color:#374151;margin:0 0 6px;font-weight:500;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}',
+    '#lynx-rating-stars{display:flex;justify-content:center;gap:8px;}',
     '.lynx-star{font-size:26px;cursor:pointer;color:#d1d5db;transition:color 0.12s,transform 0.12s;}',
     '.lynx-star:hover,.lynx-star.active{color:#f59e0b;transform:scale(1.15);}',
-    '#lynx-rating-thanks{font-size:12.5px;color:#6b7280;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}',
+    '#lynx-rating-thanks{font-size:12px;color:#6b7280;margin-top:6px;text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}',
   ].join('');
   document.head.appendChild(style);
 
@@ -1439,6 +1442,13 @@ function buildWidgetScript(): string {
   document.body.appendChild(panel);
 
   var messagesEl = document.getElementById('lynx-widget-messages');
+
+  // Mouse wheel over ANY part of the panel scrolls the chat — never the page.
+  panel.addEventListener('wheel', function(e) {
+    if (!messagesEl) return;
+    messagesEl.scrollTop += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
   var inputEl = document.getElementById('lynx-widget-input');
   var sendBtn = document.getElementById('lynx-widget-send');
   var closeBtn = document.getElementById('lynx-close-btn');
@@ -1534,12 +1544,12 @@ function buildWidgetScript(): string {
   // ── Lead capture form ─────────────────────────────────────────────────────
 
   // ── Rating card ────────────────────────────────────────────────────────────
-  function showRatingCard() {
-    if (ratingShown || document.getElementById('lynx-rating-card')) return;
+  function showRatingBubble() {
+    if (ratingShown || document.getElementById('lynx-rating-stars')) return;
     ratingShown = true;
-    var card = document.createElement('div');
-    card.id = 'lynx-rating-card';
-    card.innerHTML = '<p>How was your experience?</p>' +
+    var bubble = document.createElement('div');
+    bubble.className = 'lynx-msg assistant lynx-rating-bubble';
+    bubble.innerHTML = '<p>&#11088; Rate your experience / Califica tu experiencia</p>' +
       '<div id="lynx-rating-stars">' +
         '<span class="lynx-star" data-v="1">&#9733;</span>' +
         '<span class="lynx-star" data-v="2">&#9733;</span>' +
@@ -1547,15 +1557,12 @@ function buildWidgetScript(): string {
         '<span class="lynx-star" data-v="4">&#9733;</span>' +
         '<span class="lynx-star" data-v="5">&#9733;</span>' +
       '</div>' +
-      '<div id="lynx-rating-thanks" style="display:none;">Thank you for your feedback!</div>';
-    var branding = document.getElementById('lynx-widget-branding');
-    if (branding && branding.parentNode) {
-      branding.parentNode.insertBefore(card, branding);
-    } else if (panel) {
-      panel.appendChild(card);
+      '<div id="lynx-rating-thanks" style="display:none;">&#10084;&#65039; Thank you! / &#161;Gracias!</div>';
+    if (messagesEl) {
+      messagesEl.appendChild(bubble);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
     }
-    // Star hover + click
-    var stars = card.querySelectorAll('.lynx-star');
+    var stars = bubble.querySelectorAll('.lynx-star');
     stars.forEach(function(star) {
       star.addEventListener('mouseenter', function() {
         var v = parseInt(star.getAttribute('data-v'));
@@ -1569,7 +1576,7 @@ function buildWidgetScript(): string {
         stars.forEach(function(s, i) { s.classList.toggle('active', i < rating); s.style.cursor = 'default'; s.style.pointerEvents = 'none'; });
         var thanks = document.getElementById('lynx-rating-thanks');
         if (thanks) thanks.style.display = 'block';
-        // Save messages to conversation record if we have a conversationId
+        // Persist the transcript so the rating lands on the right conversation
         if (conversationId) {
           var msgs = history.map(function(m, i) { return { role: m.role, content: m.content, timestamp: m.timestamp || (Date.now() - (history.length - i) * 1000) }; });
           fetch(BASE_URL + '/api/widget/save-messages', {
@@ -1578,24 +1585,12 @@ function buildWidgetScript(): string {
             body: JSON.stringify({ apiKey: API_KEY, conversationId: conversationId, messages: msgs }),
           }).catch(function() {});
         }
-        // Send rating to backend
         fetch(BASE_URL + '/api/widget/rate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ apiKey: API_KEY, rating: rating, pageUrl: window.location.href, visitorId: visitorId }),
         }).catch(function() {});
-        // Hide the rating card after 1.5s with fade-out
-        setTimeout(function() {
-          var c = document.getElementById('lynx-rating-card');
-          if (c) {
-            c.style.transition = 'opacity 0.4s ease, max-height 0.4s ease';
-            c.style.overflow = 'hidden';
-            c.style.opacity = '0';
-            c.style.maxHeight = '0';
-            c.style.padding = '0';
-            setTimeout(function() { if (c.parentNode) c.parentNode.removeChild(c); }, 450);
-          }
-        }, 1500);
+        trackEvent('rating_given');
       });
     });
   }
@@ -1831,6 +1826,10 @@ function buildWidgetScript(): string {
     addMessage('user', text);
     history.push({ role: 'user', content: text });
     trackEvent('message_sent');
+    // Farewell detection (es/en): after the bot replies, offer the star rating in-thread
+    if (/\b(gracias|muchas gracias|thank you|thanks|bye|adios|adi\u00f3s|chao|chau|hasta luego|nos vemos|eso es todo|that'?s all|perfecto,? gracias)\b/i.test(text)) {
+      farewellDetected = true;
+    }
     isLoading = true;
     if (sendBtn) sendBtn.disabled = true;
     showTyping();
@@ -1900,8 +1899,8 @@ function buildWidgetScript(): string {
                 if (evt.quickReplies && evt.quickReplies.length > 0) {
                   showQuickReplies(evt.quickReplies);
                 }
-                if (messageCount >= 4 && !ratingShown) {
-                  setTimeout(showRatingCard, 600);
+                if (farewellDetected && !ratingShown) {
+                  setTimeout(showRatingBubble, 800);
                 }
                 isLoading = false;
                 if (sendBtn) sendBtn.disabled = false;
@@ -1942,7 +1941,7 @@ function buildWidgetScript(): string {
         messageCount++;
         typewriterMessage(reply, function() {
           if (data.quickReplies && data.quickReplies.length > 0) showQuickReplies(data.quickReplies);
-          if (messageCount >= 4 && !ratingShown) setTimeout(showRatingCard, 600);
+          if (farewellDetected && !ratingShown) setTimeout(showRatingBubble, 800);
           isLoading = false;
           if (sendBtn) sendBtn.disabled = false;
           if (inputEl) inputEl.focus();
