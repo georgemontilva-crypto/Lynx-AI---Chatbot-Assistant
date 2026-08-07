@@ -1281,6 +1281,22 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
           brandColor: input.brandColor ?? "#3b82f6",
           welcomeMessage: input.welcomeMessage ?? "Hi! How can I help you?",
         });
+
+        // Create the client's OWN chatbot in the chatbots table, sharing the same
+        // apiKey, so the widget (which looks up chatbots by apiKey) works for the
+        // client's site. Marked isClientChatbot=true for the 6,000 msg/mo limit.
+        // This is what makes the reseller flow actually functional end-to-end.
+        await db.insert(chatbots).values({
+          userId: ctx.user.id,
+          apiKey,
+          name: input.brandName ?? input.name ?? "AI Assistant",
+          isClientChatbot: true,
+          primaryColor: input.brandColor ?? "#3b82f6",
+          welcomeMessage: input.welcomeMessage ?? "Hi! How can I help you?",
+          siteUrl: input.siteUrl,
+          isActive: true,
+        });
+
         const [newClient] = await db.select().from(clients).where(eqOp(clients.apiKey, apiKey)).limit(1);
         return newClient;
       }),
@@ -1316,6 +1332,8 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         if (!existing || existing.userId !== ctx.user.id) {
           throw new TRPCError({ code: "NOT_FOUND" });
         }
+        // Remove the linked chatbot (same apiKey) too, so no orphan remains
+        await db.delete(chatbots).where(eqOp(chatbots.apiKey, existing.apiKey));
         await db.delete(clients).where(eqOp(clients.id, input.id));
         return { ok: true };
       }),
@@ -1330,6 +1348,8 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
           throw new TRPCError({ code: "NOT_FOUND" });
         }
         const newKey = "lx_" + randomBytes(24).toString("hex");
+        // Update the key in BOTH tables so the widget keeps resolving
+        await db.update(chatbots).set({ apiKey: newKey }).where(eqOp(chatbots.apiKey, existing.apiKey));
         await db.update(clients).set({ apiKey: newKey }).where(eqOp(clients.id, input.id));
         return { apiKey: newKey };
       }),
