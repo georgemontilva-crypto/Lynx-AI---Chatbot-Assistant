@@ -105,7 +105,7 @@ export default function Snippet() {
 
   return (
     <DashboardShell title="Installation snippet">
-      <div className="max-w-6xl">
+      <div className="max-w-[1400px] mx-auto px-1 space-y-6">
         {/* API Key — full width */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
           <Card className="glass-card border-border/40">
@@ -148,7 +148,7 @@ export default function Snippet() {
         </motion.div>
 
         {/* Steps */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.5 }} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.5 }} className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           {steps.map((s, i) => (
             <Card key={i} className="glass-card border-border/40">
               <CardContent className="p-4">
@@ -161,7 +161,7 @@ export default function Snippet() {
         </motion.div>
 
         {/* Two-column: code (left) + usage/verify (right) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Code snippet */}
         <motion.div className="lg:col-span-2" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.5 }}>
           <Card className="glass-card border-border/40">
@@ -200,9 +200,16 @@ export default function Snippet() {
                     {activeTab === "html" ? "index.html" : activeTab === "react" ? "App.tsx" : "functions.php"}
                   </span>
                 </div>
-                <pre className="p-4 text-xs font-mono text-muted-foreground overflow-x-auto leading-relaxed whitespace-pre-wrap">
+                <pre className="p-4 text-xs font-mono text-muted-foreground overflow-x-auto leading-relaxed whitespace-pre-wrap min-h-[180px]">
                   <code>{isLoading ? "Loading your API key..." : codeMap[activeTab]}</code>
                 </pre>
+              </div>
+              <div className="mt-4 flex items-start gap-2 bg-blue-500/5 border border-blue-500/15 rounded-xl px-4 py-3">
+                <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Pega este código justo antes de la etiqueta <code className="text-primary font-mono">&lt;/body&gt;</code> de tu sitio.
+                  El widget carga tu chatbot con su nombre, colores, entrenamiento y mensaje de bienvenida automáticamente.
+                </p>
               </div>
             </CardContent>
           </Card>
