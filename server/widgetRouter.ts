@@ -636,7 +636,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
         assistantMessage: reply,
       });
 
-      return res.json({ reply, quickReplies, usage: { used: usage.used, limit: usage.limit, plan: userPlan } });
+      return res.json({ reply, quickReplies, usage: { used: usage.used, limit: usage.limit, plan: userPlan }, emailSaved: (!emailResult.codeSent && emailResult.email) ? emailResult.email : undefined });
     } catch (err) {
       console.error("[Widget] Chat error:", err);
       return res.status(500).json({ error: "Internal server error" });
@@ -929,7 +929,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
         assistantMessage: fullReply,
       });
 
-      sendEvent({ done: true, quickReplies, usage: { used: usage.used, limit: usage.limit, plan: userPlan } });
+      sendEvent({ done: true, quickReplies, usage: { used: usage.used, limit: usage.limit, plan: userPlan }, emailSaved: (!emailResult.codeSent && emailResult.email) ? emailResult.email : undefined });
       res.end();
     } catch (err) {
       console.error("[Widget] Stream chat error:", err);
@@ -1704,6 +1704,18 @@ function buildWidgetScript(): string {
     }
   }
 
+  var emailSavedShown = false;
+  function showEmailSavedCard(email) {
+    if (emailSavedShown || !messagesEl) return;
+    emailSavedShown = true;
+    var card = document.createElement('div');
+    card.className = 'lynx-msg assistant lynx-rating-bubble';
+    card.innerHTML = '<p>&#128190; <b>Conversaci\u00f3n guardada / Conversation saved</b></p>' +
+      '<p style="margin:0;font-weight:400;">' + escapeHtml(email) + ' &mdash; puedes retomarla desde cualquier dispositivo escribiendo tu correo en el chat. / You can pick it up on any device by typing your email in the chat.</p>';
+    messagesEl.appendChild(card);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
   function addMessage(role, text, extraClass) {
     var div = document.createElement('div');
     div.className = 'lynx-msg ' + role + (extraClass ? ' ' + extraClass : '');
@@ -1938,6 +1950,7 @@ function buildWidgetScript(): string {
               } else if (evt.done) {
                 // Stream finished — render final text with links & product images
                 if (assistantDiv) renderRichText(assistantDiv, accumulatedReply);
+                if (evt.emailSaved) setTimeout(function() { showEmailSavedCard(evt.emailSaved); }, 500);
                 history.push({ role: 'assistant', content: accumulatedReply });
                 messageCount++;
                 if (evt.quickReplies && evt.quickReplies.length > 0) {
@@ -1980,6 +1993,7 @@ function buildWidgetScript(): string {
       }).then(function(r) { return r.json(); }).then(function(data) {
         hideTyping();
         if (data.restoredMessages) prependMessages(data.restoredMessages);
+        if (data.emailSaved) setTimeout(function() { showEmailSavedCard(data.emailSaved); }, 500);
         var reply = data.reply || 'Sorry, I could not process your request.';
         history.push({ role: 'assistant', content: reply });
         messageCount++;
