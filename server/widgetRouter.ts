@@ -1807,6 +1807,11 @@ function buildWidgetScript(): string {
     isOpen = true;
     panel.classList.add('open');
     lockPageScroll();
+    // Mobile fullscreen: hide the floating button while open — the header's X
+    // is the close control, and the bubble would sit on top of the send button.
+    if (window.matchMedia && window.matchMedia('(max-width: 480px)').matches) {
+      btn.style.display = 'none';
+    }
     trackEvent('chat_open');
     // Show X icon when open, keep logo visible
     btn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
@@ -1836,6 +1841,7 @@ function buildWidgetScript(): string {
 
   function closePanel() {
     unlockPageScroll();
+    btn.style.display = '';
     isOpen = false;
     panel.classList.remove('open');
     // Restore the custom icon (or default) — never hardcode Lynx AI icon here
