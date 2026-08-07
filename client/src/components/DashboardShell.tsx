@@ -171,7 +171,7 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center animate-pulse">
-            <img src="/manus-storage/favicon_9191da9f.png" alt="Lynx AI" className="w-10 h-10 object-contain" />
+            <img src="/icon-192x192.png" alt="Lynx AI" className="w-10 h-10 object-contain" />
           </div>
           <p className="text-sm text-muted-foreground">Loading...</p>
         </div>
@@ -184,7 +184,7 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center max-w-sm px-6">
           <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center mx-auto mb-6">
-            <img src="/manus-storage/favicon_9191da9f.png" alt="Lynx AI" className="w-14 h-14 object-contain" />
+            <img src="/icon-192x192.png" alt="Lynx AI" className="w-14 h-14 object-contain" />
           </div>
           <h1 className="text-2xl font-bold mb-3">Access your dashboard</h1>
           <p className="text-muted-foreground text-sm mb-8">
@@ -229,7 +229,7 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
         <Link href="/">
           <div className="cursor-pointer">
             <img
-              src={theme === "dark" ? "/manus-storage/lynx-logo-dark_062479cc.png" : "/manus-storage/lynx-logo-light_445bc1c1.png"}
+              src={theme === "dark" ? "/brand/lynx-logo-dark.png" : "/brand/lynx-logo-light.png"}
               alt="Lynx AI"
               className="h-8 w-auto object-contain"
             />

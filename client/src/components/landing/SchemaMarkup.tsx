@@ -8,7 +8,7 @@ export default function SchemaMarkup() {
     "@type": "Organization",
     "name": "Lynx AI",
     "url": "https://lynxaiassistant.com",
-    "logo": "https://lynxaiassistant.com/manus-storage/lynx-logo-dark_062479cc.png",
+    "logo": "https://lynxaiassistant.com/brand/lynx-logo-dark.png",
     "description": "Lynx AI es una plataforma de chatbot inteligente que escanea tu sitio web y atiende a tus visitantes 24/7 con respuestas precisas basadas en tu contenido.",
     "contactPoint": {
       "@type": "ContactPoint",

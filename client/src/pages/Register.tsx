@@ -113,7 +113,7 @@ export default function Register() {
         <div className="relative z-10">
           <Link href="/">
             <img
-              src="/manus-storage/lynx-logo-dark_062479cc.png"
+              src="/brand/lynx-logo-dark.png"
               alt="Lynx AI"
               className="h-9 w-auto object-contain"
             />
@@ -158,12 +158,12 @@ export default function Register() {
         <div className="lg:hidden mb-8">
           <Link href="/">
             <img
-              src="/manus-storage/lynx-logo-light_445bc1c1.png"
+              src="/brand/lynx-logo-light.png"
               alt="Lynx AI"
               className="h-8 w-auto object-contain dark:hidden"
             />
             <img
-              src="/manus-storage/lynx-logo-dark_062479cc.png"
+              src="/brand/lynx-logo-dark.png"
               alt="Lynx AI"
               className="h-8 w-auto object-contain hidden dark:block"
             />

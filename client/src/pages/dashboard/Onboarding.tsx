@@ -154,8 +154,8 @@ export default function Onboarding() {
       <div className="mb-8">
         <img
           src={theme === "dark"
-            ? "/manus-storage/lynx-logo-dark_062479cc.png"
-            : "/manus-storage/lynx-logo-light_445bc1c1.png"}
+            ? "/brand/lynx-logo-dark.png"
+            : "/brand/lynx-logo-light.png"}
           alt="Lynx AI"
           className="h-9 object-contain"
         />

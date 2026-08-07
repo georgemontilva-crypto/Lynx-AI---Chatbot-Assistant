@@ -17,14 +17,13 @@
     <link rel="manifest" href="/manifest.json" />
 
     <!-- ── Favicon ───────────────────────────────────────────────────── -->
-    <link rel="icon" type="image/png" sizes="32x32" href="/manus-storage/favicon_3c36f2d1.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/manus-storage/favicon_3c36f2d1.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/manus-storage/favicon_3c36f2d1.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-192x192.png" />
 
     <!-- ── Preconnects (performance) ─────────────────────────────────── -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="dns-prefetch" href="https://api.manus.im" />
 
     <!-- ── Fonts ─────────────────────────────────────────────────────── -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;1,14..32,400&display=swap" rel="stylesheet" />
@@ -32,10 +31,6 @@
   <body>
     <div id="root"><!--app-html--></div>
     <script type="module" src="/src/entry-client.tsx"></script>
-    <script
-      defer
-      src="%VITE_ANALYTICS_ENDPOINT%/umami"
-      data-website-id="%VITE_ANALYTICS_WEBSITE_ID%"></script>
     <!-- Lynx AI Demo Widget — shows the product in action on the landing page -->
     <script
       src="/widget.js?v=13"

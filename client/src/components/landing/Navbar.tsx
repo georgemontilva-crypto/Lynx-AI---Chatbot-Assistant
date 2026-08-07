@@ -73,7 +73,7 @@ export default function Navbar() {
               whileTap={{ scale: 0.98 }}
             >
               <img
-                src={theme === "dark" ? "/manus-storage/lynx-logo-dark_062479cc.png" : "/manus-storage/lynx-logo-light_445bc1c1.png"}
+                src={theme === "dark" ? "/brand/lynx-logo-dark.png" : "/brand/lynx-logo-light.png"}
                 alt="Lynx AI"
                 className="h-9 w-auto object-contain"
               />

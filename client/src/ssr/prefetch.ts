@@ -45,7 +45,7 @@ async function seed(qc: QueryClient, key: unknown, data: unknown) {
 // Site constants — keep in sync with vite.ts SITE_NAME and CANONICAL_ORIGIN env vars
 const SITE = "Lynx AI";
 const CANONICAL_ORIGIN = "https://lynxaiassistant.com";
-const OG_IMAGE = "/manus-storage/og-image_79ed2ee1.png";
+const OG_IMAGE = "/brand/og-image.png";
 const OG_IMAGE_WIDTH = 1200;
 const OG_IMAGE_HEIGHT = 630;
 const OG_IMAGE_ALT = "Lynx AI — Chatbot inteligente para sitios web";
