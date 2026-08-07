@@ -11,12 +11,12 @@
  */
 
 import type { Express, Request, Response } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne, gt } from "drizzle-orm";
 import { buildTrainingPromptSection } from "./routers";
 import { getDb, checkAndIncrementUsage, PLAN_LIMITS, saveAnalyticsEvent } from "./db";
-import { chatbots, users, conversations } from "../drizzle/schema";
+import { chatbots, users, conversations, widgetEmailVerifications } from "../drizzle/schema";
 import { invokeLLM } from "./_core/llm";
-import { sendUsageLimitAlertEmail, sendNewLeadEmail } from "./email";
+import { sendUsageLimitAlertEmail, sendNewLeadEmail, sendChatVerificationCode } from "./email";
 import { sendPushToUser } from "./pushNotifications";
 import path from "path";
 import fs from "fs";
@@ -104,15 +104,17 @@ async function captureEmailFromMessage(params: {
   chatbotId: number;
   visitorId: string | null;
   message: string;
-}): Promise<void> {
-  const { chatbotId, visitorId, message } = params;
-  if (!visitorId) return;
+  chatbotName?: string;
+}): Promise<{ codeSent: boolean; email: string | null }> {
+  const { chatbotId, visitorId, message, chatbotName } = params;
+  const none = { codeSent: false, email: null as string | null };
+  if (!visitorId) return none;
   const emailMatch = message.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
-  if (!emailMatch) return;
+  if (!emailMatch) return none;
   const email = emailMatch[0].toLowerCase().slice(0, 320);
   try {
     const db = await getDb();
-    if (!db) return;
+    if (!db) return none;
     const rows = await db
       .select({ id: conversations.id, updatedAt: conversations.updatedAt, leadEmail: conversations.leadEmail })
       .from(conversations)
@@ -139,8 +141,108 @@ async function captureEmailFromMessage(params: {
         messages: [],
       });
     }
+
+    // ── Cross-device continuity: does this email have an OLDER conversation
+    // (different visitor) with real messages on this chatbot? If so, email a
+    // 6-digit code the visitor can type here to restore it.
+    const prev = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(and(
+        eq(conversations.chatbotId, chatbotId),
+        eq(conversations.leadEmail, email),
+        ne(conversations.visitorId, visitorId),
+      ))
+      .orderBy(desc(conversations.updatedAt))
+      .limit(1);
+    if (prev.length > 0) {
+      // Reuse an unexpired code instead of spamming new emails
+      const existing = await db
+        .select({ id: widgetEmailVerifications.id })
+        .from(widgetEmailVerifications)
+        .where(and(
+          eq(widgetEmailVerifications.chatbotId, chatbotId),
+          eq(widgetEmailVerifications.visitorId, visitorId),
+          eq(widgetEmailVerifications.email, email),
+          gt(widgetEmailVerifications.expiresAt, new Date()),
+        ))
+        .limit(1);
+      if (existing.length === 0) {
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        await db.insert(widgetEmailVerifications).values({
+          chatbotId,
+          visitorId: visitorId.slice(0, 64),
+          email,
+          code,
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        });
+        void sendChatVerificationCode(email, code, chatbotName ?? "The assistant");
+      }
+      return { codeSent: true, email };
+    }
+    return { codeSent: false, email };
   } catch (err) {
     console.warn("[Widget] Email capture failed:", err);
+    return none;
+  }
+}
+
+/**
+ * If the visitor typed a 6-digit code, check it against pending verifications.
+ * On success: returns the previous conversation's messages so the widget can
+ * restore them, and links the email to the current conversation.
+ */
+async function tryVerifyCode(params: {
+  chatbotId: number;
+  visitorId: string | null;
+  message: string;
+}): Promise<{ restored: Array<{ role: string; content: string }>; email: string } | null> {
+  const { chatbotId, visitorId, message } = params;
+  if (!visitorId) return null;
+  const m = message.trim().match(/^(\d{6})$/);
+  if (!m) return null;
+  const code = m[1];
+  try {
+    const db = await getDb();
+    if (!db) return null;
+    const rows = await db
+      .select()
+      .from(widgetEmailVerifications)
+      .where(and(
+        eq(widgetEmailVerifications.chatbotId, chatbotId),
+        eq(widgetEmailVerifications.visitorId, visitorId),
+        eq(widgetEmailVerifications.code, code),
+        gt(widgetEmailVerifications.expiresAt, new Date()),
+      ))
+      .orderBy(desc(widgetEmailVerifications.createdAt))
+      .limit(1);
+    const ver = rows[0];
+    if (!ver) return null;
+    // one-time use
+    await db.delete(widgetEmailVerifications).where(eq(widgetEmailVerifications.id, ver.id));
+    // fetch the previous conversation for that email (not this visitor)
+    const prevRows = await db
+      .select({ id: conversations.id, messages: conversations.messages, leadName: conversations.leadName })
+      .from(conversations)
+      .where(and(
+        eq(conversations.chatbotId, chatbotId),
+        eq(conversations.leadEmail, ver.email),
+        ne(conversations.visitorId, visitorId),
+      ))
+      .orderBy(desc(conversations.updatedAt))
+      .limit(1);
+    const prev = prevRows[0];
+    if (!prev) return null;
+    let rawMsgs: unknown = prev.messages;
+    if (typeof rawMsgs === "string") { try { rawMsgs = JSON.parse(rawMsgs); } catch { rawMsgs = []; } }
+    const msgs = (Array.isArray(rawMsgs) ? rawMsgs : [])
+      .filter((x: { role?: string; content?: string }) => x && (x.role === "user" || x.role === "assistant") && typeof x.content === "string")
+      .slice(-40)
+      .map((x: { role?: string; content?: string }) => ({ role: String(x.role), content: String(x.content) }));
+    return { restored: msgs, email: ver.email };
+  } catch (err) {
+    console.warn("[Widget] Code verification failed:", err);
+    return null;
   }
 }
 
@@ -365,11 +467,40 @@ export function registerWidgetRoutes(app: Express) {
       }
 
       // Conversational lead capture (Violet-style): detect an email typed in chat
-      void captureEmailFromMessage({
+      // 1) If the visitor typed a 6-digit code → verify & restore their previous
+      // conversation (cross-device continuity) without calling the LLM.
+      const codeResult = await tryVerifyCode({
         chatbotId: chatbot.id,
         visitorId: typeof visitorId === "string" ? visitorId : null,
         message: String(message ?? ""),
       });
+
+      // 2) If the message contains an email → save lead; if that email has an
+      // older conversation, a verification code is emailed to them.
+      const emailResult = codeResult ? { codeSent: false, email: null } : await captureEmailFromMessage({
+        chatbotId: chatbot.id,
+        visitorId: typeof visitorId === "string" ? visitorId : null,
+        message: String(message ?? ""),
+        chatbotName: chatbot.name ?? undefined,
+      });
+
+      if (codeResult) {
+        const confirmMsg = "✅ ¡Listo! Verificación correcta — retomamos tu conversación anterior. / Verified — your previous conversation has been restored.";
+        void persistChatTurn({
+          chatbotId: chatbot.id,
+          visitorId: typeof visitorId === "string" ? visitorId : null,
+          visitorIp: null,
+          pageUrl: typeof pageUrl === "string" ? pageUrl : null,
+          userMessage: String(message ?? ""),
+          assistantMessage: confirmMsg,
+        });
+        return res.json({
+          reply: confirmMsg,
+          restoredMessages: codeResult.restored,
+          quickReplies: [],
+          usage: { used: usage.used, limit: usage.limit },
+        });
+      }
 
       // Fire-and-forget 80% usage alert email + push
       if (usage.shouldAlertAt80 && db) {
@@ -424,7 +555,7 @@ STYLE:
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
 ${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
-${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for any time/schedule references — NEVER ask the visitor for their timezone).` : ""}`;
+${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for any time/schedule references — NEVER ask the visitor for their timezone).` : ""}${emailResult.codeSent ? `\n\nSYSTEM NOTE: We just emailed a 6-digit verification code to ${emailResult.email}. Tell the visitor (in their language) to check their inbox and type the code here to restore their previous conversation.` : ""}`;
 
       const safeHistory = Array.isArray(history)
         ? history
@@ -592,11 +723,23 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
       }
 
       // Conversational lead capture (Violet-style): detect an email typed in chat
-      void captureEmailFromMessage({
+      // 1) If the visitor typed a 6-digit code → verify & restore their previous
+      // conversation (cross-device continuity) without calling the LLM.
+      const codeResult = await tryVerifyCode({
         chatbotId: chatbot.id,
         visitorId: typeof visitorId === "string" ? visitorId : null,
         message: String(message ?? ""),
       });
+
+      // 2) If the message contains an email → save lead; if that email has an
+      // older conversation, a verification code is emailed to them.
+      const emailResult = codeResult ? { codeSent: false, email: null } : await captureEmailFromMessage({
+        chatbotId: chatbot.id,
+        visitorId: typeof visitorId === "string" ? visitorId : null,
+        message: String(message ?? ""),
+        chatbotName: chatbot.name ?? undefined,
+      });
+
 
       const systemPrompt = `You are ${chatbot.name ?? "Lynx AI"}, a friendly EXPERT CONSULTANT for this website — think of a knowledgeable specialist in this site's field who genuinely enjoys helping people find the right solution. You guide the visitor like a trusted advisor, not a generic support bot.
 
@@ -619,7 +762,7 @@ STYLE:
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
 ${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
-${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
+${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailResult.codeSent ? `\n\nSYSTEM NOTE: We just emailed a 6-digit verification code to ${emailResult.email}. Tell the visitor (in their language) to check their inbox and type the code here to restore their previous conversation.` : ""}`;
 
       const safeHistory = Array.isArray(history)
         ? history
@@ -648,6 +791,23 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
           (res as unknown as { flush: () => void }).flush();
         }
       };
+
+      if (codeResult) {
+        const confirmMsg = "✅ ¡Listo! Verificación correcta — retomamos tu conversación anterior. / Verified — your previous conversation has been restored.";
+        sendEvent({ restored: codeResult.restored });
+        sendEvent({ token: confirmMsg });
+        sendEvent({ done: true, quickReplies: [], usage: { used: usage.used, limit: usage.limit } });
+        res.end();
+        void persistChatTurn({
+          chatbotId: chatbot.id,
+          visitorId: typeof visitorId === "string" ? visitorId : null,
+          visitorIp: null,
+          pageUrl: typeof pageUrl === "string" ? pageUrl : null,
+          userMessage: String(message ?? ""),
+          assistantMessage: confirmMsg,
+        });
+        return;
+      }
 
       // ── Stream the reply from Claude (Anthropic Messages API, SSE) ────────────
       // Split system prompt out (Anthropic takes it as a top-level field).
@@ -1146,7 +1306,6 @@ function buildWidgetScript(): string {
   var isOpen = false;
   var isLoading = false;
   var configLoaded = false;
-  var leadCaptured = false;       // true once name+email collected
   var leadStep = 0;               // 0=not started, 1=asked name, 2=asked email
   var leadName = '';              // captured visitor name
   var leadEmail = '';             // captured visitor email
@@ -1226,12 +1385,6 @@ function buildWidgetScript(): string {
     '.lynx-qr-btn:hover{background:#f0f7ff;border-color:#93c5fd;color:#1d4ed8;transform:translateY(-1px);}',
     '.lynx-qr-btn:active{transform:scale(0.96);}',
     // Lead capture form
-    '#lynx-lead-form{padding:12px 16px;border-top:1px solid #e5e7eb;background:#f9fafb;flex-shrink:0;}',
-    '#lynx-lead-form p{font-size:12.5px;color:#6b7280;margin:0 0 8px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}',
-    '#lynx-lead-form input{width:100%;box-sizing:border-box;border:1.5px solid #e5e7eb;border-radius:8px;padding:8px 10px;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;outline:none;background:#fff;color:#111827;margin-bottom:6px;transition:border-color 0.15s;}',
-    '#lynx-lead-form input:focus{border-color:#3b82f6;}',
-    '#lynx-lead-form button{width:100%;padding:8px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;color:#fff;transition:opacity 0.15s;}',
-    '#lynx-lead-form button:hover{opacity:0.88;}',
     // Rating
     '#lynx-rating-card{padding:14px 16px;border-top:1px solid #e5e7eb;background:#f9fafb;flex-shrink:0;text-align:center;}',
     '#lynx-rating-card p{font-size:13px;color:#374151;margin:0 0 10px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-weight:500;}',
@@ -1379,60 +1532,6 @@ function buildWidgetScript(): string {
   updateUserBubbleColor(config.primaryColor);
 
   // ── Lead capture form ─────────────────────────────────────────────────────
-  function showLeadForm() {
-    if (document.getElementById('lynx-lead-form')) return;
-    var form = document.createElement('div');
-    form.id = 'lynx-lead-form';
-    form.innerHTML = '<p>For personalized assistance, please share your name and email:</p>' +
-      '<input type="text" id="lynx-lead-name" placeholder="Your name" autocomplete="name" />' +
-      '<input type="email" id="lynx-lead-email" placeholder="Your email" autocomplete="email" />' +
-      '<input type="text" id="lynx-lead-company" placeholder="Your company (optional)" autocomplete="organization" />' +
-      '<button id="lynx-lead-submit">Continue</button>';
-    // Insert before branding
-    var branding = document.getElementById('lynx-widget-branding');
-    if (branding && branding.parentNode) {
-      branding.parentNode.insertBefore(form, branding);
-    } else if (panel) {
-      panel.appendChild(form);
-    }
-    // Style submit button
-    var submitBtn = document.getElementById('lynx-lead-submit');
-    if (submitBtn) submitBtn.style.background = config.primaryColor;
-    // Handle submit
-    if (submitBtn) {
-      submitBtn.addEventListener('click', function() {
-        var nameEl = document.getElementById('lynx-lead-name');
-        var emailEl = document.getElementById('lynx-lead-email');
-        var companyEl = document.getElementById('lynx-lead-company');
-        var name = nameEl ? nameEl.value.trim() : '';
-        var email = emailEl ? emailEl.value.trim() : '';
-        var company = companyEl ? companyEl.value.trim() : '';
-        if (!name) { if (nameEl) nameEl.focus(); return; }
-        if (!email || !email.includes('@')) { if (emailEl) emailEl.focus(); return; }
-        leadName = name;
-        leadEmail = email;
-        leadCompany = company;
-        leadCaptured = true;
-        form.remove();
-        addMessage('assistant', 'Thanks, ' + name + '! How can I help you today?');
-        history.push({ role: 'assistant', content: 'Thanks, ' + name + '! How can I help you today?' });
-        messageCount++;
-        if (inputEl) { inputEl.disabled = false; inputEl.focus(); }
-        if (sendBtn) sendBtn.disabled = false;
-        // Send lead to backend and save conversationId for message tracking
-        fetch(BASE_URL + '/api/widget/lead', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey: API_KEY, name: name, email: email, company: company, pageUrl: window.location.href, visitorId: visitorId }),
-        }).then(function(r) { return r.json(); }).then(function(data) {
-          if (data && data.conversationId) conversationId = data.conversationId;
-        }).catch(function() {});
-      });
-    }
-    // Disable input until lead captured
-    if (inputEl) inputEl.disabled = true;
-    if (sendBtn) sendBtn.disabled = true;
-  }
 
   // ── Rating card ────────────────────────────────────────────────────────────
   function showRatingCard() {
@@ -1568,6 +1667,27 @@ function buildWidgetScript(): string {
     el.innerHTML = html;
   }
 
+  // Insert restored messages ABOVE the current thread (cross-device continuity)
+  function prependMessages(msgs) {
+    if (!messagesEl || !msgs || !msgs.length) return;
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < msgs.length; i++) {
+      var d = document.createElement('div');
+      d.className = 'lynx-msg ' + msgs[i].role;
+      if (msgs[i].role === 'assistant') { renderRichText(d, msgs[i].content); } else { d.textContent = msgs[i].content; }
+      frag.appendChild(d);
+    }
+    var sep = document.createElement('div');
+    sep.style.cssText = 'text-align:center;font-size:10.5px;color:#9ca3af;padding:6px 0;';
+    sep.textContent = '· · ·';
+    frag.appendChild(sep);
+    messagesEl.insertBefore(frag, messagesEl.firstChild);
+    // prepend to history for LLM context too
+    for (var j = msgs.length - 1; j >= 0; j--) {
+      history.unshift({ role: msgs[j].role, content: msgs[j].content });
+    }
+  }
+
   function addMessage(role, text, extraClass) {
     var div = document.createElement('div');
     div.className = 'lynx-msg ' + role + (extraClass ? ' ' + extraClass : '');
@@ -1665,12 +1785,8 @@ function buildWidgetScript(): string {
         addMessage('assistant', config.welcomeMessage, 'welcome');
         messageCount++;
       }
-      // Show lead form after welcome message if not yet captured
-      if (!leadCaptured) {
-        setTimeout(showLeadForm, 400);
-      }
     }
-    if (inputEl && leadCaptured) inputEl.focus();
+    if (inputEl) inputEl.focus();
   }
 
   function renderBtnIcon() {
@@ -1768,7 +1884,9 @@ function buildWidgetScript(): string {
             if (!raw) continue;
             try {
               var evt = JSON.parse(raw);
-              if (evt.token) {
+              if (evt.restored) {
+                prependMessages(evt.restored);
+              } else if (evt.token) {
                 accumulatedReply += evt.token;
                 if (assistantDiv) {
                   assistantDiv.textContent = accumulatedReply;
@@ -1818,6 +1936,7 @@ function buildWidgetScript(): string {
         body: JSON.stringify({ apiKey: API_KEY, message: text, history: history.slice(-20), pageUrl: window.location.href, visitorId: visitorId, visitorTimezone: tz }),
       }).then(function(r) { return r.json(); }).then(function(data) {
         hideTyping();
+        if (data.restoredMessages) prependMessages(data.restoredMessages);
         var reply = data.reply || 'Sorry, I could not process your request.';
         history.push({ role: 'assistant', content: reply });
         messageCount++;

@@ -1,0 +1,1 @@
+ALTER TABLE `chatbots` ADD `disclaimer` varchar(300);

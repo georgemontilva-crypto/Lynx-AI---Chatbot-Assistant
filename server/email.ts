@@ -593,3 +593,21 @@ export async function sendOwnerNotificationEmail(
   `;
   return sendEmail({ to, subject: title, html });
 }
+
+/**
+ * Widget chat continuity: sends the 6-digit code the visitor types back into
+ * the chat to restore their previous conversation (cross-device, Violet-style).
+ */
+export async function sendChatVerificationCode(to: string, code: string, botName: string) {
+  return sendEmail({
+    to,
+    subject: `${code} — your verification code`,
+    html: `
+      <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:440px;margin:0 auto;padding:24px;">
+        <h2 style="margin:0 0 8px;font-size:18px;">Your verification code</h2>
+        <p style="color:#555;font-size:14px;margin:0 0 16px;">${botName} sent you this code to restore your previous conversation. Type it in the chat:</p>
+        <div style="font-size:32px;font-weight:700;letter-spacing:8px;text-align:center;padding:16px;background:#f4f4f5;border-radius:12px;">${code}</div>
+        <p style="color:#999;font-size:12px;margin:16px 0 0;">This code expires in 10 minutes. If you didn't request it, you can ignore this email.</p>
+      </div>`,
+  });
+}

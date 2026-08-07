@@ -238,3 +238,15 @@ export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type BlogPost = typeof blogPosts.$inferSelect;
 export type InsertBlogPost = typeof blogPosts.$inferInsert;
+
+// Widget chat continuity: short-lived codes emailed to visitors so they can
+// restore a previous conversation from another device/browser.
+export const widgetEmailVerifications = mysqlTable("widget_email_verifications", {
+  id: int("id").autoincrement().primaryKey(),
+  chatbotId: int("chatbotId").notNull(),
+  visitorId: varchar("visitorId", { length: 64 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  code: varchar("code", { length: 6 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
