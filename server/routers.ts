@@ -1104,6 +1104,73 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
         return getAllBlogPostsAdmin(limit, offset);
       }),
 
+    generate: adminProcedure
+      .input(z.object({
+        topic: z.string().min(3).max(200),
+        tone: z.enum(["professional", "friendly", "persuasive"]).default("friendly"),
+        language: z.enum(["es", "en"]).default("es"),
+      }))
+      .mutation(async ({ input }) => {
+        const langName = input.language === "es" ? "Spanish" : "English";
+        const toneDesc = input.tone === "professional" ? "professional and authoritative"
+          : input.tone === "persuasive" ? "persuasive and sales-oriented, guiding the reader toward trying Lynx AI"
+          : "warm, friendly and approachable";
+        const prompt = `You are a senior content writer for Lynx AI, an AI chatbot platform for businesses.
+Write a complete, original blog article in ${langName} about: "${input.topic}".
+Tone: ${toneDesc}.
+Return ONLY a JSON object (no markdown fences) with this exact shape:
+{
+  "title": "compelling article title",
+  "slug": "url-friendly-slug",
+  "excerpt": "1-2 sentence summary under 160 characters",
+  "category": "a short category name",
+  "tags": ["tag1", "tag2", "tag3"],
+  "readingTimeMinutes": estimated_number,
+  "content": "full article body as clean semantic HTML using <h2>, <h3>, <p>, <ul>, <li>, <strong>, <blockquote> tags. 600-900 words. Start with an <h2>. End with a call to action mentioning Lynx AI."
+}`;
+        const response = await invokeLLM({
+          model: "claude-haiku-4-5",
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 4000,
+          responseFormat: {
+            type: "json_schema",
+            json_schema: {
+              name: "blog_article",
+              schema: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  slug: { type: "string" },
+                  excerpt: { type: "string" },
+                  category: { type: "string" },
+                  tags: { type: "array", items: { type: "string" } },
+                  readingTimeMinutes: { type: "number" },
+                  content: { type: "string" },
+                },
+                required: ["title", "slug", "excerpt", "category", "tags", "content"],
+              },
+            },
+          },
+        });
+        const raw = response.choices[0]?.message?.content;
+        const text = typeof raw === "string" ? raw : "";
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI_PARSE_ERROR: The AI response could not be parsed. Try again." });
+        }
+        return {
+          title: String(parsed.title ?? ""),
+          slug: String(parsed.slug ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-"),
+          excerpt: String(parsed.excerpt ?? ""),
+          category: String(parsed.category ?? ""),
+          tags: Array.isArray(parsed.tags) ? (parsed.tags as string[]).join(", ") : "",
+          readingTimeMinutes: Number(parsed.readingTimeMinutes) || 6,
+          content: String(parsed.content ?? ""),
+        };
+      }),
+
     create: adminProcedure
       .input(z.object({
         title: z.string().min(1).max(255),
