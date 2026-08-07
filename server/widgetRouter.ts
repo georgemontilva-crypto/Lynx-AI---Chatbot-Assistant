@@ -272,6 +272,7 @@ export function registerWidgetRoutes(app: Express) {
         primaryColor: chatbot.primaryColor ?? "#3b82f6",
         secondaryColor: chatbot.secondaryColor ?? "#1e40af",
         welcomeMessage: chatbot.welcomeMessage ?? "Hi! How can I help you today?",
+        disclaimer: chatbot.disclaimer ?? null,
         placeholder: chatbot.placeholder ?? "Type your question...",
         position: chatbot.position ?? "bottom-right",
         autoOpen: chatbot.autoOpen ?? false,
@@ -413,6 +414,7 @@ CONVERSATION FLOW (like a real consultant):
 KNOWLEDGE (this is what makes you valuable):
 5. You MAY use your general expert knowledge of this site's FIELD to educate: explain how this type of product works, what results to expect, best practices, comparisons between categories. Teach like a specialist would — this is encouraged.
 6. BUT specific products, prices, and links must come ONLY from the PRODUCT CATALOG in the site context. Never invent a product, price, discount code, or URL. If something isn't in the catalog, say you don't see it and suggest the closest alternative that IS there.
+6b. If the visitor wants to SEE a product (photo, "how does it look"), include the product's IMG url from the catalog on its own line — the chat renders image links as photos automatically.
 
 STYLE:
 7. Warm, human, conversational — like texting with a smart friend. Use natural phrasing, react to what they say ("Good question", "Entiendo perfectamente"). Never sound scripted.
@@ -607,6 +609,7 @@ CONVERSATION FLOW (like a real consultant):
 KNOWLEDGE (this is what makes you valuable):
 5. You MAY use your general expert knowledge of this site's FIELD to educate: explain how this type of product works, what results to expect, best practices, comparisons between categories. Teach like a specialist would — this is encouraged.
 6. BUT specific products, prices, and links must come ONLY from the PRODUCT CATALOG in the site context. Never invent a product, price, discount code, or URL. If something isn't in the catalog, say you don't see it and suggest the closest alternative that IS there.
+6b. If the visitor wants to SEE a product (photo, "how does it look"), include the product's IMG url from the catalog on its own line — the chat renders image links as photos automatically.
 
 STYLE:
 7. Warm, human, conversational — like texting with a smart friend. Use natural phrasing, react to what they say ("Good question", "Entiendo perfectamente"). Never sound scripted.
@@ -775,6 +778,50 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
   // POST /api/widget/lead
   // Body: { apiKey, name, email, pageUrl }
   // Saves visitor lead info and returns conversationId for message tracking
+  // GET /api/widget/history?apiKey=xxx&visitorId=yyy
+  // Returns the visitor's recent conversation (within the active window) so the
+  // widget can restore the chat when they come back — Violet-style continuity.
+  app.get("/api/widget/history", async (req: Request, res: Response) => {
+    setCorsHeaders(res);
+    res.setHeader("Cache-Control", "no-store");
+    const apiKey = (req.query.apiKey as string) ?? "";
+    const visitorId = (req.query.visitorId as string) ?? "";
+    if (!apiKey || !visitorId) return res.json({ messages: [] });
+    try {
+      const chatbot = await getChatbotByApiKey(apiKey);
+      if (!chatbot) return res.json({ messages: [] });
+      const db = await getDb();
+      if (!db) return res.json({ messages: [] });
+      const rows = await db
+        .select({ id: conversations.id, updatedAt: conversations.updatedAt, messages: conversations.messages })
+        .from(conversations)
+        .where(and(
+          eq(conversations.chatbotId, chatbot.id),
+          eq(conversations.visitorId, visitorId),
+        ))
+        .orderBy(desc(conversations.updatedAt))
+        .limit(1);
+      const recent = rows[0];
+      if (!recent || Date.now() - new Date(recent.updatedAt).getTime() > CONVERSATION_WINDOW_MS) {
+        return res.json({ messages: [] });
+      }
+      // mysql2 may return the JSON column as a string — parse defensively
+      let rawMsgs: unknown = recent.messages;
+      if (typeof rawMsgs === "string") {
+        try { rawMsgs = JSON.parse(rawMsgs); } catch { rawMsgs = []; }
+      }
+      const msgs = Array.isArray(rawMsgs) ? rawMsgs : [];
+      // Only role/content, capped for payload size
+      const safe = (msgs as Array<{ role?: string; content?: string }>)
+        .filter(m => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+        .slice(-40)
+        .map(m => ({ role: m.role, content: m.content }));
+      return res.json({ messages: safe, conversationId: recent.id });
+    } catch {
+      return res.json({ messages: [] });
+    }
+  });
+
   app.post("/api/widget/lead", async (req: Request, res: Response) => {
     setCorsHeaders(res);
     const { apiKey, name, email, pageUrl, company, visitorId } = req.body ?? {};
@@ -1161,6 +1208,10 @@ function buildWidgetScript(): string {
     '.lynx-typing span:nth-child(3){animation-delay:0.4s;}',
     '@keyframes lynxDot{0%,80%,100%{transform:scale(0.7);opacity:0.5}40%{transform:scale(1);opacity:1}}',
     '#lynx-widget-input-row{padding:12px 14px;border-top:1px solid #e5e7eb;display:flex;gap:8px;align-items:flex-end;background:#fff;flex-shrink:0;}',
+    '#lynx-widget-disclaimer{font-size:10.5px;color:#9ca3af;text-align:center;padding:4px 14px 2px;line-height:1.35;background:#fff;flex-shrink:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}',
+    '.lynx-msg a{color:inherit;text-decoration:underline;word-break:break-all;}',
+    '.lynx-msg img.lynx-product-img{display:block;max-width:100%;border-radius:10px;margin-top:6px;}',
+    '@media (max-width:480px){#lynx-widget-panel{bottom:0 !important;left:0 !important;right:0 !important;width:100vw !important;max-width:100vw !important;height:100% !important;max-height:100% !important;border-radius:0 !important;}#lynx-widget-messages{padding:12px 12px !important;}.lynx-msg{font-size:14px !important;max-width:86% !important;}#lynx-widget-input-row{padding:10px 10px calc(10px + env(safe-area-inset-bottom));}#lynx-widget-input-row textarea{font-size:16px !important;}}',
     '#lynx-widget-input{flex:1;border:1.5px solid #e5e7eb;border-radius:10px;padding:9px 12px;font-size:14px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;resize:none;max-height:100px;outline:none;transition:border-color 0.15s;background:#fff;color:#111827;}',
     '#lynx-widget-input:focus{border-color:#3b82f6;}',
     '#lynx-widget-send{width:36px;height:36px;border-radius:9px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity 0.15s,transform 0.15s;color:#fff;}',
@@ -1227,6 +1278,7 @@ function buildWidgetScript(): string {
         '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
       '</button>',
     '</div>',
+    '<div id="lynx-widget-disclaimer" style="display:none;"></div>',
     '<div id="lynx-widget-branding">Powered by <a href="https://lynxaiassistant.com" target="_blank" rel="noopener">Lynx AI</a></div>',
   ].join('');
 
@@ -1256,6 +1308,10 @@ function buildWidgetScript(): string {
       if (sendBtnEl) sendBtnEl.style.background = cfg.primaryColor;
       // Update user message bubble color
       updateUserBubbleColor(cfg.primaryColor);
+    }
+    if (cfg.disclaimer) {
+      var discEl = document.getElementById('lynx-widget-disclaimer');
+      if (discEl) { discEl.textContent = cfg.disclaimer; discEl.style.display = 'block'; }
     }
     if (cfg.welcomeMessage) {
       config.welcomeMessage = cfg.welcomeMessage;
@@ -1453,11 +1509,30 @@ function buildWidgetScript(): string {
         if (cfg) {
           applyConfig(cfg);
           configLoaded = true;
-          // Show welcome message after config loads
-          if (messagesEl && messagesEl.children.length === 0) {
-            addMessage('assistant', config.welcomeMessage, 'welcome');
-            messageCount++;
-          }
+          // Restore previous conversation (same visitor, active window) — then
+          // fall back to the welcome message for brand-new visitors.
+          fetch(BASE_URL + '/api/widget/history?apiKey=' + encodeURIComponent(API_KEY) + '&visitorId=' + encodeURIComponent(visitorId))
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(h) {
+              if (h && h.messages && h.messages.length > 0 && messagesEl && messagesEl.children.length === 0) {
+                for (var mi = 0; mi < h.messages.length; mi++) {
+                  var pm = h.messages[mi];
+                  addMessage(pm.role, pm.content);
+                  history.push({ role: pm.role, content: pm.content });
+                }
+                messageCount += h.messages.length;
+                if (h.conversationId) conversationId = h.conversationId;
+              } else if (messagesEl && messagesEl.children.length === 0) {
+                addMessage('assistant', config.welcomeMessage, 'welcome');
+                messageCount++;
+              }
+            })
+            .catch(function() {
+              if (messagesEl && messagesEl.children.length === 0) {
+                addMessage('assistant', config.welcomeMessage, 'welcome');
+                messageCount++;
+              }
+            });
           // Auto-open: always open after 3 seconds on first visit
           if (!isOpen) {
             var delay = (cfg.autoOpen !== false) ? ((cfg.autoOpenDelay || 3) * 1000) : 3000;
@@ -1478,10 +1553,25 @@ function buildWidgetScript(): string {
   }
 
   // ── Message helpers ────────────────────────────────────────────────────────
+  function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  // Convert URLs into clickable links; image URLs render inline as product photos.
+  function renderRichText(el, text) {
+    var urlRe = /(https?:\\/\\/[^\\s<>"')]+)/g;
+    var html = escapeHtml(text).replace(urlRe, function(u) {
+      if (/\\.(png|jpe?g|webp|gif)(\\?|$)/i.test(u)) {
+        return '<img class="lynx-product-img" src="' + u + '" alt="" loading="lazy" />';
+      }
+      return '<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>';
+    });
+    el.innerHTML = html;
+  }
+
   function addMessage(role, text, extraClass) {
     var div = document.createElement('div');
     div.className = 'lynx-msg ' + role + (extraClass ? ' ' + extraClass : '');
-    div.textContent = text;
+    if (role === 'assistant') { renderRichText(div, text); } else { div.textContent = text; }
     if (messagesEl) {
       messagesEl.appendChild(div);
       messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1506,6 +1596,8 @@ function buildWidgetScript(): string {
         if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
         setTimeout(tick, speed);
       } else {
+        renderRichText(div, text);
+        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
         if (onDone) onDone();
       }
     }
@@ -1683,7 +1775,8 @@ function buildWidgetScript(): string {
                   if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
                 }
               } else if (evt.done) {
-                // Stream finished
+                // Stream finished — render final text with links & product images
+                if (assistantDiv) renderRichText(assistantDiv, accumulatedReply);
                 history.push({ role: 'assistant', content: accumulatedReply });
                 messageCount++;
                 if (evt.quickReplies && evt.quickReplies.length > 0) {

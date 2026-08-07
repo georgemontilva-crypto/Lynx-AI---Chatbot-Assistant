@@ -131,6 +131,8 @@ export const appRouter = router({
         isActive: z.boolean().optional(),
         // White-Label only: custom avatar/icon URL (can be a relative /manus-storage/... path)
         avatarUrl: z.string().nullable().optional(),
+        // Small legal/branding text shown under the chat input (e.g. "For educational purposes only")
+        disclaimer: z.string().max(300).nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const chatbot = await upsertChatbot({ userId: ctx.user.id, name: "Lynx AI", ...input });
@@ -170,7 +172,7 @@ export const appRouter = router({
           }
         }
         // ─── Helper: extract products from JSON-LD Product schema ─────────────
-        interface ProductEntry { name: string; price?: string; description?: string; url?: string; }
+        interface ProductEntry { name: string; price?: string; description?: string; url?: string; image?: string; }
         function extractProductsFromHtml(html: string, baseUrl: string): ProductEntry[] {
           const products: ProductEntry[] = [];
           // 1. JSON-LD Product schema (most reliable — Shopify, WooCommerce, etc.)
@@ -184,11 +186,15 @@ export const appRouter = router({
                   const price = item.offers?.price ?? item.offers?.[0]?.price ?? item.offers?.lowPrice;
                   const currency = item.offers?.priceCurrency ?? item.offers?.[0]?.priceCurrency ?? "";
                   const url = item.offers?.url ?? item.offers?.[0]?.url ?? item.url ?? "";
+                  const img = typeof item.image === "string" ? item.image
+                    : Array.isArray(item.image) ? item.image[0]
+                    : item.image?.url;
                   products.push({
                     name: String(item.name ?? "").trim().slice(0, 120),
                     price: price ? `${price}${currency ? " " + currency : ""}` : undefined,
                     description: String(item.description ?? "").trim().slice(0, 200) || undefined,
                     url: url ? new URL(url, baseUrl).href : undefined,
+                    image: img ? new URL(String(img), baseUrl).href : undefined,
                   });
                 }
               }
@@ -375,11 +381,13 @@ export const appRouter = router({
                     const price = variant?.price ? `${variant.price}` : undefined;
                     const name = String(sp.title ?? "").trim().slice(0, 120);
                     if (name && !allProducts.some(ep => ep.name === name)) {
+                      const spImg = Array.isArray(sp.images) && sp.images[0]?.src ? String(sp.images[0].src) : undefined;
                       allProducts.push({
                         name,
                         price,
                         description: String(sp.body_html ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined,
                         url: handle,
+                        image: spImg,
                       });
                     }
                     if (allProducts.length >= 200) break;
@@ -607,6 +615,7 @@ Return ONLY valid JSON matching this exact schema:
             if (p.price) line += ` | Price: ${p.price}`;
             if (p.description) line += ` | ${p.description}`;
             if (p.url) line += ` | URL: ${p.url}`;
+            if (p.image) line += ` | IMG: ${p.image}`;
             return line;
           });
           productCatalogSection = `\n\n=== PRODUCT CATALOG (${allProducts.length} products detected) ===\n${productLines.join("\n")}`;

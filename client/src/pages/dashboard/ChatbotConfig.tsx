@@ -20,6 +20,7 @@ const DEFAULT_CONFIG = {
   name: "Lynx AI",
   welcomeMessage: "Hi! How can I help you today?",
   placeholder: "Ask me anything...",
+  disclaimer: "",
   primaryColor: "#3b82f6",
   secondaryColor: "#1e40af",
   position: "bottom-right" as "bottom-right" | "bottom-left",
@@ -60,6 +61,7 @@ export default function ChatbotConfig() {
         name: existing.name ?? DEFAULT_CONFIG.name,
         welcomeMessage: existing.welcomeMessage ?? DEFAULT_CONFIG.welcomeMessage,
         placeholder: existing.placeholder ?? DEFAULT_CONFIG.placeholder,
+        disclaimer: existing.disclaimer ?? "",
         primaryColor: existing.primaryColor ?? DEFAULT_CONFIG.primaryColor,
         secondaryColor: existing.secondaryColor ?? DEFAULT_CONFIG.secondaryColor,
         position: (existing.position as "bottom-right" | "bottom-left") ?? DEFAULT_CONFIG.position,
@@ -82,6 +84,7 @@ export default function ChatbotConfig() {
       name: config.name,
       welcomeMessage: config.welcomeMessage,
       placeholder: config.placeholder,
+      disclaimer: config.disclaimer || null,
       primaryColor: config.primaryColor,
       secondaryColor: config.secondaryColor,
       position: config.position,
@@ -165,6 +168,18 @@ export default function ChatbotConfig() {
                 <div className="space-y-2">
                   <Label className="text-xs">Input placeholder</Label>
                   <Input value={config.placeholder} onChange={(e) => update("placeholder", e.target.value)} className="bg-muted/30 border-border/40 text-sm" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Disclaimer (texto pequeño bajo el chat)</Label>
+                  <Textarea
+                    value={config.disclaimer}
+                    onChange={(e) => update("disclaimer", e.target.value)}
+                    className="bg-muted/30 border-border/40 text-sm resize-none"
+                    rows={2}
+                    maxLength={300}
+                    placeholder="Ej: For educational purposes only — not medical advice."
+                  />
+                  <p className="text-[11px] text-muted-foreground">Se muestra en letra pequeña debajo de la caja de mensajes del widget. Déjalo vacío para no mostrar nada.</p>
                 </div>
               </CardContent>
             </Card>

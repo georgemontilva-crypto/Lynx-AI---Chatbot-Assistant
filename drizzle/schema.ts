@@ -46,6 +46,7 @@ export const chatbots = mysqlTable("chatbots", {
   apiKey: varchar("apiKey", { length: 64 }).unique(),
   name: varchar("name", { length: 128 }).notNull().default("Lynx AI"),
   avatarUrl: text("avatarUrl"),
+  disclaimer: varchar("disclaimer", { length: 300 }),
   primaryColor: varchar("primaryColor", { length: 16 }).default("#3b82f6"),
   secondaryColor: varchar("secondaryColor", { length: 16 }).default("#1e40af"),
   welcomeMessage: text("welcomeMessage").default("Hi! How can I help you today?"),
