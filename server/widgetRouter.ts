@@ -1801,19 +1801,36 @@ function buildWidgetScript(): string {
   }
 
   // ── Open / close ───────────────────────────────────────────────────────────
-  var _bodyOverflow = '';
+  var _pageLock = null;
   function lockPageScroll() {
-    // On mobile the panel is fullscreen — freeze the page behind it so
-    // chat scrolling can never move the site underneath (Intercom-style).
+    // On mobile the panel is fullscreen — freeze the page behind it so chat
+    // scrolling can never move the site underneath. position:fixed on <body>
+    // is the only technique iOS Safari respects reliably (overflow:hidden is
+    // ignored there and by many Shopify themes).
     if (window.matchMedia && window.matchMedia('(max-width: 480px)').matches) {
-      _bodyOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
+      var b = document.body;
+      _pageLock = {
+        scrollY: window.pageYOffset || document.documentElement.scrollTop || 0,
+        position: b.style.position, top: b.style.top, left: b.style.left,
+        right: b.style.right, width: b.style.width, overflow: b.style.overflow
+      };
+      b.style.position = 'fixed';
+      b.style.top = (-_pageLock.scrollY) + 'px';
+      b.style.left = '0'; b.style.right = '0'; b.style.width = '100%';
+      b.style.overflow = 'hidden';
       document.documentElement.style.overscrollBehavior = 'none';
     }
   }
   function unlockPageScroll() {
-    document.body.style.overflow = _bodyOverflow || '';
-    document.documentElement.style.overscrollBehavior = '';
+    if (_pageLock) {
+      var b = document.body;
+      b.style.position = _pageLock.position; b.style.top = _pageLock.top;
+      b.style.left = _pageLock.left; b.style.right = _pageLock.right;
+      b.style.width = _pageLock.width; b.style.overflow = _pageLock.overflow;
+      document.documentElement.style.overscrollBehavior = '';
+      window.scrollTo(0, _pageLock.scrollY);
+      _pageLock = null;
+    }
   }
 
   function openPanel() {
