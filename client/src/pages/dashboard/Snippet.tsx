@@ -71,13 +71,15 @@ export default function Snippet() {
 
   const { data: chatbot, isLoading } = trpc.chatbotConfig.get.useQuery();
   const { data: usage, isLoading: usageLoading } = trpc.chatbotConfig.usage.useQuery();
+  const { data: originData } = trpc.chatbotConfig.widgetOrigin.useQuery();
 
   // Use the real apiKey from the database
   const apiKey = chatbot?.apiKey ?? null;
   const chatbotName = chatbot?.name ?? "Lynx AI";
 
   // Determine the current site origin for the widget URL
-  const siteOrigin = window.location.origin;
+  // Prefer the server-configured canonical origin; fall back to the current URL
+  const siteOrigin = originData?.origin ?? window.location.origin;
   const snippets = buildSnippets(apiKey ?? "YOUR_API_KEY", siteOrigin);
 
   const codeMap: Record<Tab, string> = {

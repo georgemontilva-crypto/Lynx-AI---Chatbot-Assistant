@@ -65,14 +65,27 @@ export function registerUploadRoutes(app: Express) {
         return res.status(400).json({ error: "No file provided" });
       }
 
+      const ext = file.originalname.split(".").pop()?.toLowerCase() ?? "png";
+      const key = `uploads/user-${user.id}/avatar.${ext}`;
+
+      // Primary path: object storage (Cloudflare R2) when configured
       try {
-        const ext = file.originalname.split(".").pop()?.toLowerCase() ?? "png";
-        const key = `uploads/user-${user.id}/avatar.${ext}`;
         const { url } = await storagePut(key, file.buffer, file.mimetype);
         return res.json({ url });
-      } catch (err) {
-        console.error("[Upload] Error:", err);
-        return res.status(500).json({ error: "Upload failed" });
+      } catch (storageErr) {
+        // Fallback: for small images (icons/avatars) embed as a data URL in the
+        // DB so customization works even before R2 is configured. Cap at 200KB
+        // to avoid bloating rows — larger files still require R2.
+        const MAX_INLINE_BYTES = 200 * 1024;
+        if (file.size <= MAX_INLINE_BYTES && file.mimetype.startsWith("image/")) {
+          const dataUrl = `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+          console.warn("[Upload] R2 unavailable — stored image inline as data URL (fallback).");
+          return res.json({ url: dataUrl });
+        }
+        console.error("[Upload] Storage error and file too large for inline fallback:", storageErr);
+        return res.status(500).json({
+          error: "Image storage is not configured yet. Upload an icon under 200KB, or set up your R2 bucket for larger files.",
+        });
       }
     }
   );

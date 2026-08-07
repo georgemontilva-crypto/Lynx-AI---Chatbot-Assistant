@@ -100,6 +100,12 @@ export const appRouter = router({
 
   // ─── Chatbot config ────────────────────────────────────────────────────────
   chatbotConfig: router({
+    // The canonical origin the widget script should be loaded from, so the
+    // install snippet is stable regardless of which URL the dashboard is open on.
+    widgetOrigin: protectedProcedure.query(async () => {
+      return { origin: process.env.CANONICAL_ORIGIN?.replace(/\/+$/, "") || null };
+    }),
+
     get: protectedProcedure.query(async ({ ctx }) => {
       const chatbot = await getChatbotByUserId(ctx.user.id);
       if (!chatbot) return null;
