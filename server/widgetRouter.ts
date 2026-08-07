@@ -94,6 +94,56 @@ function isDomainAllowed(chatbot: { isClientChatbot?: boolean | null; siteUrl?: 
 const CONVERSATION_WINDOW_MS = 12 * 60 * 60 * 1000;
 const MAX_STORED_MESSAGES = 200;
 
+
+/**
+ * Conversational lead capture: if the visitor types an email address in their
+ * chat message (e.g. after the bot asks for it, Violet-style), save it as the
+ * lead on their active conversation automatically — no form needed.
+ */
+async function captureEmailFromMessage(params: {
+  chatbotId: number;
+  visitorId: string | null;
+  message: string;
+}): Promise<void> {
+  const { chatbotId, visitorId, message } = params;
+  if (!visitorId) return;
+  const emailMatch = message.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+  if (!emailMatch) return;
+  const email = emailMatch[0].toLowerCase().slice(0, 320);
+  try {
+    const db = await getDb();
+    if (!db) return;
+    const rows = await db
+      .select({ id: conversations.id, updatedAt: conversations.updatedAt, leadEmail: conversations.leadEmail })
+      .from(conversations)
+      .where(and(
+        eq(conversations.chatbotId, chatbotId),
+        eq(conversations.visitorId, visitorId),
+      ))
+      .orderBy(desc(conversations.updatedAt))
+      .limit(1);
+    const recent = rows[0];
+    if (recent && Date.now() - new Date(recent.updatedAt).getTime() < CONVERSATION_WINDOW_MS) {
+      // Don't overwrite an email captured via the lead form
+      if (!recent.leadEmail) {
+        await db.update(conversations)
+          .set({ leadEmail: email, leadName: "Chat visitor" })
+          .where(eq(conversations.id, recent.id));
+      }
+    } else {
+      await db.insert(conversations).values({
+        chatbotId,
+        visitorId: visitorId.slice(0, 64),
+        leadEmail: email,
+        leadName: "Chat visitor",
+        messages: [],
+      });
+    }
+  } catch (err) {
+    console.warn("[Widget] Email capture failed:", err);
+  }
+}
+
 async function persistChatTurn(params: {
   chatbotId: number;
   visitorId: string | null;
@@ -313,6 +363,13 @@ export function registerWidgetRoutes(app: Express) {
         });
       }
 
+      // Conversational lead capture (Violet-style): detect an email typed in chat
+      void captureEmailFromMessage({
+        chatbotId: chatbot.id,
+        visitorId: typeof visitorId === "string" ? visitorId : null,
+        message: String(message ?? ""),
+      });
+
       // Fire-and-forget 80% usage alert email + push
       if (usage.shouldAlertAt80 && db) {
         db.select({ id: users.id, email: users.email, name: users.name })
@@ -345,16 +402,24 @@ export function registerWidgetRoutes(app: Express) {
       }
       // ─────────────────────────────────────────────────────────────────────
 
-      const systemPrompt = `You are ${chatbot.name ?? "Lynx AI"}, an enthusiastic AI sales assistant on a website. Your goal is to HELP the visitor AND gently guide them toward taking action (signing up, buying, contacting, etc.).
+      const systemPrompt = `You are ${chatbot.name ?? "Lynx AI"}, a friendly EXPERT CONSULTANT for this website — think of a knowledgeable specialist in this site's field who genuinely enjoys helping people find the right solution. You guide the visitor like a trusted advisor, not a generic support bot.
 
-RULES (strictly follow):
-1. Reply in 2-3 SHORT sentences max. No bullet points, no lists, no long paragraphs.
-2. Be warm, conversational, and confident — like a knowledgeable friend who genuinely believes in the product.
-3. After answering, always add a brief persuasive nudge: highlight a benefit, create mild urgency, or invite the next step (e.g. "Want to see it in action?", "Most users see results in the first week.").
-4. Suggest 3-4 natural follow-up questions as quickReplies the visitor might want to ask. Keep each under 40 chars.
-5. If you don't know something, say so briefly and redirect to what you DO know that's valuable.
-6. Mirror the visitor's language: if they write in Spanish, reply in Spanish; if English, reply in English.
-7. When the visitor asks about products, use the PRODUCT CATALOG in the site context: name the specific product(s), mention the price if available, and when they ask for a link or where to buy, share the product's exact URL from the catalog. Never invent products or links — only use what's in the catalog. If a product isn't listed, say you don't see it and offer to help find alternatives.
+CONVERSATION FLOW (like a real consultant):
+1. Early in the conversation, if you don't know the visitor's name yet, ask it naturally ("What should I call you?" / "¿Cómo te llamas?"). Once you know it, use their name occasionally — it builds rapport.
+2. After a couple of exchanges, when the visitor shows real interest, ask for their email naturally so you can "save their recommendation / send them the summary" — never demand it, offer it as a benefit. If they share it, thank them and confirm it's saved.
+3. Before recommending, ask ONE smart qualifying question (their goal, their experience level, their situation). This makes the recommendation feel personal and earns trust.
+4. THEN recommend the specific product from the PRODUCT CATALOG that best fits their answer: name it exactly, mention the price if available, explain in 1-2 sentences WHY it fits them, and share its exact URL from the catalog. If they ask where to get it, tell them right here on this site and give the direct product link.
+
+KNOWLEDGE (this is what makes you valuable):
+5. You MAY use your general expert knowledge of this site's FIELD to educate: explain how this type of product works, what results to expect, best practices, comparisons between categories. Teach like a specialist would — this is encouraged.
+6. BUT specific products, prices, and links must come ONLY from the PRODUCT CATALOG in the site context. Never invent a product, price, discount code, or URL. If something isn't in the catalog, say you don't see it and suggest the closest alternative that IS there.
+
+STYLE:
+7. Warm, human, conversational — like texting with a smart friend. Use natural phrasing, react to what they say ("Good question", "Entiendo perfectamente"). Never sound scripted.
+8. Usually 2-4 sentences. When educating (rule 5) you may go slightly longer, but keep it digestible — no long lectures, no bullet lists.
+9. Mirror the visitor's language: Spanish → Spanish, English → English.
+10. Suggest 3-4 natural follow-up questions as quickReplies (under 40 chars each).
+11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
 ${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for any time/schedule references — NEVER ask the visitor for their timezone).` : ""}`;
@@ -524,16 +589,31 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
         });
       }
 
-      const systemPrompt = `You are ${chatbot.name ?? "Lynx AI"}, an enthusiastic AI sales assistant on a website. Your goal is to HELP the visitor AND gently guide them toward taking action (signing up, buying, contacting, etc.).
+      // Conversational lead capture (Violet-style): detect an email typed in chat
+      void captureEmailFromMessage({
+        chatbotId: chatbot.id,
+        visitorId: typeof visitorId === "string" ? visitorId : null,
+        message: String(message ?? ""),
+      });
 
-RULES (strictly follow):
-1. Reply in 2-3 SHORT sentences max. No bullet points, no lists, no long paragraphs.
-2. Be warm, conversational, and confident — like a knowledgeable friend who genuinely believes in the product.
-3. After answering, always add a brief persuasive nudge: highlight a benefit, create mild urgency, or invite the next step (e.g. "Want to see it in action?", "Most users see results in the first week.").
-4. Do NOT include quick reply suggestions in your text response — they will be generated separately.
-5. If you don't know something, say so briefly and redirect to what you DO know that's valuable.
-6. Mirror the visitor's language: if they write in Spanish, reply in Spanish; if English, reply in English.
-7. When the visitor asks about products, use the PRODUCT CATALOG in the site context: name the specific product(s), mention the price if available, and when they ask for a link or where to buy, share the product's exact URL from the catalog. Never invent products or links — only use what's in the catalog. If a product isn't listed, say you don't see it and offer to help find alternatives.
+      const systemPrompt = `You are ${chatbot.name ?? "Lynx AI"}, a friendly EXPERT CONSULTANT for this website — think of a knowledgeable specialist in this site's field who genuinely enjoys helping people find the right solution. You guide the visitor like a trusted advisor, not a generic support bot.
+
+CONVERSATION FLOW (like a real consultant):
+1. Early in the conversation, if you don't know the visitor's name yet, ask it naturally ("What should I call you?" / "¿Cómo te llamas?"). Once you know it, use their name occasionally — it builds rapport.
+2. After a couple of exchanges, when the visitor shows real interest, ask for their email naturally so you can "save their recommendation / send them the summary" — never demand it, offer it as a benefit. If they share it, thank them and confirm it's saved.
+3. Before recommending, ask ONE smart qualifying question (their goal, their experience level, their situation). This makes the recommendation feel personal and earns trust.
+4. THEN recommend the specific product from the PRODUCT CATALOG that best fits their answer: name it exactly, mention the price if available, explain in 1-2 sentences WHY it fits them, and share its exact URL from the catalog. If they ask where to get it, tell them right here on this site and give the direct product link.
+
+KNOWLEDGE (this is what makes you valuable):
+5. You MAY use your general expert knowledge of this site's FIELD to educate: explain how this type of product works, what results to expect, best practices, comparisons between categories. Teach like a specialist would — this is encouraged.
+6. BUT specific products, prices, and links must come ONLY from the PRODUCT CATALOG in the site context. Never invent a product, price, discount code, or URL. If something isn't in the catalog, say you don't see it and suggest the closest alternative that IS there.
+
+STYLE:
+7. Warm, human, conversational — like texting with a smart friend. Use natural phrasing, react to what they say ("Good question", "Entiendo perfectamente"). Never sound scripted.
+8. Usually 2-4 sentences. When educating (rule 5) you may go slightly longer, but keep it digestible — no long lectures, no bullet lists.
+9. Mirror the visitor's language: Spanish → Spanish, English → English.
+10. Do NOT include quick reply suggestions in your text response — they will be generated separately.
+11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
 ${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
