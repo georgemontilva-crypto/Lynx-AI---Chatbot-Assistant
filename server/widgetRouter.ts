@@ -1449,6 +1449,27 @@ function buildWidgetScript(): string {
     messagesEl.scrollTop += e.deltaY;
     e.preventDefault();
   }, { passive: false });
+
+  // Touch: keep the gesture inside the chat. Nudge off the exact edges so iOS
+  // never hands the scroll to the page (classic edge-chaining bug), and block
+  // touch scrolling that starts outside the message list.
+  panel.addEventListener('touchstart', function() {
+    if (!messagesEl) return;
+    if (messagesEl.scrollTop <= 0) messagesEl.scrollTop = 1;
+    var max = messagesEl.scrollHeight - messagesEl.clientHeight;
+    if (max > 0 && messagesEl.scrollTop >= max) messagesEl.scrollTop = max - 1;
+  }, { passive: true });
+  panel.addEventListener('touchmove', function(e) {
+    if (!messagesEl) return;
+    var inMessages = messagesEl.contains(e.target);
+    var scrollable = messagesEl.scrollHeight > messagesEl.clientHeight;
+    if (!inMessages || !scrollable) {
+      var t = e.target;
+      // allow typing area to behave normally
+      if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) return;
+      e.preventDefault();
+    }
+  }, { passive: false });
   var inputEl = document.getElementById('lynx-widget-input');
   var sendBtn = document.getElementById('lynx-widget-send');
   var closeBtn = document.getElementById('lynx-close-btn');
@@ -1767,9 +1788,25 @@ function buildWidgetScript(): string {
   }
 
   // ── Open / close ───────────────────────────────────────────────────────────
+  var _bodyOverflow = '';
+  function lockPageScroll() {
+    // On mobile the panel is fullscreen — freeze the page behind it so
+    // chat scrolling can never move the site underneath (Intercom-style).
+    if (window.matchMedia && window.matchMedia('(max-width: 480px)').matches) {
+      _bodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overscrollBehavior = 'none';
+    }
+  }
+  function unlockPageScroll() {
+    document.body.style.overflow = _bodyOverflow || '';
+    document.documentElement.style.overscrollBehavior = '';
+  }
+
   function openPanel() {
     isOpen = true;
     panel.classList.add('open');
+    lockPageScroll();
     trackEvent('chat_open');
     // Show X icon when open, keep logo visible
     btn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
@@ -1798,6 +1835,7 @@ function buildWidgetScript(): string {
   }
 
   function closePanel() {
+    unlockPageScroll();
     isOpen = false;
     panel.classList.remove('open');
     // Restore the custom icon (or default) — never hardcode Lynx AI icon here
