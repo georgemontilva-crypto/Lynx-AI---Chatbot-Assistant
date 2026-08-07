@@ -1520,7 +1520,7 @@ function buildWidgetScript(): string {
         return reader.read().then(function(result) {
           if (result.done) return;
           sseBuffer += decoder.decode(result.value, { stream: true });
-          var lines = sseBuffer.split('\n');
+          var lines = sseBuffer.split('\\n');
           sseBuffer = lines.pop() || '';
           for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
