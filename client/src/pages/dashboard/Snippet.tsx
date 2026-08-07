@@ -105,8 +105,8 @@ export default function Snippet() {
 
   return (
     <DashboardShell title="Installation snippet">
-      <div className="space-y-6 max-w-3xl">
-        {/* API Key */}
+      <div className="max-w-6xl">
+        {/* API Key — full width */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
           <Card className="glass-card border-border/40">
             <CardContent className="p-5">
@@ -160,8 +160,10 @@ export default function Snippet() {
           ))}
         </motion.div>
 
+        {/* Two-column: code (left) + usage/verify (right) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Code snippet */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.5 }}>
+        <motion.div className="lg:col-span-2" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.5 }}>
           <Card className="glass-card border-border/40">
             <CardHeader className="pb-0">
               <div className="flex items-center justify-between">
@@ -206,6 +208,8 @@ export default function Snippet() {
           </Card>
         </motion.div>
 
+        {/* Right column: preview + usage + verify */}
+        <div className="space-y-6">
         {/* Widget preview */}
         {apiKey && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, duration: 0.5 }}>
@@ -223,7 +227,7 @@ export default function Snippet() {
                 <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
                   <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
                   <p className="text-xs text-emerald-400">
-                    Your widget is active and responding with <strong>gpt-5-nano</strong>. It uses the site context from your last scan to answer visitor questions.
+                    Your widget is active and responding with <strong>Claude</strong>. It uses your training and last site scan to answer visitor questions.
                   </p>
                 </div>
               </CardContent>
@@ -323,6 +327,8 @@ export default function Snippet() {
             </CardContent>
           </Card>
         </motion.div>
+        </div>
+        </div>
       </div>
     </DashboardShell>
   );
