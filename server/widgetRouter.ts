@@ -42,6 +42,46 @@ async function getChatbotByApiKey(apiKey: string) {
   return result[0] ?? null;
 }
 
+/**
+ * Normalize a URL/host to its bare registrable hostname for comparison.
+ * "https://www.brighterdayslabs.com/path" → "brighterdayslabs.com"
+ */
+function normalizeHost(input: string | undefined | null): string {
+  if (!input) return "";
+  let h = input.trim().toLowerCase();
+  // If it's a full URL, extract the host
+  try {
+    if (h.includes("://")) h = new URL(h).hostname;
+    else if (h.includes("/")) h = new URL("https://" + h).hostname;
+  } catch {
+    // fall through with raw value
+  }
+  h = h.replace(/^www\./, "");
+  return h;
+}
+
+/**
+ * For White-Label CLIENT chatbots, enforce that the widget only runs on the
+ * domain registered in "My Clients" (chatbot.siteUrl). Returns true if allowed.
+ * Non-client chatbots (the reseller's own, cloud/embedded users) are never
+ * restricted here. The request origin is taken from the Origin/Referer header
+ * the browser sends automatically — it cannot be forged from client JS.
+ */
+function isDomainAllowed(chatbot: { isClientChatbot?: boolean | null; siteUrl?: string | null }, req: Request): boolean {
+  // Only client chatbots are domain-locked
+  if (!chatbot.isClientChatbot) return true;
+  const registered = normalizeHost(chatbot.siteUrl);
+  if (!registered) return true; // no domain on file → don't lock out (safety)
+
+  const origin = req.headers.origin as string | undefined;
+  const referer = req.headers.referer as string | undefined;
+  const reqHost = normalizeHost(origin || referer);
+  if (!reqHost) return false; // client chatbot but no origin → block
+
+  // Allow exact match or subdomain of the registered domain
+  return reqHost === registered || reqHost.endsWith("." + registered);
+}
+
 // ─── Register widget routes ───────────────────────────────────────────────────
 
 
@@ -145,6 +185,8 @@ export function registerWidgetRoutes(app: Express) {
   // Returns chatbot configuration (name, primaryColor, welcomeMessage, position, etc.)
   app.get("/api/widget/config", async (req: Request, res: Response) => {
     setCorsHeaders(res);
+    // Never cache config — customization changes must reflect immediately
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const apiKey = (req.query.apiKey as string) ?? "";
     if (!apiKey) {
       return res.status(400).json({ error: "apiKey is required" });
@@ -154,6 +196,10 @@ export function registerWidgetRoutes(app: Express) {
       const chatbot = await getChatbotByApiKey(apiKey);
       if (!chatbot || !chatbot.isActive) {
         return res.status(404).json({ error: "Chatbot not found or inactive" });
+      }
+      // White-Label client chatbots only run on their registered domain
+      if (!isDomainAllowed(chatbot, req)) {
+        return res.status(403).json({ error: "This chatbot is not authorized for this domain." });
       }
 
       // Convert relative /manus-storage/... paths to absolute URLs so the widget
@@ -225,6 +271,9 @@ export function registerWidgetRoutes(app: Express) {
       const chatbot = await getChatbotByApiKey(apiKey);
       if (!chatbot || !chatbot.isActive) {
         return res.status(404).json({ error: "Chatbot not found or inactive" });
+      }
+      if (!isDomainAllowed(chatbot, req)) {
+        return res.status(403).json({ error: "This chatbot is not authorized for this domain." });
       }
 
       // ─── Rate limiting by plan ────────────────────────────────────────────
@@ -433,6 +482,9 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
       if (!chatbot || !chatbot.isActive) {
         return res.status(404).json({ error: "Chatbot not found or inactive" });
       }
+      if (!isDomainAllowed(chatbot, req)) {
+        return res.status(403).json({ error: "This chatbot is not authorized for this domain." });
+      }
 
       // Rate limiting by plan
       const db = await getDb();
@@ -512,24 +564,33 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
         }
       };
 
-      // ── Stream the reply from LLM ─────────────────────────────────────────────
-      const forgeUrl = (process.env.BUILT_IN_FORGE_API_URL ?? "https://forge.manus.im").replace(/\/$/, "") + "/v1/chat/completions";
-      const forgeKey = process.env.BUILT_IN_FORGE_API_KEY ?? "";
+      // ── Stream the reply from Claude (Anthropic Messages API, SSE) ────────────
+      // Split system prompt out (Anthropic takes it as a top-level field).
+      const systemMsg = messages.find((m) => m.role === "system")?.content ?? "";
+      const convoMsgs = messages
+        .filter((m) => m.role !== "system")
+        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
-      const streamRes = await fetch(forgeUrl, {
+      const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
+      const streamRes = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${forgeKey}`,
+          "x-api-key": process.env.ANTHROPIC_API_KEY ?? "",
+          "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "gpt-5-nano",
+          model: anthropicModel,
+          max_tokens: 1024,
           stream: true,
-          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+          system: systemMsg,
+          messages: convoMsgs,
         }),
       });
 
       if (!streamRes.ok || !streamRes.body) {
+        const errText = streamRes.body ? await streamRes.text() : "no body";
+        console.error("[Widget] Anthropic stream failed:", streamRes.status, errText);
         sendEvent({ error: "LLM stream failed" });
         res.end();
         return;
@@ -538,24 +599,28 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
       let fullReply = "";
       const reader = streamRes.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = "";
+      let sseBuffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+        sseBuffer += decoder.decode(value, { stream: true });
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop() || '';
         for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const raw = line.slice(6).trim();
-          if (raw === "[DONE]") continue;
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const raw = trimmed.slice(5).trim();
+          if (!raw || raw === "[DONE]") continue;
           try {
-            const chunk = JSON.parse(raw);
-            const token = chunk.choices?.[0]?.delta?.content ?? "";
-            if (token) {
-              fullReply += token;
-              sendEvent({ token });
+            const evt = JSON.parse(raw);
+            // Anthropic streaming: content_block_delta carries text_delta tokens
+            if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+              const token = evt.delta.text ?? "";
+              if (token) {
+                fullReply += token;
+                sendEvent({ token });
+              }
             }
           } catch { /* malformed chunk, skip */ }
         }
