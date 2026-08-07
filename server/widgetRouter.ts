@@ -887,15 +887,19 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
     }
   });
 
-  // GET /widget.js — serves the self-contained embeddable chat widget script
-  app.get("/widget.js", (req: Request, res: Response) => {
+  // GET /widget.js — serves the self-contained embeddable chat widget script.
+  // Registered under BOTH /widget.js and /api/widget.js: some edge/proxy
+  // configurations only route /api/* paths to the Node server, so /api/widget.js
+  // is the reliable public entry point (the snippet uses it).
+  const serveWidget = (req: Request, res: Response) => {
     setCorsHeaders(res);
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=300"); // 5 min cache
-
     const widgetScript = buildWidgetScript();
     return res.send(widgetScript);
-  });
+  };
+  app.get("/widget.js", serveWidget);
+  app.get("/api/widget.js", serveWidget);
 }
 
 // ─── Widget script builder ────────────────────────────────────────────────────
@@ -919,9 +923,10 @@ function buildWidgetScript(): string {
     var src = script.src || '';
     // Strip query string and hash first
     var clean = src.split('?')[0].split('#')[0];
-    // Remove trailing /widget.js
-    var marker = '/widget.js';
+    // Remove trailing /api/widget.js or /widget.js to get the origin
+    var marker = '/api/widget.js';
     var pos = clean.lastIndexOf(marker);
+    if (pos < 0) { marker = '/widget.js'; pos = clean.lastIndexOf(marker); }
     if (pos >= 0) clean = clean.slice(0, pos);
     return clean;
   })();

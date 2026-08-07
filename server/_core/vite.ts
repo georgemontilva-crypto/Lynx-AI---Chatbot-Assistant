@@ -106,7 +106,7 @@ function siteWidgetTag(url: string): string {
   if (!key) return "";
   // Never on the app itself — only on public marketing pages
   if (url.startsWith("/dashboard") || url.startsWith("/login") || url.startsWith("/register") || url.startsWith("/api")) return "";
-  return `<script src="/widget.js" data-api-key="${key.replace(/"/g, "")}" defer></script>`;
+  return `<script src="/api/widget.js" data-api-key="${key.replace(/"/g, "")}" defer></script>`;
 }
 
 function composeHtml(

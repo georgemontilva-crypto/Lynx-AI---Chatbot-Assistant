@@ -17,7 +17,7 @@ const steps = [
 type Tab = "html" | "react" | "wordpress";
 
 function buildSnippets(apiKey: string, siteOrigin: string) {
-  const widgetSrc = `${siteOrigin}/widget.js`;
+  const widgetSrc = `${siteOrigin}/api/widget.js`;
 
   const html = `<!-- Lynx AI Chat Widget -->
 <script
