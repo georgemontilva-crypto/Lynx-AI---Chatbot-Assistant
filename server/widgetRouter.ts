@@ -129,7 +129,7 @@ async function captureEmailFromMessage(params: {
       // Don't overwrite an email captured via the lead form
       if (!recent.leadEmail) {
         await db.update(conversations)
-          .set({ leadEmail: email, leadName: "Chat visitor" })
+          .set({ leadEmail: email, leadName: "Chat visitor", isLead: true })
           .where(eq(conversations.id, recent.id));
       }
     } else {
@@ -138,6 +138,7 @@ async function captureEmailFromMessage(params: {
         visitorId: visitorId.slice(0, 64),
         leadEmail: email,
         leadName: "Chat visitor",
+        isLead: true,
         messages: [],
       });
     }

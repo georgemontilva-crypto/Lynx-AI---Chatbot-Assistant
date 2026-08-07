@@ -819,7 +819,7 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
       if (!chatbot) return [];
       const db = await getDb();
       if (!db) return [];
-      const { desc, eq, and } = await import("drizzle-orm");
+      const { desc, eq, and, or, isNotNull } = await import("drizzle-orm");
       const rows = await db
         .select({
           id: conversations.id,
@@ -831,7 +831,10 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
           createdAt: conversations.createdAt,
         })
         .from(conversations)
-        .where(and(eq(conversations.chatbotId, chatbot.id), eq(conversations.isLead, true)))
+        .where(and(
+          eq(conversations.chatbotId, chatbot.id),
+          or(eq(conversations.isLead, true), isNotNull(conversations.leadEmail)),
+        ))
         .orderBy(desc(conversations.createdAt));
       return rows;
     }),
