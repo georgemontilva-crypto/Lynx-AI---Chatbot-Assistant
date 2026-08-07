@@ -208,7 +208,7 @@ export const appRouter = router({
               }
             }
           }
-          return products.slice(0, 50); // max 50 products
+          return products.slice(0, 200); // max 200 products
         }
 
         // ─── Helper: find product/catalog page links ──────────────────────────
@@ -230,7 +230,7 @@ export const appRouter = router({
               if (productPatterns.some(p => p.test(path))) {
                 seen.add(path);
                 links.push(href.href);
-                if (links.length >= 5) break;
+                if (links.length >= 15) break;
               }
             } catch { /* invalid URL */ }
           }
@@ -260,7 +260,7 @@ export const appRouter = router({
               if (infoPatterns.some(pt => pt.test(path))) {
                 seen.add(path);
                 links.push(href.href);
-                if (links.length >= 12) break;
+                if (links.length >= 25) break;
               }
             } catch { /* invalid URL */ }
           }
@@ -281,9 +281,9 @@ export const appRouter = router({
 
         // ─── Per-plan crawl budget (total pages incl. home) ───────────────────
         const crawlBudget =
-          ctx.user.plan === "whitelabel" ? 15 :
-          ctx.user.plan === "embedded" ? 10 :
-          ctx.user.plan === "cloud" ? 6 : 3;
+          ctx.user.plan === "whitelabel" ? 25 :
+          ctx.user.plan === "embedded" ? 15 :
+          ctx.user.plan === "cloud" ? 8 : 3;
 
         // 1. Fetch HTML from the target URL via server-side request
         let htmlContent = "";
@@ -340,18 +340,52 @@ export const appRouter = router({
           // Extract products from home page
           allProducts = extractProductsFromHtml(raw, input.url);
 
-          // If few products found on home, crawl product/catalog pages
-          if (allProducts.length < 5) {
+          // Always crawl product/catalog pages to build a fuller catalog.
+          // Product-heavy sites list items across many collection pages, so we
+          // crawl several and also try Shopify's /products.json when present.
+          {
             const productPageLinks = findProductPageLinks(raw, input.url);
-            for (const link of productPageLinks.slice(0, 4)) {
+            const catalogBudget =
+              ctx.user.plan === "whitelabel" ? 12 :
+              ctx.user.plan === "embedded" ? 8 :
+              ctx.user.plan === "cloud" ? 5 : 2;
+            for (const link of productPageLinks.slice(0, catalogBudget)) {
               try {
                 const { text: pageHtml } = await safeFetchText(link, { timeoutMs: 8000 });
                 const pageProducts = extractProductsFromHtml(pageHtml, link);
                 for (const p of pageProducts) {
                   if (!allProducts.some(ep => ep.name === p.name)) allProducts.push(p);
                 }
-                if (allProducts.length >= 30) break;
+                if (allProducts.length >= 200) break;
               } catch { /* skip inaccessible pages */ }
+            }
+
+            // Shopify: /products.json exposes the FULL catalog with direct URLs.
+            // This is the single most reliable way to get every product + link.
+            if (allProducts.length < 100) {
+              try {
+                const base = new URL(input.url);
+                const shopifyJsonUrl = `${base.origin}/products.json?limit=250`;
+                const { text: pj } = await safeFetchText(shopifyJsonUrl, { timeoutMs: 8000 });
+                const parsed = JSON.parse(pj);
+                if (Array.isArray(parsed.products)) {
+                  for (const sp of parsed.products) {
+                    const handle = sp.handle ? `${base.origin}/products/${sp.handle}` : undefined;
+                    const variant = Array.isArray(sp.variants) ? sp.variants[0] : undefined;
+                    const price = variant?.price ? `${variant.price}` : undefined;
+                    const name = String(sp.title ?? "").trim().slice(0, 120);
+                    if (name && !allProducts.some(ep => ep.name === name)) {
+                      allProducts.push({
+                        name,
+                        price,
+                        description: String(sp.body_html ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined,
+                        url: handle,
+                      });
+                    }
+                    if (allProducts.length >= 200) break;
+                  }
+                }
+              } catch { /* not a Shopify store or products.json blocked */ }
             }
           }
 
@@ -362,14 +396,14 @@ export const appRouter = router({
           for (const link of infoLinks.slice(0, remainingBudget)) {
             try {
               const { text: pageHtml } = await safeFetchText(link, { timeoutMs: 8000 });
-              const text = htmlToText(pageHtml, 1500);
+              const text = htmlToText(pageHtml, 2500);
               if (text.length > 100) {
                 pageExtracts.push({ path: new URL(link).pathname, text });
               }
             } catch { /* skip inaccessible pages */ }
           }
 
-          htmlContent = htmlToText(raw, 3000);
+          htmlContent = htmlToText(raw, 5000);
         } catch (err) {
           console.warn("[Scanner] Could not fetch URL:", err);
           htmlContent = `Site at ${input.url} (content could not be fetched, analyze based on URL structure)`;
@@ -585,7 +619,7 @@ Return ONLY valid JSON matching this exact schema:
         const siteContextText = [
           analysis.summary,
           `Topics: ${(analysis.topics ?? []).join(", ")}`,
-          htmlContent.slice(0, 2000),
+          htmlContent.slice(0, 4000),
           infoPagesSection,
           productCatalogSection,
         ].filter(Boolean).join("\n\n").slice(0, 60000); // MySQL TEXT limit

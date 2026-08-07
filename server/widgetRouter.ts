@@ -354,6 +354,7 @@ RULES (strictly follow):
 4. Suggest 3-4 natural follow-up questions as quickReplies the visitor might want to ask. Keep each under 40 chars.
 5. If you don't know something, say so briefly and redirect to what you DO know that's valuable.
 6. Mirror the visitor's language: if they write in Spanish, reply in Spanish; if English, reply in English.
+7. When the visitor asks about products, use the PRODUCT CATALOG in the site context: name the specific product(s), mention the price if available, and when they ask for a link or where to buy, share the product's exact URL from the catalog. Never invent products or links — only use what's in the catalog. If a product isn't listed, say you don't see it and offer to help find alternatives.
 ${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for any time/schedule references — NEVER ask the visitor for their timezone).` : ""}`;
@@ -532,6 +533,7 @@ RULES (strictly follow):
 4. Do NOT include quick reply suggestions in your text response — they will be generated separately.
 5. If you don't know something, say so briefly and redirect to what you DO know that's valuable.
 6. Mirror the visitor's language: if they write in Spanish, reply in Spanish; if English, reply in English.
+7. When the visitor asks about products, use the PRODUCT CATALOG in the site context: name the specific product(s), mention the price if available, and when they ask for a link or where to buy, share the product's exact URL from the catalog. Never invent products or links — only use what's in the catalog. If a product isn't listed, say you don't see it and offer to help find alternatives.
 ${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}`;
