@@ -133,10 +133,30 @@ export default function DashboardBlog() {
 
   function openEdit(post: BlogPost) {
     setEditingPost(post);
+    // Defensive tags parsing: the column may come back as a JSON string, an
+    // already-parsed array, a plain comma string, or null — never let a bad
+    // value throw and break the whole edit action.
+    let tagsStr = "";
+    try {
+      const raw = post.tags as unknown;
+      if (Array.isArray(raw)) {
+        tagsStr = (raw as string[]).join(", ");
+      } else if (typeof raw === "string" && raw.trim()) {
+        const trimmed = raw.trim();
+        if (trimmed.startsWith("[")) {
+          const parsed = JSON.parse(trimmed);
+          tagsStr = Array.isArray(parsed) ? parsed.join(", ") : trimmed;
+        } else {
+          tagsStr = trimmed; // already a plain comma-separated string
+        }
+      }
+    } catch {
+      tagsStr = typeof post.tags === "string" ? post.tags : "";
+    }
     setForm({
       title: post.title, slug: post.slug, excerpt: post.excerpt ?? "",
       content: post.content, category: post.category ?? "",
-      tags: post.tags ? (JSON.parse(post.tags) as string[]).join(", ") : "",
+      tags: tagsStr,
       author: post.author ?? "Lynx AI Team",
       readingTimeMinutes: post.readingTimeMinutes ?? 5, status: post.status,
     });
