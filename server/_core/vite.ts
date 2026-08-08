@@ -101,11 +101,33 @@ function buildHeadTags(head: HeadMeta): string {
 // When SITE_WIDGET_API_KEY is set, the chat bubble appears on every PUBLIC
 // page of this site, powered by that chatbot — so the owner can train it in
 // /dashboard/training and see the result live on the landing.
+//
+// If SITE_WIDGET_API_KEY is NOT set, we fall back to the admin's own chatbot
+// so the owner just personalizes it in Chatbot Config and it shows up here.
+// The lookup is async (DB), so we cache the resolved key in memory and refresh
+// it periodically, keeping siteWidgetTag() synchronous.
+let _cachedSiteKey: string | null = null;
+let _cachedSiteKeyAt = 0;
+const SITE_KEY_TTL_MS = 5 * 60 * 1000;
+
+async function refreshSiteKey(): Promise<void> {
+  try {
+    const { getSiteChatbotApiKey } = await import("../db");
+    _cachedSiteKey = await getSiteChatbotApiKey();
+    _cachedSiteKeyAt = Date.now();
+  } catch {
+    // keep whatever we had
+  }
+}
+
 function siteWidgetTag(url: string): string {
-  const key = process.env.SITE_WIDGET_API_KEY;
-  if (!key) return "";
   // Never on the app itself — only on public marketing pages
   if (url.startsWith("/dashboard") || url.startsWith("/login") || url.startsWith("/register") || url.startsWith("/api")) return "";
+  // Kick off a refresh if the cache is stale (fire-and-forget; this render uses
+  // the current cached value, the next render gets the fresh one).
+  if (Date.now() - _cachedSiteKeyAt > SITE_KEY_TTL_MS) void refreshSiteKey();
+  const key = _cachedSiteKey || process.env.SITE_WIDGET_API_KEY;
+  if (!key) return "";
   return `<script src="/api/widget.js" data-api-key="${key.replace(/"/g, "")}" defer></script>`;
 }
 
@@ -128,6 +150,7 @@ function composeHtml(
 
 // ── Dev server (Vite middleware mode) ─────────────────────────────────────
 export async function setupVite(app: Express, server: Server) {
+  void refreshSiteKey(); // warm the site-widget key cache on boot
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
@@ -185,6 +208,7 @@ export async function setupVite(app: Express, server: Server) {
 
 // ── Production static serving ──────────────────────────────────────────────
 export function serveStatic(app: Express) {
+  void refreshSiteKey(); // warm the site-widget key cache on boot
   const distPath =
     process.env.NODE_ENV === "development"
       ? path.resolve(import.meta.dirname, "../..", "dist", "public")

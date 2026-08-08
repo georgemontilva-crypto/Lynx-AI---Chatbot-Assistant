@@ -149,6 +149,34 @@ export async function getChatbotByUserId(userId: number): Promise<Chatbot | unde
   return result[0];
 }
 
+// The chatbot that powers the widget on Lynx's OWN public site. Prefers an
+// explicit SITE_WIDGET_API_KEY; otherwise falls back to the admin's own
+// chatbot, so the owner can just personalize it in Chatbot Config and see it
+// live on the marketing site — no API key wiring needed.
+export async function getSiteChatbotApiKey(): Promise<string | null> {
+  const explicit = process.env.SITE_WIDGET_API_KEY;
+  if (explicit && explicit.trim()) return explicit.trim();
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    // First admin user, then their chatbot's apiKey.
+    const admins = await db.select().from(users).where(eq(users.role, "admin")).limit(1);
+    const admin = admins[0];
+    if (!admin) return null;
+    const bot = await getChatbotByUserId(admin.id);
+    if (bot?.apiKey) return bot.apiKey;
+    if (bot && !bot.apiKey) {
+      await ensureChatbotApiKey(bot.id);
+      const refreshed = await getChatbotByUserId(admin.id);
+      return refreshed?.apiKey ?? null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+
 export async function upsertChatbot(data: InsertChatbot & { userId: number }): Promise<Chatbot> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
