@@ -250,3 +250,12 @@ export const widgetEmailVerifications = mysqlTable("widget_email_verifications",
   expiresAt: timestamp("expiresAt").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+
+// Global site settings (key-value) for portal branding: favicon, menu logo,
+// footer logo, auth gradient color. Single-tenant (the Lynx portal itself).
+export const siteSettings = mysqlTable("site_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  settingKey: varchar("settingKey", { length: 64 }).notNull().unique(),
+  settingValue: text("settingValue"),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});

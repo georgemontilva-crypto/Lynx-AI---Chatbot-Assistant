@@ -117,7 +117,7 @@ export default function Footer() {
             {/* Brand */}
             <div className="col-span-2 md:col-span-1">
               <div className="mb-4">
-                <LynxLogo className="h-8 w-auto object-contain" />
+                <LynxLogo slot="footer" className="h-8 w-auto object-contain" />
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed mb-4">
                 The intelligent chatbot that truly knows your website.

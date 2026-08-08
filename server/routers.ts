@@ -40,7 +40,7 @@ import {
   publishBlogPost,
   countPublishedBlogPosts,
 } from "./db";
-import { conversations, clients, chatbots, analyticsEvents, seoHistory, webSetupRequests } from "../drizzle/schema";
+import { conversations, clients, chatbots, analyticsEvents, seoHistory, webSetupRequests, siteSettings } from "../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { randomBytes } from "crypto";
 
@@ -87,6 +87,51 @@ export function buildTrainingPromptSection(chatbot: { customInstructions?: strin
 
 export const appRouter = router({
   system: systemRouter,
+
+  // ─── Site branding settings (global, admin-only writes) ─────────────────────
+  siteSettings: router({
+    // Public read: the portal (navbar, footer, favicon, auth panel) needs these
+    // even before login, so anyone can read the current branding.
+    get: publicProcedure.query(async () => {
+      const db = await getDb();
+      const defaults = {
+        faviconUrl: "",
+        menuLogoUrl: "",
+        footerLogoUrl: "",
+        authGradient: "",
+      };
+      if (!db) return defaults;
+      try {
+        const rows = await db.select().from(siteSettings);
+        const map: Record<string, string> = {};
+        for (const r of rows) map[r.settingKey] = r.settingValue ?? "";
+        return { ...defaults, ...map };
+      } catch {
+        return defaults;
+      }
+    }),
+    // Admin-only write: upsert one or more branding keys.
+    save: adminProcedure
+      .input(z.object({
+        faviconUrl: z.string().max(1024).optional(),
+        menuLogoUrl: z.string().max(1024).optional(),
+        footerLogoUrl: z.string().max(1024).optional(),
+        authGradient: z.string().max(512).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        const { sql } = await import("drizzle-orm");
+        for (const [key, value] of Object.entries(input)) {
+          if (value === undefined) continue;
+          // Upsert by unique settingKey
+          await db.insert(siteSettings)
+            .values({ settingKey: key, settingValue: value })
+            .onDuplicateKeyUpdate({ set: { settingValue: value, updatedAt: sql`now()` } });
+        }
+        return { success: true } as const;
+      }),
+  }),
 
   // ─── Auth ──────────────────────────────────────────────────────────────────
   auth: router({

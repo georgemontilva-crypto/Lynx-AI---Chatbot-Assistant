@@ -1,4 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
+import { useEffect } from "react";
+import { trpc } from "@/lib/trpc";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
@@ -78,12 +80,32 @@ function Router() {
   );
 }
 
+function DynamicFavicon() {
+  const { data } = trpc.siteSettings.get.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  useEffect(() => {
+    const url = data?.faviconUrl;
+    if (!url || typeof document === "undefined") return;
+    let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    link.href = url;
+  }, [data?.faviconUrl]);
+  return null;
+}
+
 function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light" switchable>
         <TooltipProvider>
           <Toaster />
+          <DynamicFavicon />
           <Router />
         </TooltipProvider>
       </ThemeProvider>

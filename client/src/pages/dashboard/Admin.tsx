@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SiteBrandingCard } from "@/components/dashboard/SiteBrandingCard";
 import DashboardShell from "@/components/DashboardShell";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -127,6 +128,9 @@ export default function Admin() {
           Refresh
         </Button>
       </div>
+
+      {/* Portal branding */}
+      <SiteBrandingCard />
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
