@@ -169,7 +169,7 @@ export default function DashboardTraining() {
                     maxLength={limits?.maxInstructionsChars}
                     onChange={(e) => { setInstructions(e.target.value); setDirty(true); }}
                     placeholder={"Example:\n- Always answer in Spanish, friendly tone.\n- Our support hours are Mon-Fri 9am-6pm.\n- Never promise refunds; direct refund questions to support@mysite.com."}
-                    className="min-h-[160px] text-sm"
+                    className="h-[220px] max-h-[220px] overflow-y-auto resize-none text-sm"
                   />
                   <p className="text-xs text-muted-foreground">
                     These rules have top priority: tone, language, what to say and what to avoid.
@@ -240,7 +240,7 @@ export default function DashboardTraining() {
                           onChange={(e) => setNewContent(e.target.value)}
                           placeholder="Answer the chatbot should give (e.g. We ship within 24-48h across the US, free over $50)."
                           maxLength={2000}
-                          className="min-h-[70px] text-sm"
+                          className="h-[140px] max-h-[140px] overflow-y-auto resize-none text-sm"
                         />
                         <Button
                           size="sm" variant="secondary" className="gap-1.5"
