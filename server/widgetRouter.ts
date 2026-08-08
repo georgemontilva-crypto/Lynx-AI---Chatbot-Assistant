@@ -1406,8 +1406,12 @@ function buildFrameApp(): string {
   }
 
   // ── State ──────────────────────────────────────────────────────────────────
+  // If nmset=1, the name came from config (even if empty) — respect it as-is.
+  // Otherwise fall back to the default until applyConfig runs.
+  var _nmSet = _params.get('nmset') === '1';
+  var _nmParam = _params.get('nm');
   var config = {
-    name: _params.get('nm') || 'Lynx AI',
+    name: _nmSet ? (_nmParam || '') : (_nmParam || 'Lynx AI'),
     primaryColor: _params.get('pc') || '#111827',
     secondaryColor: _params.get('sc') || '#374151',
     welcomeMessage: 'Hi! How can I help you today?',
@@ -1535,14 +1539,28 @@ function buildFrameApp(): string {
   panel.id = 'lynx-widget-panel';
   panel.className = 'lynx-in-frame';
 
+  // Resolve the header logo (avatarUrl) and empty-name state up front so the
+  // header renders correctly on the FIRST paint (no flash of icon+name).
+  var _avParam = _params.get('av') || '';
+  var _nameIsEmpty = _nmSet && !(config.name && String(config.name).trim());
+  var _headerImgStyle = _avParam
+    ? (_nameIsEmpty
+        ? 'width:auto;height:28px;max-width:150px;object-fit:contain;border-radius:0;display:block;'
+        : 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;')
+    : 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:none;';
+  var _avatarWrapStyle = (_avParam && _nameIsEmpty)
+    ? 'width:auto;height:32px;border-radius:0;background:transparent;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;'
+    : 'width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;';
+  var _nameStyle = 'font-size:15px;font-weight:700;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;letter-spacing:-0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' + (_nameIsEmpty ? 'display:none;' : '');
+
   panel.innerHTML = [
     '<div id="lynx-widget-header">',
-      '<div id="lynx-header-avatar" style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;">',
-        '<img id="lynx-header-icon" src="" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:none;" />',
-        '<svg id="lynx-header-default-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+      '<div id="lynx-header-avatar" style="' + _avatarWrapStyle + '">',
+        '<img id="lynx-header-icon" src="' + (_avParam || '') + '" alt="" style="' + _headerImgStyle + '" />',
+        '<svg id="lynx-header-default-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"' + (_avParam ? ' style="display:none;"' : '') + '><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
       '</div>',
       '<div style="flex:1;min-width:0;">',
-        '<div id="lynx-bot-name" style="font-size:15px;font-weight:700;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;letter-spacing:-0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + config.name + '</div>',
+        '<div id="lynx-bot-name" style="' + _nameStyle + '">' + (config.name || '') + '</div>',
         '<div style="font-size:11px;color:rgba(255,255,255,0.75);display:flex;align-items:center;gap:4px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;"><span style="width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block;"></span>Online</div>',
       '</div>',
       '<button class="lynx-close" id="lynx-close-btn" aria-label="Close chat">',
@@ -2276,7 +2294,14 @@ const LOADER_SCRIPT = `
     if (_prefetchedCfg) {
       if (_prefetchedCfg.primaryColor) extra += '&pc=' + encodeURIComponent(_prefetchedCfg.primaryColor);
       if (_prefetchedCfg.secondaryColor) extra += '&sc=' + encodeURIComponent(_prefetchedCfg.secondaryColor);
-      if (_prefetchedCfg.name) extra += '&nm=' + encodeURIComponent(_prefetchedCfg.name);
+      // Pass the name even when it's an empty string — an empty name is a valid
+      // choice (show the full logo instead of icon+text). nmset=1 tells the frame
+      // "the name was resolved from config" so it won't fall back to a default.
+      if (typeof _prefetchedCfg.name !== 'undefined' && _prefetchedCfg.name !== null) {
+        extra += '&nm=' + encodeURIComponent(_prefetchedCfg.name) + '&nmset=1';
+      }
+      // Header logo for the open panel (avatarUrl) so it shows without a flash.
+      if (_prefetchedCfg.avatarUrl) extra += '&av=' + encodeURIComponent(_prefetchedCfg.avatarUrl);
     }
     // Pass the visitorId from the LOADER's localStorage (stable, first-party on
     // the client's domain). Third-party iframes often can't persist their own
