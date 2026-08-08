@@ -1251,17 +1251,59 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
   const serveWidget = (req: Request, res: Response) => {
     setCorsHeaders(res);
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=300"); // 5 min cache
-    const widgetScript = buildWidgetScript();
-    return res.send(widgetScript);
+    res.setHeader("Cache-Control", "public, max-age=120");
+    return res.send(buildLoaderScript());
   };
   app.get("/widget.js", serveWidget);
   app.get("/api/widget.js", serveWidget);
+
+  // GET /api/widget/frame?apiKey=xxx — the chat UI served as a standalone page,
+  // embedded in an iframe by the loader. Scroll is isolated by the browser.
+  const serveFrame = (req: Request, res: Response) => {
+    setCorsHeaders(res);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=120");
+    // Allow embedding from any site (this is a public embeddable widget)
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Content-Security-Policy", "frame-ancestors *");
+    return res.send(buildFrameHtml());
+  };
+  app.get("/widget/frame", serveFrame);
+  app.get("/api/widget/frame", serveFrame);
 }
 
-// ─── Widget script builder ────────────────────────────────────────────────────
+// Full HTML page that hosts the chat app inside the iframe.
+function buildFrameHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Chat</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;width:100%;background:transparent;overflow:hidden;}
+  *{box-sizing:border-box;}
+</style>
+</head>
+<body>
+<script>${buildFrameApp()}</script>
+</body>
+</html>`.trim();
+}
 
-function buildWidgetScript(): string {
+// The tiny loader served as widget.js: floating button + iframe + postMessage.
+function buildLoaderScript(): string {
+  return LOADER_SCRIPT;
+}
+
+// ─── Widget: iframe architecture (like Crisp/Intercom) ────────────────────────
+// buildFrameApp() = the full chat UI + logic, served as a standalone page at
+// /api/widget/frame and embedded in an iframe. Because it lives in an iframe,
+// its scroll is isolated from the host page by the browser — no locks needed.
+// buildLoaderScript() = the tiny widget.js: draws the floating button and, on
+// open, mounts the iframe. They talk via postMessage.
+
+function buildFrameApp(): string {
   return `
 (function() {
   'use strict';
@@ -1270,24 +1312,20 @@ function buildWidgetScript(): string {
   if (window.__lynxAIWidget) return;
   window.__lynxAIWidget = true;
 
-  var script = document.currentScript || (function() {
-    var scripts = document.getElementsByTagName('script');
-    return scripts[scripts.length - 1];
-  })();
-
-  var API_KEY = script.getAttribute('data-api-key') || '';
-  var BASE_URL = script.getAttribute('data-base-url') || (function() {
-    var src = script.src || '';
+  var _params = new URLSearchParams(window.location.search);
+  var API_KEY = _params.get('apiKey') || '';
+  var BASE_URL = _params.get('base') || (function() {
+    var src = window.location.origin;
     // Strip query string and hash first
     var clean = src.split('?')[0].split('#')[0];
     // Remove trailing /api/widget.js or /widget.js to get the origin
-    var marker = '/api/widget.js';
-    var pos = clean.lastIndexOf(marker);
+    var marker = '___never___';
+    var pos = -1;
     if (pos < 0) { marker = '/widget.js'; pos = clean.lastIndexOf(marker); }
     if (pos >= 0) clean = clean.slice(0, pos);
     return clean;
   })();
-  var POSITION = script.getAttribute('data-position') || 'bottom-right';
+  var POSITION = 'bottom-right';
 
   if (!API_KEY) {
     console.warn('[Lynx AI Widget] Missing data-api-key attribute.');
@@ -1348,6 +1386,7 @@ function buildWidgetScript(): string {
     '#lynx-widget-btn:active{transform:scale(0.96);}',
     '#lynx-widget-btn.right{right:24px;}',
     '#lynx-widget-btn.left{left:24px;}',
+    '#lynx-widget-panel.lynx-in-frame{position:static !important;width:100% !important;height:100% !important;max-width:100% !important;max-height:100% !important;bottom:auto !important;border-radius:0 !important;box-shadow:none !important;display:flex !important;opacity:1 !important;transform:none !important;pointer-events:auto !important;}',
     '#lynx-widget-panel{position:fixed;bottom:92px;overscroll-behavior:contain;z-index:2147483646;width:360px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 120px);background:#fff;border-radius:16px;box-shadow:0 8px 48px rgba(0,0,0,0.18);display:none;flex-direction:column;overflow:hidden;transition:opacity 0.22s cubic-bezier(0.23,1,0.32,1),transform 0.22s cubic-bezier(0.23,1,0.32,1);opacity:0;transform:scale(0.95) translateY(12px);pointer-events:none;}',
     '#lynx-widget-panel.open{display:flex;opacity:1;transform:scale(1) translateY(0);pointer-events:all;}',
     '#lynx-widget-panel.right{right:24px;}',
@@ -1399,20 +1438,14 @@ function buildWidgetScript(): string {
   ].join('');
   document.head.appendChild(style);
 
-  // ── DOM ────────────────────────────────────────────────────────────────────
+  // ── DOM (iframe mode: no floating button, panel fills the frame) ───────────
+  // Stub button so existing references stay valid but nothing renders.
   var btn = document.createElement('button');
-  btn.id = 'lynx-widget-btn';
-  btn.setAttribute('aria-label', 'Open chat');
-  btn.className = config.position === 'bottom-left' ? 'left' : 'right';
-  // Button icon: initially empty circle; filled after config loads (avoids flash of Lynx default)
-  btn.innerHTML = '<div id="lynx-btn-inner" style="width:100%;height:100%;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;">' +
-    '<svg id="lynx-btn-default-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
-    '<img id="lynx-btn-icon" src="" alt="Chat" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:none;" />' +
-  '</div>';
+  btn.style.display = 'none';
 
   var panel = document.createElement('div');
   panel.id = 'lynx-widget-panel';
-  panel.className = config.position === 'bottom-left' ? 'left' : 'right';
+  panel.className = 'lynx-in-frame';
 
   panel.innerHTML = [
     '<div id="lynx-widget-header">',
@@ -1518,6 +1551,7 @@ function buildWidgetScript(): string {
     // Custom avatar: swap button icon and header icon if avatarUrl is set
     if (cfg.avatarUrl) {
       config.avatarUrl = cfg.avatarUrl;
+      notifyParent('avatar', { url: cfg.avatarUrl });
       // Floating button: show custom icon (fills circle), hide default SVG
       var btnIcon = document.getElementById('lynx-btn-icon');
       var btnDefaultIcon = document.getElementById('lynx-btn-default-icon');
@@ -1711,7 +1745,7 @@ function buildWidgetScript(): string {
     emailSavedShown = true;
     var card = document.createElement('div');
     card.className = 'lynx-msg assistant lynx-rating-bubble';
-    card.innerHTML = '<p>&#128190; <b>Conversaci\u00f3n guardada / Conversation saved</b></p>' +
+    card.innerHTML = '<p>&#128190; <b>Conversaci\\u00f3n guardada / Conversation saved</b></p>' +
       '<p style="margin:0;font-weight:400;">' + escapeHtml(email) + ' &mdash; puedes retomarla desde cualquier dispositivo escribiendo tu correo en el chat. / You can pick it up on any device by typing your email in the chat.</p>';
     messagesEl.appendChild(card);
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1802,37 +1836,12 @@ function buildWidgetScript(): string {
 
   // ── Open / close ───────────────────────────────────────────────────────────
   var _pageLock = null;
-  function lockPageScroll() {
-    // On mobile the panel is fullscreen — freeze the page behind it so chat
-    // scrolling can never move the site underneath. position:fixed on <body>
-    // is the only technique iOS Safari respects reliably (overflow:hidden is
-    // ignored there and by many Shopify themes).
-    if (window.matchMedia && window.matchMedia('(max-width: 480px)').matches) {
-      var b = document.body;
-      _pageLock = {
-        scrollY: window.pageYOffset || document.documentElement.scrollTop || 0,
-        position: b.style.position, top: b.style.top, left: b.style.left,
-        right: b.style.right, width: b.style.width, overflow: b.style.overflow
-      };
-      b.style.position = 'fixed';
-      b.style.top = (-_pageLock.scrollY) + 'px';
-      b.style.left = '0'; b.style.right = '0'; b.style.width = '100%';
-      b.style.overflow = 'hidden';
-      document.documentElement.style.overscrollBehavior = 'none';
-    }
-  }
-  function unlockPageScroll() {
-    if (_pageLock) {
-      var b = document.body;
-      b.style.position = _pageLock.position; b.style.top = _pageLock.top;
-      b.style.left = _pageLock.left; b.style.right = _pageLock.right;
-      b.style.width = _pageLock.width; b.style.overflow = _pageLock.overflow;
-      document.documentElement.style.overscrollBehavior = '';
-      window.scrollTo(0, _pageLock.scrollY);
-      _pageLock = null;
-    }
-  }
+  function lockPageScroll() { /* no-op in iframe: scroll is isolated by design */ }
+  function unlockPageScroll() { /* no-op in iframe */ }
 
+  function notifyParent(type, data) {
+    try { window.parent.postMessage(Object.assign({ __lynx: true, type: type }, data || {}), '*'); } catch(e) {}
+  }
   function openPanel() {
     isOpen = true;
     panel.classList.add('open');
@@ -1870,6 +1879,7 @@ function buildWidgetScript(): string {
   }
 
   function closePanel() {
+    notifyParent('close');
     unlockPageScroll();
     btn.style.display = '';
     isOpen = false;
@@ -1901,7 +1911,7 @@ function buildWidgetScript(): string {
     history.push({ role: 'user', content: text });
     trackEvent('message_sent');
     // Farewell detection (es/en): after the bot replies, offer the star rating in-thread
-    if (/\b(gracias|muchas gracias|thank you|thanks|bye|adios|adi\u00f3s|chao|chau|hasta luego|nos vemos|eso es todo|that'?s all|perfecto,? gracias)\b/i.test(text)) {
+    if (/\\b(gracias|muchas gracias|thank you|thanks|bye|adios|adi\\u00f3s|chao|chau|hasta luego|nos vemos|eso es todo|that'?s all|perfecto,? gracias)\\b/i.test(text)) {
       farewellDetected = true;
     }
     isLoading = true;
@@ -2047,26 +2057,134 @@ function buildWidgetScript(): string {
     });
   }
 
-  // ── Preload config on page load (so it's ready when opened) ───────────────
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { loadConfig(); trackEvent('page_view'); });
-  } else {
+  // ── In-frame: load config immediately and open the panel ──────────────────
+  function initFrame() {
     loadConfig();
     trackEvent('page_view');
+    openPanel();
+    // Tell the parent we're ready (so it can show the iframe)
+    notifyParent('ready');
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initFrame);
+  } else {
+    initFrame();
   }
 
-  // Public API: window.LynxAI.hide() / show()
-  window.LynxAI = {
-    hide: function() {
-      if (btn) btn.style.display = 'none';
-      if (panel) { panel.style.display = 'none'; isOpen = false; }
-    },
-    show: function() {
-      if (btn) btn.style.display = '';
-      if (panel) panel.style.display = '';
-    },
-  };
+  // Listen for messages from the parent loader (e.g. focus the input on open)
+  window.addEventListener('message', function(e) {
+    var d = e.data;
+    if (!d || !d.__lynxParent) return;
+    if (d.type === 'focus' && inputEl) { try { inputEl.focus(); } catch(x){} }
+  });
 
 })();
 `.trim();
 }
+
+// ─── Loader script (served as widget.js) ──────────────────────────────────────
+// Draws the floating button and mounts the chat inside an iframe on open.
+const LOADER_SCRIPT = `
+(function() {
+  'use strict';
+  if (window.__lynxLoader) return;
+  window.__lynxLoader = true;
+
+  var script = document.currentScript || (function() {
+    var ss = document.getElementsByTagName('script');
+    return ss[ss.length - 1];
+  })();
+  var API_KEY = script.getAttribute('data-api-key') || '';
+  var POSITION = script.getAttribute('data-position') || 'bottom-right';
+  var BASE_URL = (function() {
+    var src = script.src || '';
+    var clean = src.split('?')[0].split('#')[0];
+    var m = clean.indexOf('/api/widget.js');
+    if (m > -1) return clean.slice(0, m);
+    var m2 = clean.indexOf('/widget.js');
+    if (m2 > -1) return clean.slice(0, m2);
+    return window.location.origin;
+  })();
+  if (!API_KEY) { console.error('[Lynx AI] Missing data-api-key'); return; }
+
+  var isLeft = POSITION === 'bottom-left';
+  var isOpen = false;
+
+  // ── Styles for button + iframe container ──
+  var style = document.createElement('style');
+  style.textContent = [
+    '#lynx-loader-btn{position:fixed;bottom:20px;' + (isLeft?'left:20px;':'right:20px;') + 'z-index:2147483647;width:60px;height:60px;border-radius:50%;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.24);background:#111;padding:0;transition:transform 0.18s;overflow:hidden;}',
+    '#lynx-loader-btn:hover{transform:scale(1.06);}',
+    '#lynx-loader-btn img{width:100%;height:100%;object-fit:cover;border-radius:50%;display:none;}',
+    '#lynx-loader-frame{position:fixed;bottom:92px;' + (isLeft?'left:20px;':'right:20px;') + 'z-index:2147483646;width:380px;height:600px;max-width:calc(100vw - 40px);max-height:calc(100vh - 120px);border:none;border-radius:16px;box-shadow:0 8px 48px rgba(0,0,0,0.22);background:transparent;display:none;opacity:0;transform:translateY(12px) scale(0.98);transition:opacity 0.22s cubic-bezier(0.23,1,0.32,1),transform 0.22s cubic-bezier(0.23,1,0.32,1);}',
+    '#lynx-loader-frame.open{display:block;opacity:1;transform:translateY(0) scale(1);}',
+    '@media (max-width:480px){#lynx-loader-frame{bottom:0;left:0;right:0;top:0;width:100vw;height:100vh;height:100dvh;max-width:100vw;max-height:100dvh;border-radius:0;}#lynx-loader-btn.hidden-mobile{display:none;}}'
+  ].join('');
+  document.head.appendChild(style);
+
+  // ── Button ──
+  var btn = document.createElement('button');
+  btn.id = 'lynx-loader-btn';
+  btn.setAttribute('aria-label', 'Open chat');
+  btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:50%;">' +
+    '<svg id="lynx-loader-deficon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
+    '<img id="lynx-loader-avatar" src="" alt="Chat" />' +
+  '</div>';
+  document.body.appendChild(btn);
+
+  // ── Iframe (created lazily on first open) ──
+  var frame = null;
+  function ensureFrame() {
+    if (frame) return frame;
+    frame = document.createElement('iframe');
+    frame.id = 'lynx-loader-frame';
+    frame.setAttribute('title', 'Chat');
+    frame.setAttribute('allow', 'clipboard-write');
+    frame.src = BASE_URL + '/api/widget/frame?apiKey=' + encodeURIComponent(API_KEY) + '&base=' + encodeURIComponent(BASE_URL);
+    document.body.appendChild(frame);
+    return frame;
+  }
+
+  function openChat() {
+    ensureFrame();
+    isOpen = true;
+    // force reflow then add open class for transition
+    void frame.offsetWidth;
+    frame.classList.add('open');
+    btn.classList.add('hidden-mobile');
+    setBtnIcon(true);
+    try { frame.contentWindow.postMessage({ __lynxParent: true, type: 'focus' }, '*'); } catch(e){}
+  }
+  function closeChat() {
+    isOpen = false;
+    if (frame) frame.classList.remove('open');
+    btn.classList.remove('hidden-mobile');
+    setBtnIcon(false);
+  }
+  function setBtnIcon(open) {
+    if (open) {
+      btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#111;border-radius:50%;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>';
+    }
+  }
+
+  btn.addEventListener('click', function() { isOpen ? closeChat() : openChat(); });
+
+  // ── Messages from the iframe ──
+  window.addEventListener('message', function(e) {
+    var d = e.data;
+    if (!d || !d.__lynx) return;
+    if (d.type === 'close') closeChat();
+    if (d.type === 'avatar' && d.url) {
+      var img = document.getElementById('lynx-loader-avatar');
+      var di = document.getElementById('lynx-loader-deficon');
+      if (img && d.url) { img.src = d.url; img.style.display = 'block'; if (di) di.style.display = 'none'; }
+    }
+  });
+
+  window.LynxAI = {
+    open: openChat, close: closeChat,
+    hide: function(){ btn.style.display='none'; if(frame) frame.classList.remove('open'); },
+    show: function(){ btn.style.display=''; }
+  };
+})();
+`.trim();
