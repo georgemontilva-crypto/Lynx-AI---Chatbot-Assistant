@@ -336,11 +336,118 @@ export const appRouter = router({
             .slice(0, maxChars);
         }
 
+        // ─── Helper: fetch sitemap.xml and return real page URLs ──────────────
+        // Works even on JS/SPA sites (the sitemap is static XML), so it's the
+        // most reliable way to discover every real page a crawler-fetch misses.
+        async function fetchSitemapUrls(siteUrl: string): Promise<string[]> {
+          const base = new URL(siteUrl);
+          const candidates = [
+            `${base.origin}/sitemap.xml`,
+            `${base.origin}/sitemap_index.xml`,
+            `${base.origin}/sitemap-index.xml`,
+          ];
+          const found = new Set<string>();
+          const sitemapsToRead: string[] = [];
+          // 1. Try robots.txt for a Sitemap: directive first
+          try {
+            const { text: robots } = await safeFetchText(`${base.origin}/robots.txt`, { timeoutMs: 6000 });
+            for (const m of Array.from(robots.matchAll(/sitemap:\s*(\S+)/gi))) {
+              if (m[1]) sitemapsToRead.push(m[1].trim());
+            }
+          } catch { /* no robots.txt */ }
+          if (sitemapsToRead.length === 0) sitemapsToRead.push(...candidates);
+
+          let sitemapsRead = 0;
+          const queue = [...sitemapsToRead];
+          while (queue.length && sitemapsRead < 6 && found.size < 300) {
+            const sm = queue.shift()!;
+            sitemapsRead++;
+            try {
+              const { text: xml } = await safeFetchText(sm, { timeoutMs: 7000 });
+              // A sitemap index points to more sitemaps; a urlset lists pages.
+              const isIndex = /<sitemapindex/i.test(xml);
+              const locs = Array.from(xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)).map(m => m[1]);
+              for (const loc of locs) {
+                if (isIndex) {
+                  if (queue.length < 10) queue.push(loc);
+                } else {
+                  try {
+                    const u = new URL(loc);
+                    if (u.hostname === base.hostname) found.add(u.href);
+                  } catch { /* skip */ }
+                }
+                if (found.size >= 300) break;
+              }
+            } catch { /* sitemap missing */ }
+          }
+          return Array.from(found);
+        }
+
+        // ─── Helper: pull a full product catalog from store JSON endpoints ────
+        // Shopify (/products.json) and WooCommerce (Store API) expose the whole
+        // catalog as JSON even when the storefront is JS-rendered. This is what
+        // makes "does it sell products?" answerable without manual training.
+        async function fetchStoreCatalog(siteUrl: string): Promise<ProductEntry[]> {
+          const base = new URL(siteUrl);
+          const out: ProductEntry[] = [];
+          // Shopify — paginate a couple of pages for large catalogs
+          for (let page = 1; page <= 3 && out.length < 200; page++) {
+            try {
+              const url = `${base.origin}/products.json?limit=250&page=${page}`;
+              const { text: pj } = await safeFetchText(url, { timeoutMs: 8000 });
+              const parsed = JSON.parse(pj);
+              if (!Array.isArray(parsed.products) || parsed.products.length === 0) break;
+              for (const sp of parsed.products) {
+                const handle = sp.handle ? `${base.origin}/products/${sp.handle}` : undefined;
+                const variant = Array.isArray(sp.variants) ? sp.variants[0] : undefined;
+                const price = variant?.price ? `${variant.price}` : undefined;
+                const name = String(sp.title ?? "").trim().slice(0, 120);
+                if (name && !out.some(ep => ep.name === name)) {
+                  const spImg = Array.isArray(sp.images) && sp.images[0]?.src ? String(sp.images[0].src) : undefined;
+                  out.push({
+                    name, price,
+                    description: String(sp.body_html ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined,
+                    url: handle, image: spImg,
+                  });
+                }
+                if (out.length >= 200) break;
+              }
+            } catch { break; /* not Shopify or blocked */ }
+          }
+          // WooCommerce Store API (public, no auth) — many WP shops expose this
+          if (out.length === 0) {
+            for (let page = 1; page <= 3 && out.length < 200; page++) {
+              try {
+                const url = `${base.origin}/wp-json/wc/store/v1/products?per_page=100&page=${page}`;
+                const { text: wj } = await safeFetchText(url, { timeoutMs: 8000 });
+                const arr = JSON.parse(wj);
+                if (!Array.isArray(arr) || arr.length === 0) break;
+                for (const wp of arr) {
+                  const name = String(wp.name ?? "").trim().slice(0, 120);
+                  const price = wp.prices?.price
+                    ? `${(parseInt(wp.prices.price) / Math.pow(10, wp.prices.currency_minor_unit ?? 2)).toFixed(2)} ${wp.prices.currency_code ?? ""}`.trim()
+                    : undefined;
+                  if (name && !out.some(ep => ep.name === name)) {
+                    out.push({
+                      name, price,
+                      description: String(wp.short_description ?? wp.description ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined,
+                      url: wp.permalink ?? undefined,
+                      image: Array.isArray(wp.images) && wp.images[0]?.src ? String(wp.images[0].src) : undefined,
+                    });
+                  }
+                  if (out.length >= 200) break;
+                }
+              } catch { break; /* not WooCommerce */ }
+            }
+          }
+          return out;
+        }
+
         // ─── Per-plan crawl budget (total pages incl. home) ───────────────────
         const crawlBudget =
-          ctx.user.plan === "whitelabel" ? 25 :
-          ctx.user.plan === "embedded" ? 15 :
-          ctx.user.plan === "cloud" ? 8 : 3;
+          ctx.user.plan === "whitelabel" ? 40 :
+          ctx.user.plan === "embedded" ? 20 :
+          ctx.user.plan === "cloud" ? 10 : 4;
 
         // 1. Fetch HTML from the target URL via server-side request
         let htmlContent = "";
@@ -397,15 +504,38 @@ export const appRouter = router({
           // Extract products from home page
           allProducts = extractProductsFromHtml(raw, input.url);
 
+          // ── Store JSON catalog (Shopify/WooCommerce) — the reliable path ───
+          // This works even on JS-rendered stores, so the assistant always knows
+          // the real products/prices/links without any manual training.
+          try {
+            const storeCatalog = await fetchStoreCatalog(input.url);
+            for (const p of storeCatalog) {
+              if (!allProducts.some(ep => ep.name === p.name)) allProducts.push(p);
+            }
+          } catch { /* no store API */ }
+
+          // ── Discover ALL real pages via sitemap.xml (JS-proof) ────────────
+          // Home-page <a> links miss most pages on SPA sites; the sitemap lists
+          // every real URL. We classify them into product vs info pages.
+          let sitemapUrls: string[] = [];
+          try { sitemapUrls = await fetchSitemapUrls(input.url); } catch { /* none */ }
+          const productPatternsRe = /\/products?\b|\/tienda\b|\/shop\b|\/catalog(?:o)?\b|\/store\b|\/collection|\/categoria|\/category|\/compounds?\b|\/item\b/i;
+          const infoPatternsRe = /faq|preguntas|about|nosotros|quienes|contact|contacto|shipping|envio|delivery|returns?|devolucion|refund|reembolso|policy|policies|politica|terms|terminos|privacy|privacidad|help|ayuda|support|soporte|pricing|precios|services?|servicios?/i;
+          const sitemapProductPages = sitemapUrls.filter(u => productPatternsRe.test(new URL(u).pathname));
+          const sitemapInfoPages = sitemapUrls.filter(u => infoPatternsRe.test(new URL(u).pathname));
+
           // Always crawl product/catalog pages to build a fuller catalog.
           // Product-heavy sites list items across many collection pages, so we
           // crawl several and also try Shopify's /products.json when present.
           {
-            const productPageLinks = findProductPageLinks(raw, input.url);
+            // Prefer sitemap-discovered product pages (works on JS sites),
+            // falling back to home-page links.
+            const homeLinks = findProductPageLinks(raw, input.url);
+            const productPageLinks = Array.from(new Set([...sitemapProductPages, ...homeLinks]));
             const catalogBudget =
-              ctx.user.plan === "whitelabel" ? 12 :
-              ctx.user.plan === "embedded" ? 8 :
-              ctx.user.plan === "cloud" ? 5 : 2;
+              ctx.user.plan === "whitelabel" ? 20 :
+              ctx.user.plan === "embedded" ? 10 :
+              ctx.user.plan === "cloud" ? 6 : 3;
             for (const link of productPageLinks.slice(0, catalogBudget)) {
               try {
                 const { text: pageHtml } = await safeFetchText(link, { timeoutMs: 8000 });
@@ -416,41 +546,13 @@ export const appRouter = router({
                 if (allProducts.length >= 200) break;
               } catch { /* skip inaccessible pages */ }
             }
-
-            // Shopify: /products.json exposes the FULL catalog with direct URLs.
-            // This is the single most reliable way to get every product + link.
-            if (allProducts.length < 100) {
-              try {
-                const base = new URL(input.url);
-                const shopifyJsonUrl = `${base.origin}/products.json?limit=250`;
-                const { text: pj } = await safeFetchText(shopifyJsonUrl, { timeoutMs: 8000 });
-                const parsed = JSON.parse(pj);
-                if (Array.isArray(parsed.products)) {
-                  for (const sp of parsed.products) {
-                    const handle = sp.handle ? `${base.origin}/products/${sp.handle}` : undefined;
-                    const variant = Array.isArray(sp.variants) ? sp.variants[0] : undefined;
-                    const price = variant?.price ? `${variant.price}` : undefined;
-                    const name = String(sp.title ?? "").trim().slice(0, 120);
-                    if (name && !allProducts.some(ep => ep.name === name)) {
-                      const spImg = Array.isArray(sp.images) && sp.images[0]?.src ? String(sp.images[0].src) : undefined;
-                      allProducts.push({
-                        name,
-                        price,
-                        description: String(sp.body_html ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined,
-                        url: handle,
-                        image: spImg,
-                      });
-                    }
-                    if (allProducts.length >= 200) break;
-                  }
-                }
-              } catch { /* not a Shopify store or products.json blocked */ }
-            }
           }
 
           // ── Crawl informational pages (FAQ, about, policies, shipping…) ────
           // These are the pages visitors ask about most; budget is plan-based.
-          const infoLinks = findInfoPageLinks(raw, input.url);
+          // Merge sitemap-discovered info pages with home-page links.
+          const homeInfoLinks = findInfoPageLinks(raw, input.url);
+          const infoLinks = Array.from(new Set([...sitemapInfoPages, ...homeInfoLinks]));
           const remainingBudget = Math.max(0, crawlBudget - 1); // home already fetched
           for (const link of infoLinks.slice(0, remainingBudget)) {
             try {
@@ -676,9 +778,22 @@ Return ONLY valid JSON matching this exact schema:
         const infoPagesSection = pageExtracts.length > 0
           ? pageExtracts.map(pg => `=== PAGE ${pg.path} ===\n${pg.text}`).join("\n\n")
           : "";
+        // Explicit business-type signal so the assistant always knows whether
+        // this business sells products — even if the catalog came back thin.
+        const sellsProducts = allProducts.length > 0 || /\/products?\b|\/shop\b|\/tienda\b|\/store\b|\/collection|add-to-cart|shopify|woocommerce/i.test(rawHome);
+        const businessSignal = [
+          `=== BUSINESS OVERVIEW ===`,
+          `Sells products online: ${sellsProducts ? "YES" : "not detected"}`,
+          allProducts.length > 0
+            ? `Products found in scan: ${allProducts.length}`
+            : (sellsProducts ? `Products found in scan: 0 (store detected but catalog not machine-readable — tell the visitor products exist and point them to the shop page)` : ``),
+          `Pages scanned: ${1 + pageExtracts.length + (allProducts.length > 0 ? 1 : 0)}`,
+        ].filter(Boolean).join("\n");
+
         const siteContextText = [
           analysis.summary,
           `Topics: ${(analysis.topics ?? []).join(", ")}`,
+          businessSignal,
           htmlContent.slice(0, 4000),
           infoPagesSection,
           productCatalogSection,
