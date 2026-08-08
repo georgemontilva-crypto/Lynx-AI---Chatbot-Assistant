@@ -1306,8 +1306,8 @@ function buildFullChatHtml(apiKey: string, req: Request): string {
 <style>
   html,body{margin:0;padding:0;height:100%;width:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1115;}
   *{box-sizing:border-box;}
-  #lynx-full-wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(1200px 600px at 50% -10%, #1e2330, #0f1115);}
-  #lynx-full-card{width:100%;max-width:560px;height:100%;max-height:820px;border-radius:20px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.5);background:#fff;position:relative;}
+  #lynx-full-wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:28px;background:radial-gradient(1400px 700px at 50% -10%, #eef1f6, #dfe4ec);}
+  #lynx-full-card{width:100%;max-width:720px;height:100%;max-height:900px;border-radius:24px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.18);background:#fff;position:relative;}
   #lynx-full-frame{width:100%;height:100%;border:none;display:block;}
   @media (max-width:600px){
     #lynx-full-wrap{padding:0;}
@@ -1450,6 +1450,9 @@ function buildFrameApp(): string {
     '#lynx-widget-btn:active{transform:scale(0.96);}',
     '#lynx-widget-btn.right{right:24px;}',
     '#lynx-widget-btn.left{left:24px;}',
+    '#lynx-widget-panel.lynx-full-mode #lynx-widget-messages{max-width:640px;width:100%;margin:0 auto;padding:24px 20px;}',
+    '#lynx-widget-panel.lynx-full-mode #lynx-widget-input-row{max-width:640px;width:100%;margin:0 auto;}',
+    '#lynx-widget-panel.lynx-full-mode .lynx-msg{max-width:78%;}',
     '#lynx-widget-panel.lynx-in-frame{position:static !important;width:100% !important;height:100% !important;max-width:100% !important;max-height:100% !important;bottom:auto !important;border-radius:0 !important;box-shadow:none !important;display:flex !important;opacity:1 !important;transform:none !important;pointer-events:auto !important;}',
     '#lynx-widget-panel{position:fixed;bottom:92px;overscroll-behavior:contain;z-index:2147483646;width:360px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 120px);background:#fff;border-radius:16px;box-shadow:0 8px 48px rgba(0,0,0,0.18);display:none;flex-direction:column;overflow:hidden;transition:opacity 0.22s cubic-bezier(0.23,1,0.32,1),transform 0.22s cubic-bezier(0.23,1,0.32,1);opacity:0;transform:scale(0.95) translateY(12px);pointer-events:none;}',
     '#lynx-widget-panel.open{display:flex;opacity:1;transform:scale(1) translateY(0);pointer-events:all;}',
@@ -1478,6 +1481,13 @@ function buildFrameApp(): string {
     '.lynx-msg a{color:inherit;text-decoration:underline;word-break:break-all;}',
     '.lynx-msg img.lynx-product-img{display:block;max-width:100%;border-radius:10px;margin-top:6px;}',
     '@media (max-width:480px){#lynx-widget-panel{bottom:0 !important;left:0 !important;right:0 !important;width:100vw !important;max-width:100vw !important;height:100% !important;height:100dvh !important;max-height:100% !important;max-height:100dvh !important;border-radius:0 !important;}#lynx-widget-messages{padding:12px 12px !important;}.lynx-msg{font-size:14px !important;max-width:86% !important;}#lynx-widget-input-row{padding:10px 10px calc(10px + env(safe-area-inset-bottom));}#lynx-widget-input-row textarea{font-size:16px !important;}}',
+    // Full-page mode (shared link): header + input span the full width; the
+    // message thread is centered with a comfortable reading width (like Violet).
+    '#lynx-widget-panel.lynx-full-mode #lynx-widget-messages{align-items:center;padding:24px 16px;}',
+    '#lynx-widget-panel.lynx-full-mode #lynx-widget-messages > *{max-width:760px;width:100%;}',
+    '#lynx-widget-panel.lynx-full-mode #lynx-widget-input-row{justify-content:center;}',
+    '#lynx-widget-panel.lynx-full-mode #lynx-widget-input-row-inner{max-width:760px;width:100%;display:flex;gap:8px;align-items:flex-end;margin:0 auto;}',
+    '#lynx-widget-panel.lynx-full-mode .lynx-msg{max-width:80%;}',
     '#lynx-widget-input{flex:1;border:1.5px solid #e5e7eb;border-radius:10px;padding:9px 12px;font-size:14px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;resize:none;max-height:100px;outline:none;transition:border-color 0.15s;background:#fff;color:#111827;}',
     '#lynx-widget-input:focus{border-color:#3b82f6;}',
     '#lynx-widget-send{width:36px;height:36px;border-radius:9px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity 0.15s,transform 0.15s;color:#fff;}',
@@ -1573,6 +1583,8 @@ function buildFrameApp(): string {
   var IS_FULL = _params.get('full') === '1';
   var closeBtn = document.getElementById('lynx-close-btn');
   if (IS_FULL && closeBtn) closeBtn.style.display = 'none';
+  if (IS_FULL && panel) panel.classList.add('lynx-full-mode');
+  if (IS_FULL && panel) panel.classList.add('lynx-full-mode');
   var botNameEl = document.getElementById('lynx-bot-name');
 
   // ── Apply config ───────────────────────────────────────────────────────────

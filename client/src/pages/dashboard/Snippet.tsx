@@ -105,7 +105,7 @@ export default function Snippet() {
   };
 
   // Shareable full-page chat link for this chatbot (support / social / "talk to us")
-  const shareLink = apiKey ? `${siteOrigin}/chat/${apiKey}` : "";
+  const shareLink = apiKey ? `${siteOrigin}/api/chat/${apiKey}` : "";
   const handleCopyLink = () => {
     if (!shareLink) return;
     navigator.clipboard.writeText(shareLink);
