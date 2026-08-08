@@ -80,7 +80,7 @@ export default function Snippet() {
 
   // Determine the current site origin for the widget URL
   // Prefer the server-configured canonical origin; fall back to the current URL
-  const siteOrigin = originData?.origin ?? window.location.origin;
+  const siteOrigin = originData?.origin ?? (typeof window !== "undefined" ? window.location.origin : "");
   const snippets = buildSnippets(apiKey ?? "YOUR_API_KEY", siteOrigin);
 
   const codeMap: Record<Tab, string> = {
