@@ -102,7 +102,7 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Left panel — branding */}
-      <div className="hidden lg:flex lg:w-1/2 lynx-gradient flex-col justify-between p-12 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 lynx-auth-gradient flex-col justify-between p-12 relative overflow-hidden">
         {/* Grid pattern (like the home page) */}
         <div
           className="absolute inset-0 opacity-[0.12]"

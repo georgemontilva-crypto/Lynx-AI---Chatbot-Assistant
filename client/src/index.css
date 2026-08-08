@@ -141,6 +141,14 @@
   .lynx-gradient {
     background: var(--lynx-gradient);
   }
+  /* Auth side panel: FIXED gradient — identical in light and dark mode, same
+     135° diagonal direction as the brand icon. Does not follow the theme. */
+  .lynx-auth-gradient {
+    background: linear-gradient(135deg, oklch(0.50 0.22 260), oklch(0.58 0.19 240), oklch(0.66 0.17 200));
+  }
+  .dark .lynx-auth-gradient {
+    background: linear-gradient(135deg, oklch(0.50 0.22 260), oklch(0.58 0.19 240), oklch(0.66 0.17 200));
+  }
   .lynx-glow {
     box-shadow: var(--lynx-glow);
   }
