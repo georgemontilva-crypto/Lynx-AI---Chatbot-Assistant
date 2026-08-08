@@ -357,19 +357,15 @@ export function registerWidgetRoutes(app: Express) {
 
       // Convert relative /manus-storage/... paths to absolute URLs so the widget
       // can load them from external sites (the relative path only works on lynxaiassistant.com).
-      const rawAvatarUrl = chatbot.avatarUrl ?? null;
-      let avatarUrl: string | null = null;
-      if (rawAvatarUrl) {
-        if (rawAvatarUrl.startsWith('http://') || rawAvatarUrl.startsWith('https://') || rawAvatarUrl.startsWith('data:')) {
-          // Absolute URL or inline data-URL: use as-is
-          avatarUrl = rawAvatarUrl;
-        } else {
-          // Build absolute URL from the request host
-          const host = req.headers['x-forwarded-host'] ?? req.headers.host ?? 'lynxaiassistant.com';
-          const protocol = (req.headers['x-forwarded-proto'] as string) ?? (req.secure ? 'https' : 'http');
-          avatarUrl = `${protocol}://${host}${rawAvatarUrl.startsWith('/') ? '' : '/'}${rawAvatarUrl}`;
-        }
-      }
+      const toAbsolute = (raw: string | null): string | null => {
+        if (!raw) return null;
+        if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw;
+        const host = req.headers['x-forwarded-host'] ?? req.headers.host ?? 'lynxaiassistant.com';
+        const protocol = (req.headers['x-forwarded-proto'] as string) ?? (req.secure ? 'https' : 'http');
+        return `${protocol}://${host}${raw.startsWith('/') ? '' : '/'}${raw}`;
+      };
+      const avatarUrl = toAbsolute(chatbot.avatarUrl ?? null);
+      const buttonIconUrl = toAbsolute((chatbot as { buttonIconUrl?: string | null }).buttonIconUrl ?? null);
 
       return res.json({
         name: chatbot.name ?? "Lynx AI",
@@ -381,8 +377,10 @@ export function registerWidgetRoutes(app: Express) {
         position: chatbot.position ?? "bottom-right",
         autoOpen: chatbot.autoOpen ?? false,
         autoOpenDelay: chatbot.autoOpenDelay ?? 5,
-        // White-Label custom icon — absolute URL so external sites can load it
+        // White-Label custom icon — absolute URL so external sites can load it.
+        // avatarUrl = header logo; buttonIconUrl = closed-bubble icon (optional).
         avatarUrl,
+        buttonIconUrl,
       });
     } catch (err) {
       console.error("[Widget] Config error:", err);
@@ -1431,6 +1429,10 @@ function buildFrameApp(): string {
   // ── Analytics tracking helper ──────────────────────────────────────────────
   // Generate or reuse a stable anonymous visitor ID for this browser
   var visitorId = (function() {
+    // Prefer the visitorId passed by the loader (first-party, stable across
+    // reloads even when third-party iframe storage is blocked).
+    var fromUrl = _params.get('vid');
+    if (fromUrl) return fromUrl;
     try {
       var stored = localStorage.getItem('_lynx_vid');
       if (stored) return stored;
@@ -1639,33 +1641,59 @@ function buildFrameApp(): string {
       config.autoOpenDelay = cfg.autoOpenDelay || 5;
     }
     // Custom avatar: swap button icon and header icon if avatarUrl is set
-    if (cfg.avatarUrl) {
-      config.avatarUrl = cfg.avatarUrl;
-      notifyParent('avatar', { url: cfg.avatarUrl });
-      // Floating button: show custom icon (fills circle), hide default SVG
+    // Button icon (closed bubble): use buttonIconUrl if set; otherwise keep the
+    // default dark generic icon.
+    if (cfg.buttonIconUrl) {
+      config.buttonIconUrl = cfg.buttonIconUrl;
+      notifyParent('avatar', { url: cfg.buttonIconUrl });
       var btnIcon = document.getElementById('lynx-btn-icon');
       var btnDefaultIcon = document.getElementById('lynx-btn-default-icon');
       if (btnIcon) {
-        btnIcon.setAttribute('src', cfg.avatarUrl);
+        btnIcon.setAttribute('src', cfg.buttonIconUrl);
         btnIcon.style.display = 'block';
       }
       if (btnDefaultIcon) btnDefaultIcon.style.display = 'none';
-      // Header avatar: show custom icon (fills circle), hide default SVG
+    } else {
+      config.buttonIconUrl = null;
+    }
+
+    // Header logo (open panel): use avatarUrl. When the name is empty, the logo
+    // already includes the brand name, so render it wider (full logo) and hide
+    // the separate name text.
+    if (cfg.avatarUrl) {
+      config.avatarUrl = cfg.avatarUrl;
       var headerIcon = document.getElementById('lynx-header-icon');
       var defaultIcon = document.getElementById('lynx-header-default-icon');
+      var nameEmpty = !cfg.name || !String(cfg.name).trim();
       if (headerIcon) {
         headerIcon.setAttribute('src', cfg.avatarUrl);
         headerIcon.style.display = 'block';
-        headerIcon.style.width = '100%';
-        headerIcon.style.height = '100%';
-        headerIcon.style.objectFit = 'cover';
-        headerIcon.style.borderRadius = '50%';
+        if (nameEmpty) {
+          // Full logo with name baked in — show it wide, not a cropped circle
+          headerIcon.style.width = 'auto';
+          headerIcon.style.height = '28px';
+          headerIcon.style.maxWidth = '150px';
+          headerIcon.style.objectFit = 'contain';
+          headerIcon.style.borderRadius = '0';
+          // widen its circular wrapper so the wide logo fits
+          var wrap = headerIcon.parentElement;
+          if (wrap) { wrap.style.width = 'auto'; wrap.style.borderRadius = '0'; wrap.style.background = 'transparent'; }
+          var nameEl = document.getElementById('lynx-bot-name');
+          if (nameEl) nameEl.style.display = 'none';
+        } else {
+          headerIcon.style.width = '100%';
+          headerIcon.style.height = '100%';
+          headerIcon.style.objectFit = 'cover';
+          headerIcon.style.borderRadius = '50%';
+          var nameEl2 = document.getElementById('lynx-bot-name');
+          if (nameEl2) nameEl2.style.display = '';
+        }
       }
       if (defaultIcon) defaultIcon.style.display = 'none';
     } else {
       config.avatarUrl = null;
     }
-    // Re-render the button icon to reflect the updated avatarUrl
+    // Re-render the button icon to reflect the updated config
     if (!isOpen) renderBtnIcon();
   }
 
@@ -1957,14 +1985,15 @@ function buildFrameApp(): string {
   }
 
   function renderBtnIcon() {
-    // Render the button icon based on current config.avatarUrl
-    if (config.avatarUrl) {
+    // Render the button icon based on config.buttonIconUrl (falls back to a
+    // generic dark chat bubble on a white circle).
+    if (config.buttonIconUrl) {
       btn.innerHTML = '<div id="lynx-btn-inner" style="width:100%;height:100%;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;">' +
-        '<img id="lynx-btn-icon" src="' + config.avatarUrl + '" alt="Chat" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />' +
+        '<img id="lynx-btn-icon" src="' + config.buttonIconUrl + '" alt="Chat" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />' +
         '</div>';
     } else {
       btn.innerHTML = '<div id="lynx-btn-inner" style="width:100%;height:100%;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;">' +
-        '<svg id="lynx-btn-default-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
+        '<svg id="lynx-btn-default-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1f2937" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
         '</div>';
     }
   }
@@ -2240,6 +2269,10 @@ const LOADER_SCRIPT = `
       if (_prefetchedCfg.secondaryColor) extra += '&sc=' + encodeURIComponent(_prefetchedCfg.secondaryColor);
       if (_prefetchedCfg.name) extra += '&nm=' + encodeURIComponent(_prefetchedCfg.name);
     }
+    // Pass the visitorId from the LOADER's localStorage (stable, first-party on
+    // the client's domain). Third-party iframes often can't persist their own
+    // localStorage (Safari/Brave), which would reset the conversation on reload.
+    if (_lynxVid) extra += '&vid=' + encodeURIComponent(_lynxVid);
     frame.src = BASE_URL + '/api/widget/frame?apiKey=' + encodeURIComponent(API_KEY) + '&base=' + encodeURIComponent(BASE_URL) + extra;
     document.body.appendChild(frame);
     return frame;
@@ -2270,7 +2303,7 @@ const LOADER_SCRIPT = `
       if (_brandAvatar) {
         btn.innerHTML = '<div style="width:100%;height:100%;background:#fff;border-radius:50%;overflow:hidden;"><img src="' + _brandAvatar + '" alt="Chat" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;" /></div>';
       } else {
-        btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:50%;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>';
+        btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:50%;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1f2937" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>';
       }
     }
   }
@@ -2285,14 +2318,14 @@ const LOADER_SCRIPT = `
       var inner = btn.querySelector('div');
       if (inner && !isOpen) inner.style.background = '#fff';
     }
-    if (cfg.avatarUrl) {
-      _brandAvatar = cfg.avatarUrl;
+    if (cfg.buttonIconUrl) {
+      _brandAvatar = cfg.buttonIconUrl;
       var img = document.getElementById('lynx-loader-avatar');
       var di = document.getElementById('lynx-loader-deficon');
       if (img) {
         var pre = new Image();
-        pre.onload = function() { img.src = cfg.avatarUrl; img.style.display = 'block'; if (di) di.style.display = 'none'; };
-        pre.src = cfg.avatarUrl;
+        pre.onload = function() { img.src = cfg.buttonIconUrl; img.style.display = 'block'; if (di) di.style.display = 'none'; };
+        pre.src = cfg.buttonIconUrl;
       }
     }
   }

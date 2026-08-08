@@ -180,6 +180,8 @@ export const appRouter = router({
         isActive: z.boolean().optional(),
         // White-Label only: custom avatar/icon URL (can be a relative /manus-storage/... path)
         avatarUrl: z.string().nullable().optional(),
+        // White-Label only: separate icon for the closed floating button (optional)
+        buttonIconUrl: z.string().nullable().optional(),
         // Small legal/branding text shown under the chat input (e.g. "For educational purposes only")
         disclaimer: z.string().max(300).nullable().optional(),
       }))
@@ -1209,10 +1211,14 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
       .input(z.object({
         topic: z.string().min(3).max(200),
         tone: z.enum(["professional", "friendly", "persuasive"]).default("friendly"),
-        language: z.enum(["es", "en"]).default("es"),
+        language: z.enum(["es", "en", "pt", "fr", "de", "it"]).default("es"),
       }))
       .mutation(async ({ input }) => {
-        const langName = input.language === "es" ? "Spanish" : "English";
+        const langNames: Record<string, string> = {
+          es: "Spanish", en: "English", pt: "Portuguese",
+          fr: "French", de: "German", it: "Italian",
+        };
+        const langName = langNames[input.language] ?? "Spanish";
         const toneDesc = input.tone === "professional" ? "professional and authoritative"
           : input.tone === "persuasive" ? "persuasive and sales-oriented, guiding the reader toward trying Lynx AI"
           : "warm, friendly and approachable";
@@ -1283,6 +1289,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         author: z.string().max(100).optional(),
         readingTimeMinutes: z.number().optional(),
         status: z.enum(["draft", "published"]).default("draft"),
+        coverImageUrl: z.string().max(1024).optional(),
       }))
       .mutation(async ({ input }) => {
         const slug = input.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
@@ -1307,6 +1314,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         author: z.string().max(100).optional(),
         readingTimeMinutes: z.number().optional(),
         status: z.enum(["draft", "published"]).optional(),
+        coverImageUrl: z.string().max(1024).optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, tags, status, ...rest } = input;

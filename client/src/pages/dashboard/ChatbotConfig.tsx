@@ -29,12 +29,14 @@ const DEFAULT_CONFIG = {
   language: "en",
   isActive: true,
   avatarUrl: null as string | null,
+  buttonIconUrl: null as string | null,
 };
 
 export default function ChatbotConfig() {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [isDirty, setIsDirty] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingButton, setUploadingButton] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { customBranding } = usePlanFeatures();
@@ -70,6 +72,7 @@ export default function ChatbotConfig() {
         language: existing.language ?? DEFAULT_CONFIG.language,
         isActive: existing.isActive ?? DEFAULT_CONFIG.isActive,
         avatarUrl: existing.avatarUrl ?? null,
+        buttonIconUrl: (existing as { buttonIconUrl?: string | null }).buttonIconUrl ?? null,
       });
     }
   }, [existing]);
@@ -93,6 +96,7 @@ export default function ChatbotConfig() {
       language: config.language,
       isActive: config.isActive,
       avatarUrl: config.avatarUrl,
+      buttonIconUrl: config.buttonIconUrl,
     });
   };
 
@@ -113,6 +117,26 @@ export default function ChatbotConfig() {
     } finally {
       setUploadingAvatar(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleButtonIconUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingButton(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json() as { url: string };
+      update("buttonIconUrl", data.url);
+      toast.success("Button icon uploaded");
+    } catch {
+      toast.error("Upload failed. Please try again.");
+    } finally {
+      setUploadingButton(false);
+      e.currentTarget.value = "";
     }
   }
 
@@ -229,13 +253,13 @@ export default function ChatbotConfig() {
                 {customBranding ? (
                   <div className="space-y-2 pt-2 border-t border-border/30">
                     <div className="flex items-center gap-2">
-                      <Label className="text-xs">Custom chatbot icon</Label>
+                      <Label className="text-xs">Header logo</Label>
                       <Badge variant="outline" className="text-emerald-400 border-emerald-400/40 bg-emerald-400/10 text-[10px] px-1.5 py-0 h-4">
                         <Crown className="w-2.5 h-2.5 mr-1" />White-Label
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Upload your own icon to replace the Lynx AI logo in the chat button and header. Recommended: square PNG, 64×64 px or larger.
+                      Logo shown at the top of the open chat, next to the name. Tip: leave the "Chatbot name" field empty to show a full logo (with the name built in), like the menu logo.
                     </p>
                     <div className="flex items-center gap-3">
                       {/* Current icon preview — circular, fills the space */}
@@ -274,6 +298,46 @@ export default function ChatbotConfig() {
                         {config.avatarUrl && (
                           <p className="text-xs text-muted-foreground truncate max-w-[220px]">{config.avatarUrl}</p>
                         )}
+                      </div>
+                    </div>
+
+                    {/* Button icon — the closed floating bubble */}
+                    <div className="pt-3 mt-1 border-t border-border/20">
+                      <Label className="text-xs">Button icon (closed bubble)</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5 mb-2">
+                        Icon on the floating button when the chat is closed. Leave empty to use the default dark chat icon.
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <div className="w-14 h-14 rounded-full border border-border/40 bg-neutral-900 flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {config.buttonIconUrl ? (
+                            <img src={config.buttonIconUrl} alt="Button icon" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                          ) : (
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e5e7eb" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <label className="cursor-pointer">
+                            <div className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border/40 bg-muted/30 text-sm font-medium transition-colors hover:bg-muted/60 ${uploadingButton ? "opacity-50 pointer-events-none" : ""}`}>
+                              {uploadingButton ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                              {uploadingButton ? "Uploading…" : "Upload image"}
+                            </div>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleButtonIconUpload}
+                              disabled={uploadingButton}
+                            />
+                          </label>
+                          {config.buttonIconUrl && (
+                            <button
+                              onClick={() => update("buttonIconUrl", null)}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border/40 bg-muted/30 text-sm text-muted-foreground transition-colors hover:text-destructive hover:border-destructive/40"
+                            >
+                              <X className="w-3.5 h-3.5" />Remove
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
