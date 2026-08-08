@@ -1584,8 +1584,11 @@ function buildFrameApp(): string {
   var IS_FULL = _params.get('full') === '1';
   var closeBtn = document.getElementById('lynx-close-btn');
   if (IS_FULL && closeBtn) closeBtn.style.display = 'none';
-  if (IS_FULL && panel) panel.classList.add('lynx-full-mode');
-  if (IS_FULL && panel) panel.classList.add('lynx-full-mode');
+  if (IS_FULL && panel) {
+    panel.classList.add('lynx-full-mode');
+    // Force the panel to fill the frame regardless of base widget styles.
+    panel.style.cssText += ';position:absolute !important;inset:0 !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;width:100% !important;height:100% !important;max-width:100% !important;max-height:100% !important;border-radius:0 !important;box-shadow:none !important;display:flex !important;flex-direction:column !important;opacity:1 !important;transform:none !important;pointer-events:auto !important;';
+  }
   var botNameEl = document.getElementById('lynx-bot-name');
 
   // ── Apply config ───────────────────────────────────────────────────────────
