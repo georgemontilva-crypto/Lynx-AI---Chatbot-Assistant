@@ -2173,9 +2173,17 @@ const LOADER_SCRIPT = `
     btn.classList.remove('hidden-mobile');
     setBtnIcon(false);
   }
+  var _brandAvatar = '';
   function setBtnIcon(open) {
     if (open) {
       btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#111;border-radius:50%;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>';
+    } else {
+      // Restore the default chat icon (or the brand avatar if we have one)
+      if (_brandAvatar) {
+        btn.innerHTML = '<div style="width:100%;height:100%;background:#fff;border-radius:50%;overflow:hidden;"><img src="' + _brandAvatar + '" alt="Chat" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;" /></div>';
+      } else {
+        btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:50%;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>';
+      }
     }
   }
 
@@ -2190,6 +2198,7 @@ const LOADER_SCRIPT = `
       if (inner && !isOpen) inner.style.background = '#fff';
     }
     if (cfg.avatarUrl) {
+      _brandAvatar = cfg.avatarUrl;
       var img = document.getElementById('lynx-loader-avatar');
       var di = document.getElementById('lynx-loader-deficon');
       if (img) {
@@ -2213,6 +2222,7 @@ const LOADER_SCRIPT = `
     if (!d || !d.__lynx) return;
     if (d.type === 'close') closeChat();
     if (d.type === 'avatar' && d.url) {
+      _brandAvatar = d.url;
       var img = document.getElementById('lynx-loader-avatar');
       var di = document.getElementById('lynx-loader-deficon');
       if (img && d.url) { img.src = d.url; img.style.display = 'block'; if (di) di.style.display = 'none'; }
