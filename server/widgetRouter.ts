@@ -360,7 +360,8 @@ export function registerWidgetRoutes(app: Express) {
       const rawAvatarUrl = chatbot.avatarUrl ?? null;
       let avatarUrl: string | null = null;
       if (rawAvatarUrl) {
-        if (rawAvatarUrl.startsWith('http://') || rawAvatarUrl.startsWith('https://')) {
+        if (rawAvatarUrl.startsWith('http://') || rawAvatarUrl.startsWith('https://') || rawAvatarUrl.startsWith('data:')) {
+          // Absolute URL or inline data-URL: use as-is
           avatarUrl = rawAvatarUrl;
         } else {
           // Build absolute URL from the request host
@@ -1283,6 +1284,8 @@ function buildFrameHtml(): string {
 <style>
   html,body{margin:0;padding:0;height:100%;width:100%;background:transparent;overflow:hidden;}
   *{box-sizing:border-box;}
+  #lynx-widget-panel{opacity:0;transition:opacity 0.2s ease;}
+  #lynx-widget-panel.lynx-ready{opacity:1;}
 </style>
 </head>
 <body>
@@ -1334,9 +1337,9 @@ function buildFrameApp(): string {
 
   // ── State ──────────────────────────────────────────────────────────────────
   var config = {
-    name: 'Lynx AI',
-    primaryColor: '#3b82f6',
-    secondaryColor: '#1e40af',
+    name: _params.get('nm') || 'Lynx AI',
+    primaryColor: _params.get('pc') || '#111827',
+    secondaryColor: _params.get('sc') || '#374151',
     welcomeMessage: 'Hi! How can I help you today?',
     placeholder: 'Type your question...',
     position: POSITION,
@@ -1659,6 +1662,7 @@ function buildFrameApp(): string {
         if (cfg) {
           applyConfig(cfg);
           configLoaded = true;
+          if (panel) panel.classList.add('lynx-ready');
           // Restore previous conversation (same visitor, active window) — then
           // fall back to the welcome message for brand-new visitors.
           fetch(BASE_URL + '/api/widget/history?apiKey=' + encodeURIComponent(API_KEY) + '&visitorId=' + encodeURIComponent(visitorId))
@@ -2064,6 +2068,8 @@ function buildFrameApp(): string {
     openPanel();
     // Tell the parent we're ready (so it can show the iframe)
     notifyParent('ready');
+    // Safety: reveal even if config is slow/fails
+    setTimeout(function(){ if (panel) panel.classList.add('lynx-ready'); }, 1000);
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initFrame);
@@ -2140,7 +2146,13 @@ const LOADER_SCRIPT = `
     frame.id = 'lynx-loader-frame';
     frame.setAttribute('title', 'Chat');
     frame.setAttribute('allow', 'clipboard-write');
-    frame.src = BASE_URL + '/api/widget/frame?apiKey=' + encodeURIComponent(API_KEY) + '&base=' + encodeURIComponent(BASE_URL);
+    var extra = '';
+    if (_prefetchedCfg) {
+      if (_prefetchedCfg.primaryColor) extra += '&pc=' + encodeURIComponent(_prefetchedCfg.primaryColor);
+      if (_prefetchedCfg.secondaryColor) extra += '&sc=' + encodeURIComponent(_prefetchedCfg.secondaryColor);
+      if (_prefetchedCfg.name) extra += '&nm=' + encodeURIComponent(_prefetchedCfg.name);
+    }
+    frame.src = BASE_URL + '/api/widget/frame?apiKey=' + encodeURIComponent(API_KEY) + '&base=' + encodeURIComponent(BASE_URL) + extra;
     document.body.appendChild(frame);
     return frame;
   }
@@ -2168,6 +2180,32 @@ const LOADER_SCRIPT = `
   }
 
   btn.addEventListener('click', function() { isOpen ? closeChat() : openChat(); });
+
+  // ── Prefetch config so the button shows the brand instantly (no flash), and
+  // warm up the iframe in the background so the chat opens instantly. ──
+  function applyBrandToButton(cfg) {
+    if (!cfg) return;
+    if (cfg.primaryColor) {
+      var inner = btn.querySelector('div');
+      if (inner && !isOpen) inner.style.background = '#fff';
+    }
+    if (cfg.avatarUrl) {
+      var img = document.getElementById('lynx-loader-avatar');
+      var di = document.getElementById('lynx-loader-deficon');
+      if (img) {
+        var pre = new Image();
+        pre.onload = function() { img.src = cfg.avatarUrl; img.style.display = 'block'; if (di) di.style.display = 'none'; };
+        pre.src = cfg.avatarUrl;
+      }
+    }
+  }
+  var _prefetchedCfg = null;
+  try {
+    fetch(BASE_URL + '/api/widget/config?apiKey=' + encodeURIComponent(API_KEY))
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(cfg){ _prefetchedCfg = cfg; applyBrandToButton(cfg); ensureFrame(); })
+      .catch(function(){ ensureFrame(); });
+  } catch(e){ ensureFrame(); }
 
   // ── Messages from the iframe ──
   window.addEventListener('message', function(e) {
