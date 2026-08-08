@@ -43,6 +43,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [featureIdx, setFeatureIdx] = useState(0);
+  const { data: siteSettings } = trpc.siteSettings.get.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const authGradient = siteSettings?.authGradient || "";
 
   // Rotate through Lynx features with a smooth fade
   useEffect(() => {
@@ -102,7 +107,10 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Left panel — branding */}
-      <div className="hidden lg:flex lg:w-1/2 lynx-auth-gradient flex-col justify-between p-12 relative overflow-hidden">
+      <div
+        className="hidden lg:flex lg:w-1/2 lynx-auth-gradient flex-col justify-between p-12 relative overflow-hidden"
+        style={authGradient ? { background: authGradient } : undefined}
+      >
         {/* Grid pattern (like the home page) */}
         <div
           className="absolute inset-0 opacity-[0.12]"

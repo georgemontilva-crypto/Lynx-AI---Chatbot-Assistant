@@ -41,6 +41,11 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { data: siteSettings } = trpc.siteSettings.get.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const authGradient = siteSettings?.authGradient || "";
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -102,7 +107,10 @@ export default function Register() {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Left panel — branding */}
-      <div className="hidden lg:flex lg:w-1/2 lynx-auth-gradient flex-col justify-between p-12 relative overflow-hidden">
+      <div
+        className="hidden lg:flex lg:w-1/2 lynx-auth-gradient flex-col justify-between p-12 relative overflow-hidden"
+        style={authGradient ? { background: authGradient } : undefined}
+      >
         <div
           className="absolute inset-0 opacity-[0.12]"
           style={{
