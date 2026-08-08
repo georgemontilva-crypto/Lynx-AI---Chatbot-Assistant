@@ -12,8 +12,13 @@ export function useAuth(options?: UseAuthOptions) {
   const utils = trpc.useUtils();
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
-    retry: false,
+    // Retry transient failures so a momentary network/500 hiccup doesn't flip
+    // the user to "not authenticated" and bounce them back to /login (the login
+    // loop). Only a real 401 (null user) means logged out.
+    retry: 2,
+    retryDelay: 500,
     refetchOnWindowFocus: false,
+    staleTime: 60_000,
   });
 
   const logoutMutation = trpc.auth.logout.useMutation({
@@ -42,9 +47,15 @@ export function useAuth(options?: UseAuthOptions) {
   }, [logoutMutation, utils]);
 
   const state = useMemo(() => {
+    // Treat the very first load (including retries) as "loading" so we never
+    // flash the unauthenticated screen — and never bounce to /login — while the
+    // session check is still in flight. Only a settled null user = logged out.
+    const stillCheckingSession =
+      meQuery.isLoading ||
+      (meQuery.isFetching && meQuery.data === undefined && !meQuery.isError);
     return {
       user: meQuery.data ?? null,
-      loading: meQuery.isLoading || logoutMutation.isPending,
+      loading: stillCheckingSession || logoutMutation.isPending,
       error: meQuery.error ?? logoutMutation.error ?? null,
       isAuthenticated: Boolean(meQuery.data),
     };
@@ -52,6 +63,8 @@ export function useAuth(options?: UseAuthOptions) {
     meQuery.data,
     meQuery.error,
     meQuery.isLoading,
+    meQuery.isFetching,
+    meQuery.isError,
     logoutMutation.error,
     logoutMutation.isPending,
   ]);
