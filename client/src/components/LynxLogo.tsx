@@ -32,7 +32,14 @@ export function LynxLogo({
     refetchOnWindowFocus: false,
   });
 
-  const custom = slot === "footer" ? settings?.footerLogoUrl : settings?.menuLogoUrl;
+  // Custom uploaded logos: pick the light/dark version.
+  // - onDark panels always sit on a dark background → use the dark-mode logo.
+  // - otherwise follow the active theme.
+  const wantDark = onDark || theme === "dark";
+  const customMenu = wantDark ? settings?.menuLogoDarkUrl : settings?.menuLogoLightUrl;
+  const customFooter = wantDark ? settings?.footerLogoDarkUrl : settings?.footerLogoLightUrl;
+  const custom = slot === "footer" ? customFooter : customMenu;
+
   // "lynx-logo-light.png" is the dark-colored logo (for LIGHT backgrounds).
   // "lynx-logo-dark.png" is the light/white logo (for DARK backgrounds).
   const src = custom

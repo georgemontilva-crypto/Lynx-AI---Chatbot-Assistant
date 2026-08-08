@@ -96,8 +96,10 @@ export const appRouter = router({
       const db = await getDb();
       const defaults = {
         faviconUrl: "",
-        menuLogoUrl: "",
-        footerLogoUrl: "",
+        menuLogoLightUrl: "",
+        menuLogoDarkUrl: "",
+        footerLogoLightUrl: "",
+        footerLogoDarkUrl: "",
         authGradient: "",
       };
       if (!db) return defaults;
@@ -114,8 +116,10 @@ export const appRouter = router({
     save: adminProcedure
       .input(z.object({
         faviconUrl: z.string().max(1024).optional(),
-        menuLogoUrl: z.string().max(1024).optional(),
-        footerLogoUrl: z.string().max(1024).optional(),
+        menuLogoLightUrl: z.string().max(1024).optional(),
+        menuLogoDarkUrl: z.string().max(1024).optional(),
+        footerLogoLightUrl: z.string().max(1024).optional(),
+        footerLogoDarkUrl: z.string().max(1024).optional(),
         authGradient: z.string().max(512).optional(),
       }))
       .mutation(async ({ input }) => {
