@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Mail } from "lucide-react";
+import { LynxLogo } from "@/components/LynxLogo";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -47,16 +48,7 @@ export default function ForgotPassword() {
       <div className="w-full max-w-sm">
         <div className="mb-8">
           <Link href="/" className="inline-block mb-6">
-            <img
-              src="/brand/lynx-logo-light.png"
-              alt="Lynx AI"
-              className="h-8 w-auto object-contain dark:hidden"
-            />
-            <img
-              src="/brand/lynx-logo-dark.png"
-              alt="Lynx AI"
-              className="h-8 w-auto object-contain hidden dark:block"
-            />
+            <LynxLogo className="h-8 w-auto object-contain" />
           </Link>
 
           {sent ? (

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Loader2, Check, ArrowLeft } from "lucide-react";
+import { LynxLogo } from "@/components/LynxLogo";
 
 function PasswordStrength({ password }: { password: string }) {
   const checks = [
@@ -85,16 +86,7 @@ export default function ResetPassword() {
       <div className="w-full max-w-sm">
         <div className="mb-8">
           <Link href="/" className="inline-block mb-6">
-            <img
-              src="/brand/lynx-logo-light.png"
-              alt="Lynx AI"
-              className="h-8 w-auto object-contain dark:hidden"
-            />
-            <img
-              src="/brand/lynx-logo-dark.png"
-              alt="Lynx AI"
-              className="h-8 w-auto object-contain hidden dark:block"
-            />
+            <LynxLogo className="h-8 w-auto object-contain" />
           </Link>
 
           {done ? (

@@ -4,6 +4,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Moon, Sun, Menu, X } from "lucide-react";
+import { LynxLogo } from "@/components/LynxLogo";
 
 // Helper: navigate to a hash section — works from any page
 function useAnchorNav() {
@@ -72,11 +73,7 @@ export default function Navbar() {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
-              <img
-                src={theme === "dark" ? "/brand/lynx-logo-dark.png" : "/brand/lynx-logo-light.png"}
-                alt="Lynx AI"
-                className="h-9 w-auto object-contain"
-              />
+              <LynxLogo className="h-9 w-auto object-contain" />
             </motion.div>
           </Link>
 

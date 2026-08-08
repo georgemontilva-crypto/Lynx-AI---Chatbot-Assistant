@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { usePlanFeatures } from "@/hooks/usePlanFeatures";
+import { LynxLogo } from "@/components/LynxLogo";
 
 // ─── Nav item definition ──────────────────────────────────────────────────────
 
@@ -228,11 +229,7 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
       <div className="px-4 py-5 border-b border-border/40">
         <Link href="/">
           <div className="cursor-pointer">
-            <img
-              src={theme === "dark" ? "/brand/lynx-logo-dark.png" : "/brand/lynx-logo-light.png"}
-              alt="Lynx AI"
-              className="h-8 w-auto object-contain"
-            />
+            <LynxLogo className="h-8 w-auto object-contain" />
           </div>
         </Link>
       </div>

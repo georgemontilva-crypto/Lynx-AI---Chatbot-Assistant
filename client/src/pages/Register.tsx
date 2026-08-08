@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Loader2, Check } from "lucide-react";
+import { LynxLogo } from "@/components/LynxLogo";
 
 function PasswordStrength({ password }: { password: string }) {
   const checks = [
@@ -101,22 +102,20 @@ export default function Register() {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Left panel — branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 to-blue-900 flex-col justify-between p-12 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 lynx-gradient flex-col justify-between p-12 relative overflow-hidden">
         <div
-          className="absolute inset-0 opacity-10"
+          className="absolute inset-0 opacity-[0.12]"
           style={{
             backgroundImage:
-              "radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)",
-            backgroundSize: "60px 60px",
+              "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
+            backgroundSize: "44px 44px",
           }}
         />
+        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute -bottom-32 -left-16 w-80 h-80 rounded-full bg-white/5 blur-3xl" />
         <div className="relative z-10">
           <Link href="/">
-            <img
-              src="/brand/lynx-logo-dark.png"
-              alt="Lynx AI"
-              className="h-9 w-auto object-contain"
-            />
+            <LynxLogo onDark className="h-9 w-auto object-contain" />
           </Link>
         </div>
         <div className="relative z-10 space-y-6">
@@ -157,16 +156,7 @@ export default function Register() {
         {/* Mobile logo */}
         <div className="lg:hidden mb-8">
           <Link href="/">
-            <img
-              src="/brand/lynx-logo-light.png"
-              alt="Lynx AI"
-              className="h-8 w-auto object-contain dark:hidden"
-            />
-            <img
-              src="/brand/lynx-logo-dark.png"
-              alt="Lynx AI"
-              className="h-8 w-auto object-contain hidden dark:block"
-            />
+            <LynxLogo className="h-8 w-auto object-contain" />
           </Link>
         </div>
 

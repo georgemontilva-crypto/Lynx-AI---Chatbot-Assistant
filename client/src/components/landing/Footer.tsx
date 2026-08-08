@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { Twitter, Github, Linkedin, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import { LynxLogo } from "@/components/LynxLogo";
 
 const faqs = [
   {
@@ -116,16 +117,7 @@ export default function Footer() {
             {/* Brand */}
             <div className="col-span-2 md:col-span-1">
               <div className="mb-4">
-                <img
-                  src="/brand/lynx-logo-light.png"
-                  alt="Lynx AI"
-                  className="h-8 w-auto object-contain dark:hidden"
-                />
-                <img
-                  src="/brand/lynx-logo-dark.png"
-                  alt="Lynx AI"
-                  className="h-8 w-auto object-contain hidden dark:block"
-                />
+                <LynxLogo className="h-8 w-auto object-contain" />
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed mb-4">
                 The intelligent chatbot that truly knows your website.

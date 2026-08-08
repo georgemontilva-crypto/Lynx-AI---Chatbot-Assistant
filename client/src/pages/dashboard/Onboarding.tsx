@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useTheme } from "@/contexts/ThemeContext";
+import { LynxLogo } from "@/components/LynxLogo";
 import {
   Globe,
   Code2,
@@ -152,13 +153,7 @@ export default function Onboarding() {
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
       {/* Logo */}
       <div className="mb-8">
-        <img
-          src={theme === "dark"
-            ? "/brand/lynx-logo-dark.png"
-            : "/brand/lynx-logo-light.png"}
-          alt="Lynx AI"
-          className="h-9 object-contain"
-        />
+        <LynxLogo className="h-9 object-contain" />
       </div>
 
       {/* Progress stepper */}
