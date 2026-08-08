@@ -2143,7 +2143,8 @@ function buildFrameApp(): string {
   // ── In-frame: load config immediately and open the panel ──────────────────
   function initFrame() {
     loadConfig();
-    trackEvent('page_view');
+    // NOTE: page_view is tracked by the loader on every page load (site-wide),
+    // not here — opening the chat would otherwise double-count.
     openPanel();
     // Tell the parent we're ready (so it can show the iframe)
     notifyParent('ready');
@@ -2294,6 +2295,42 @@ const LOADER_SCRIPT = `
       .then(function(cfg){ _prefetchedCfg = cfg; applyBrandToButton(cfg); ensureFrame(); })
       .catch(function(){ ensureFrame(); });
   } catch(e){ ensureFrame(); }
+
+  // ── Site analytics: record a page_view on EVERY page load (whether or not the
+  // visitor opens the chat), so the dashboard reflects real website traffic and
+  // most-visited pages — not just chat interactions. ──
+  var _lynxVid = (function() {
+    try {
+      var k = '_lynx_vid';
+      var v = localStorage.getItem(k);
+      if (!v) { v = 'v_' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(k, v); }
+      return v;
+    } catch(e) { return 'v_' + Math.random().toString(36).slice(2); }
+  })();
+  function trackSite(eventType, extra) {
+    try {
+      var body = { apiKey: API_KEY, eventType: eventType, pageUrl: window.location.href, visitorId: _lynxVid };
+      if (extra) body.metadata = extra;
+      fetch(BASE_URL + '/api/widget/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        keepalive: true
+      }).catch(function(){});
+    } catch(e){}
+  }
+  // Fire the page_view now (page already loading/loaded when script runs)
+  trackSite('page_view');
+  // Track SPA navigations too (sites that change URL without full reload)
+  (function() {
+    var _lastUrl = window.location.href;
+    function checkUrl() {
+      if (window.location.href !== _lastUrl) { _lastUrl = window.location.href; trackSite('page_view'); }
+    }
+    var _ps = history.pushState;
+    history.pushState = function() { _ps.apply(this, arguments); setTimeout(checkUrl, 0); };
+    window.addEventListener('popstate', checkUrl);
+  })();
 
   // ── Messages from the iframe ──
   window.addEventListener('message', function(e) {
