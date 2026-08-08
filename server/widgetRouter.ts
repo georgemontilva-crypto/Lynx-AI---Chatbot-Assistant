@@ -1483,6 +1483,7 @@ function buildFrameApp(): string {
     '@media (max-width:480px){#lynx-widget-panel{bottom:0 !important;left:0 !important;right:0 !important;width:100vw !important;max-width:100vw !important;height:100% !important;height:100dvh !important;max-height:100% !important;max-height:100dvh !important;border-radius:0 !important;}#lynx-widget-messages{padding:12px 12px !important;}.lynx-msg{font-size:14px !important;max-width:86% !important;}#lynx-widget-input-row{padding:10px 10px calc(10px + env(safe-area-inset-bottom));}#lynx-widget-input-row textarea{font-size:16px !important;}}',
     // Full-page mode (shared link): header + input span the full width; the
     // message thread is centered with a comfortable reading width (like Violet).
+    '#lynx-widget-panel.lynx-full-mode{position:absolute !important;inset:0 !important;width:100% !important;height:100% !important;max-width:100% !important;max-height:100% !important;border-radius:0 !important;}',
     '#lynx-widget-panel.lynx-full-mode #lynx-widget-messages{align-items:center;padding:24px 16px;}',
     '#lynx-widget-panel.lynx-full-mode #lynx-widget-messages > *{max-width:760px;width:100%;}',
     '#lynx-widget-panel.lynx-full-mode #lynx-widget-input-row{justify-content:center;}',
