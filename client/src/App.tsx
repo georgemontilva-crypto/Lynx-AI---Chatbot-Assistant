@@ -88,13 +88,18 @@ function DynamicFavicon() {
   useEffect(() => {
     const url = data?.faviconUrl;
     if (!url || typeof document === "undefined") return;
-    let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    if (!link) {
-      link = document.createElement("link");
-      link.rel = "icon";
-      document.head.appendChild(link);
-    }
-    link.href = url;
+    // Remove ALL existing icon links (index.html ships two: 16x16 and 32x32),
+    // otherwise the browser may keep using one of the old ones.
+    const existing = document.querySelectorAll<HTMLLinkElement>(
+      'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]'
+    );
+    existing.forEach((el) => el.parentNode?.removeChild(el));
+    // Add a single fresh icon link. A cache-busting query helps the browser
+    // pick up the change without a hard refresh.
+    const link = document.createElement("link");
+    link.rel = "icon";
+    link.href = url + (url.includes("?") ? "&" : "?") + "v=" + Date.now();
+    document.head.appendChild(link);
   }, [data?.faviconUrl]);
   return null;
 }
