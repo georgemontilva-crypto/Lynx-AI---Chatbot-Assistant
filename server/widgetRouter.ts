@@ -368,7 +368,10 @@ export function registerWidgetRoutes(app: Express) {
       const buttonIconUrl = toAbsolute((chatbot as { buttonIconUrl?: string | null }).buttonIconUrl ?? null);
 
       return res.json({
-        name: chatbot.name ?? "Lynx AI",
+        // Send the name as-is. An empty string means "no name" → the widget
+        // shows the full logo instead of icon+name. Only null (never set) falls
+        // back to the default.
+        name: chatbot.name === null || chatbot.name === undefined ? "Lynx AI" : chatbot.name,
         primaryColor: chatbot.primaryColor ?? "#3b82f6",
         secondaryColor: chatbot.secondaryColor ?? "#1e40af",
         welcomeMessage: chatbot.welcomeMessage ?? "Hi! How can I help you today?",
@@ -1603,11 +1606,17 @@ function buildFrameApp(): string {
 
   // ── Apply config ───────────────────────────────────────────────────────────
   function applyConfig(cfg) {
-    if (cfg.name) {
-      config.name = cfg.name;
+    // Name: handle empty explicitly. Empty/whitespace name → hide the name text
+    // (the header logo, if any, carries the brand). Non-empty → show it.
+    if (cfg.name !== undefined) {
+      var trimmedName = (cfg.name || '').trim();
+      config.name = trimmedName;
       var botNameEl2 = document.getElementById('lynx-bot-name');
-      if (botNameEl2) botNameEl2.textContent = cfg.name;
-      btn.setAttribute('aria-label', 'Chat with ' + cfg.name);
+      if (botNameEl2) {
+        botNameEl2.textContent = trimmedName;
+        botNameEl2.style.display = trimmedName ? '' : 'none';
+      }
+      btn.setAttribute('aria-label', trimmedName ? ('Chat with ' + trimmedName) : 'Open chat');
     }
     if (cfg.primaryColor) {
       config.primaryColor = cfg.primaryColor;
