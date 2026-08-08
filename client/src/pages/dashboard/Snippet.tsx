@@ -67,6 +67,7 @@ add_action('wp_footer', 'lynxai_widget');
 export default function Snippet() {
   const [copied, setCopied] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("html");
 
   const { data: chatbot, isLoading } = trpc.chatbotConfig.get.useQuery();
@@ -101,6 +102,16 @@ export default function Snippet() {
     setCopiedKey(true);
     toast.success("API key copied");
     setTimeout(() => setCopiedKey(false), 2000);
+  };
+
+  // Shareable full-page chat link for this chatbot (support / social / "talk to us")
+  const shareLink = apiKey ? `${siteOrigin}/chat/${apiKey}` : "";
+  const handleCopyLink = () => {
+    if (!shareLink) return;
+    navigator.clipboard.writeText(shareLink);
+    setCopiedLink(true);
+    toast.success("Chat link copied");
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   return (
@@ -140,6 +151,41 @@ export default function Snippet() {
                   <code className="text-xs font-mono text-primary flex-1 truncate">{apiKey}</code>
                   <button onClick={handleCopyKey} className="text-muted-foreground hover:text-foreground transition-colors ml-2 shrink-0">
                     {copiedKey ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Shareable chat link — full-page chat for support / social / "talk to us" */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.05 }}>
+          <Card className="glass-card border-border/40">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-xl lynx-gradient flex items-center justify-center">
+                  <ExternalLink className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <div className="font-semibold text-sm">Shareable chat link</div>
+                  <div className="text-xs text-muted-foreground">A full-page chat you can send to clients, add to your social bio, or use as a "Talk to us" button — no installation needed.</div>
+                </div>
+              </div>
+              {isLoading ? (
+                <Skeleton className="h-10 w-full rounded-xl" />
+              ) : !apiKey ? (
+                <div className="flex items-center gap-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3">
+                  <RefreshCw className="w-4 h-4 text-yellow-400 shrink-0" />
+                  <p className="text-xs text-yellow-400">Configure your chatbot first to generate your shareable link.</p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 bg-muted/30 rounded-xl px-4 py-3 border border-border/40">
+                  <code className="text-xs font-mono text-primary flex-1 truncate">{shareLink}</code>
+                  <a href={shareLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors shrink-0" title="Open chat">
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <button onClick={handleCopyLink} className="text-muted-foreground hover:text-foreground transition-colors ml-1 shrink-0" title="Copy link">
+                    {copiedLink ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               )}

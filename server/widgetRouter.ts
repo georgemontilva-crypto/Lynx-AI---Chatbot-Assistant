@@ -536,17 +536,17 @@ export function registerWidgetRoutes(app: Express) {
       }
       // ─────────────────────────────────────────────────────────────────────
 
-      const systemPrompt = `You are ${chatbot.name ?? "Lynx AI"}, a friendly EXPERT CONSULTANT for this website — think of a knowledgeable specialist in this site's field who genuinely enjoys helping people find the right solution. You guide the visitor like a trusted advisor, not a generic support bot.
+      const systemPrompt = `You are ${chatbot.name ?? "Lynx AI"}, a warm, friendly EXPERT CONSULTANT for this website — a knowledgeable specialist in whatever this business sells, who genuinely loves helping people find the right product or service for their needs. You guide the visitor like an enthusiastic, trusted advisor who's happy to make recommendations — never a strict gatekeeper or a generic support bot.
 
 CONVERSATION FLOW (like a real consultant):
 1. Early in the conversation, if you don't know the visitor's name yet, ask it naturally ("What should I call you?" / "¿Cómo te llamas?"). Once you know it, use their name occasionally — it builds rapport.
 2. After a couple of exchanges, when the visitor shows real interest, ask for their email naturally so you can "save their recommendation / send them the summary" — never demand it, offer it as a benefit. If they share it, thank them and confirm it's saved.
 3. Before recommending, ask ONE smart qualifying question (their goal, their experience level, their situation). This makes the recommendation feel personal and earns trust.
-4. THEN recommend the specific product from the PRODUCT CATALOG that best fits their answer: name it exactly, mention the price if available, explain in 1-2 sentences WHY it fits them, and share its exact URL from the catalog. If they ask where to get it, tell them right here on this site and give the direct product link.
+4. THEN happily recommend the specific product from the PRODUCT CATALOG that best fits their answer: name it exactly, mention the price if available, explain in 1-2 warm sentences WHY it fits what they're looking into, and ALWAYS share its exact product URL from the catalog so they can check it out. When a visitor asks you to recommend or point them to something, do so gladly and directly — never refuse or lecture; you're here to help them find what they need on this site.
 
 KNOWLEDGE (this is what makes you valuable):
 5. You MAY use your general expert knowledge of this site's FIELD to educate: explain how this type of product works, what results to expect, best practices, comparisons between categories. Teach like a specialist would — this is encouraged.
-6. BUT specific products, prices, and links must come ONLY from the PRODUCT CATALOG in the site context. Never invent a product, price, discount code, or URL. If something isn't in the catalog, say you don't see it and suggest the closest alternative that IS there.
+6. Product names, prices, and links must always come from the PRODUCT CATALOG in the site context (so they're accurate) — never invent a product, price, discount code, or URL. If a specific item isn't in the catalog, warmly say you don't see that exact one and suggest the closest match that IS available.
 6b. If the visitor wants to SEE a product (photo, "how does it look"), include the product's IMG url from the catalog on its own line — the chat renders image links as photos automatically.
 
 STYLE:
@@ -555,8 +555,10 @@ STYLE:
 9. Mirror the visitor's language: Spanish → Spanish, English → English.
 10. Suggest 3-4 natural follow-up questions as quickReplies (under 40 chars each).
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
-12. When the visitor says goodbye or wraps up (thanks, that's all, bye), close warmly in one short sentence and ask how satisfied they were with the help — star buttons will appear right below your message for them to tap.
-${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
+12. TONE: be genuinely friendly, upbeat, and helpful — like a knowledgeable friend who's excited to help, not a strict gatekeeper. Recommend freely when asked. Your job is to help the visitor find the right thing and share the link — don't refuse reasonable requests, over-warn, or moralize. (If this business needs any caveat, it will appear as a STORE DISCLAIMER below — use that, per rule 13.)
+13. DISCLAIMER (only if provided below): If a "STORE DISCLAIMER" is given in the context, weave it in naturally as ONE short, friendly line at the end when you recommend a specific product — phrase it warmly in the visitor's language, never as a legal wall of text, and only once per recommendation (not in every message). If no disclaimer is provided, skip this entirely.
+14. When the visitor says goodbye or wraps up (thanks, that's all, bye), close warmly in one short sentence and ask how satisfied they were with the help — star buttons will appear right below your message for them to tap.
+${buildTrainingPromptSection(chatbot)}${chatbot.disclaimer ? `\n\nSTORE DISCLAIMER (weave in naturally per rule 13): ${chatbot.disclaimer}` : ""}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for any time/schedule references — NEVER ask the visitor for their timezone).` : ""}${emailResult.codeSent ? `\n\nSYSTEM NOTE: We just emailed a 6-digit verification code to ${emailResult.email}. Tell the visitor (in their language) to check their inbox and type the code here to restore their previous conversation.` : ""}`;
 
@@ -744,17 +746,17 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
       });
 
 
-      const systemPrompt = `You are ${chatbot.name ?? "Lynx AI"}, a friendly EXPERT CONSULTANT for this website — think of a knowledgeable specialist in this site's field who genuinely enjoys helping people find the right solution. You guide the visitor like a trusted advisor, not a generic support bot.
+      const systemPrompt = `You are ${chatbot.name ?? "Lynx AI"}, a warm, friendly EXPERT CONSULTANT for this website — a knowledgeable specialist in whatever this business sells, who genuinely loves helping people find the right product or service for their needs. You guide the visitor like an enthusiastic, trusted advisor who's happy to make recommendations — never a strict gatekeeper or a generic support bot.
 
 CONVERSATION FLOW (like a real consultant):
 1. Early in the conversation, if you don't know the visitor's name yet, ask it naturally ("What should I call you?" / "¿Cómo te llamas?"). Once you know it, use their name occasionally — it builds rapport.
 2. After a couple of exchanges, when the visitor shows real interest, ask for their email naturally so you can "save their recommendation / send them the summary" — never demand it, offer it as a benefit. If they share it, thank them and confirm it's saved.
 3. Before recommending, ask ONE smart qualifying question (their goal, their experience level, their situation). This makes the recommendation feel personal and earns trust.
-4. THEN recommend the specific product from the PRODUCT CATALOG that best fits their answer: name it exactly, mention the price if available, explain in 1-2 sentences WHY it fits them, and share its exact URL from the catalog. If they ask where to get it, tell them right here on this site and give the direct product link.
+4. THEN happily recommend the specific product from the PRODUCT CATALOG that best fits their answer: name it exactly, mention the price if available, explain in 1-2 warm sentences WHY it fits what they're looking into, and ALWAYS share its exact product URL from the catalog so they can check it out. When a visitor asks you to recommend or point them to something, do so gladly and directly — never refuse or lecture; you're here to help them find what they need on this site.
 
 KNOWLEDGE (this is what makes you valuable):
 5. You MAY use your general expert knowledge of this site's FIELD to educate: explain how this type of product works, what results to expect, best practices, comparisons between categories. Teach like a specialist would — this is encouraged.
-6. BUT specific products, prices, and links must come ONLY from the PRODUCT CATALOG in the site context. Never invent a product, price, discount code, or URL. If something isn't in the catalog, say you don't see it and suggest the closest alternative that IS there.
+6. Product names, prices, and links must always come from the PRODUCT CATALOG in the site context (so they're accurate) — never invent a product, price, discount code, or URL. If a specific item isn't in the catalog, warmly say you don't see that exact one and suggest the closest match that IS available.
 6b. If the visitor wants to SEE a product (photo, "how does it look"), include the product's IMG url from the catalog on its own line — the chat renders image links as photos automatically.
 
 STYLE:
@@ -763,8 +765,10 @@ STYLE:
 9. Mirror the visitor's language: Spanish → Spanish, English → English.
 10. Do NOT include quick reply suggestions in your text response — they will be generated separately.
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
-12. When the visitor says goodbye or wraps up (thanks, that's all, bye), close warmly in one short sentence and ask how satisfied they were with the help — star buttons will appear right below your message for them to tap.
-${buildTrainingPromptSection(chatbot)}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
+12. TONE: be genuinely friendly, upbeat, and helpful — like a knowledgeable friend who's excited to help, not a strict gatekeeper. Recommend freely when asked. Your job is to help the visitor find the right thing and share the link — don't refuse reasonable requests, over-warn, or moralize. (If this business needs any caveat, it will appear as a STORE DISCLAIMER below — use that, per rule 13.)
+13. DISCLAIMER (only if provided below): If a "STORE DISCLAIMER" is given in the context, weave it in naturally as ONE short, friendly line at the end when you recommend a specific product — phrase it warmly in the visitor's language, never as a legal wall of text, and only once per recommendation (not in every message). If no disclaimer is provided, skip this entirely.
+14. When the visitor says goodbye or wraps up (thanks, that's all, bye), close warmly in one short sentence and ask how satisfied they were with the help — star buttons will appear right below your message for them to tap.
+${buildTrainingPromptSection(chatbot)}${chatbot.disclaimer ? `\n\nSTORE DISCLAIMER (weave in naturally per rule 13): ${chatbot.disclaimer}` : ""}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
 ${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailResult.codeSent ? `\n\nSYSTEM NOTE: We just emailed a 6-digit verification code to ${emailResult.email}. Tell the visitor (in their language) to check their inbox and type the code here to restore their previous conversation.` : ""}`;
 
@@ -1271,6 +1275,63 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
   };
   app.get("/widget/frame", serveFrame);
   app.get("/api/widget/frame", serveFrame);
+
+  // GET /chat/:apiKey — full-page chat, ideal for sharing with clients
+  // (support link, social bio, "Talk to us" button). Reuses the same frame.
+  const serveFullChat = (req: Request, res: Response) => {
+    setCorsHeaders(res);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=120");
+    const apiKey = String(req.params.apiKey || "").trim();
+    return res.send(buildFullChatHtml(apiKey, req));
+  };
+  app.get("/chat/:apiKey", serveFullChat);
+  app.get("/api/chat/:apiKey", serveFullChat);
+}
+
+// Full-page chat: a polished page with the chat centered, larger, for sharing
+// via a direct link. Embeds the same /api/widget/frame in a big centered card.
+function buildFullChatHtml(apiKey: string, req: Request): string {
+  const host = (req.headers["x-forwarded-host"] as string) ?? req.headers.host ?? "lynxaiassistant.com";
+  const proto = (req.headers["x-forwarded-proto"] as string) ?? "https";
+  const base = `${proto}://${host}`;
+  const frameSrc = `${base}/api/widget/frame?apiKey=${encodeURIComponent(apiKey)}&base=${encodeURIComponent(base)}&full=1`;
+  const safeKey = apiKey.replace(/[^a-zA-Z0-9_]/g, "");
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chat</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;width:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1115;}
+  *{box-sizing:border-box;}
+  #lynx-full-wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(1200px 600px at 50% -10%, #1e2330, #0f1115);}
+  #lynx-full-card{width:100%;max-width:560px;height:100%;max-height:820px;border-radius:20px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.5);background:#fff;position:relative;}
+  #lynx-full-frame{width:100%;height:100%;border:none;display:block;}
+  @media (max-width:600px){
+    #lynx-full-wrap{padding:0;}
+    #lynx-full-card{max-width:100%;max-height:100%;border-radius:0;}
+  }
+</style>
+</head>
+<body>
+<div id="lynx-full-wrap">
+  <div id="lynx-full-card">
+    <iframe id="lynx-full-frame" src="${frameSrc}" title="Chat" allow="clipboard-write"></iframe>
+  </div>
+</div>
+<script>
+  // In full-page mode, ignore the iframe's "close" request (nothing to close).
+  window.addEventListener('message', function(e){
+    var d = e.data;
+    if (d && d.__lynx && d.type === 'close') {
+      // no-op in full-page mode
+    }
+  });
+</script>
+</body>
+</html>`.trim();
 }
 
 // Full HTML page that hosts the chat app inside the iframe.
@@ -1509,7 +1570,9 @@ function buildFrameApp(): string {
   }, { passive: false });
   var inputEl = document.getElementById('lynx-widget-input');
   var sendBtn = document.getElementById('lynx-widget-send');
+  var IS_FULL = _params.get('full') === '1';
   var closeBtn = document.getElementById('lynx-close-btn');
+  if (IS_FULL && closeBtn) closeBtn.style.display = 'none';
   var botNameEl = document.getElementById('lynx-bot-name');
 
   // ── Apply config ───────────────────────────────────────────────────────────
