@@ -588,7 +588,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
       ];
 
       const response = await invokeLLM({
-        model: "gpt-5-nano",
+        model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5",
         messages,
         responseFormat: {
           type: "json_schema",
@@ -887,7 +887,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
       let quickReplies: string[] = [];
       try {
         const qrRes = await invokeLLM({
-          model: "gpt-5-nano",
+          model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5",
           messages: [
             ...messages,
             { role: "assistant" as const, content: fullReply },

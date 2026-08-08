@@ -516,7 +516,7 @@ Return ONLY valid JSON matching this exact schema:
 }`;
 
         const response = await invokeLLM({
-          model: "gpt-5-mini",
+          model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5",
           messages: [{ role: "user", content: prompt }],
           response_format: {
             type: "json_schema",
@@ -776,7 +776,7 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
           ...(input.history ?? []).map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
           { role: "user" as const, content: input.message },
         ];
-        const response = await invokeLLM({ model: "gpt-5-nano", messages });
+        const response = await invokeLLM({ model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5", messages });
         const reply = response.choices[0]?.message?.content ?? "Sorry, I could not process your request.";
         return { reply };
       }),
