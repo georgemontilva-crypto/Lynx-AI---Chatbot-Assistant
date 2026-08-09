@@ -66,7 +66,7 @@ function ConversationsContent() {
 
   return (
     <DashboardShell title="Conversation history">
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 h-full">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* List */}
         <div className="lg:col-span-2 space-y-4">
           {/* Filters */}
