@@ -441,7 +441,7 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
   );
 
   return (
-    <div className="h-screen bg-background flex overflow-hidden">
+    <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-background flex overflow-hidden">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-60 shrink-0 flex-col bg-sidebar border-r border-sidebar-border fixed inset-y-0 left-0 z-30">
         <SidebarContent />
@@ -464,6 +464,7 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
               exit={{ x: -240 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
               className="fixed inset-y-0 left-0 w-60 bg-sidebar border-r border-sidebar-border z-50 lg:hidden"
+              style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
             >
               <SidebarContent />
             </motion.aside>
@@ -474,7 +475,10 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
       {/* Main content */}
       <div className="flex-1 lg:ml-60 flex flex-col h-full overflow-hidden min-w-0">
         {/* Top bar */}
-        <header className="sticky top-0 z-20 h-14 border-b border-border/40 bg-background/80 backdrop-blur-xl flex items-center px-4 sm:px-6 gap-4">
+        <header
+          className="sticky top-0 z-20 border-b border-border/40 bg-background/80 backdrop-blur-xl flex items-center px-4 sm:px-6 gap-4"
+          style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "calc(3.5rem + env(safe-area-inset-top))" }}
+        >
           <button
             onClick={() => setSidebarOpen(true)}
             className="lg:hidden w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
@@ -516,7 +520,7 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
         <main
           ref={mainRef}
           data-no-pull-refresh
-          className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto pb-24 lg:pb-8"
+          className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:pb-8"
           style={{ overscrollBehavior: "none" }}
         >
 

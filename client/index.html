@@ -13,6 +13,9 @@
 
     <!-- ── Theme & PWA ────────────────────────────────────────────────── -->
     <meta name="theme-color" content="#0d0f14" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="msapplication-TileColor" content="#0d0f14" />
     <link rel="manifest" href="/manifest.json" />
 
@@ -31,11 +34,5 @@
   <body>
     <div id="root"><!--app-html--></div>
     <script type="module" src="/src/entry-client.tsx"></script>
-    <!-- Lynx AI Demo Widget — shows the product in action on the landing page -->
-    <script
-      src="/widget.js?v=13"
-      data-api-key="lx_demo_lynxai_landing_page_2024"
-      async
-    ></script>
   </body>
 </html>
