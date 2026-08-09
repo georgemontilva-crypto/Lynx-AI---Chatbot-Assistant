@@ -42,6 +42,21 @@ type ScanResult = {
   mobileScore: number;
   productsFound?: number;
   products?: Array<{ name: string; price?: string; description?: string; url?: string }>;
+  scanReport?: {
+    homeReadable: boolean;
+    sitemapFound: boolean;
+    sitemapUrlCount: number;
+    storeCatalogFound: boolean;
+    pagesRead: string[];
+    pagesReadCount: number;
+    pagesFailed: string[];
+    warnings: string[];
+  };
+  seoBreakdown?: {
+    score: number;
+    categories: Array<{ key: string; label: string; score: number; weight: number }>;
+    checks: Array<{ id: string; label: string; status: "pass" | "warn" | "fail"; detail: string }>;
+  } | null;
 };
 
 export default function Scanner() {
@@ -258,6 +273,93 @@ export default function Scanner() {
                   <p className="text-sm text-muted-foreground leading-relaxed">{result.summary}</p>
                 </CardContent>
               </Card>
+
+              {/* SEO breakdown — GTmetrix-style graded categories + checks */}
+              {result.seoBreakdown && (
+                <Card className="glass-card border-border/40">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-primary" />Desglose del puntaje SEO
+                      <span className="ml-auto text-lg font-bold">{result.seoBreakdown.score}<span className="text-xs text-muted-foreground font-normal">/100</span></span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {result.seoBreakdown.categories.map((cat) => {
+                        const grade = cat.score >= 90 ? "A" : cat.score >= 80 ? "B" : cat.score >= 70 ? "C" : cat.score >= 60 ? "D" : "F";
+                        const color = cat.score >= 80 ? "text-emerald-400" : cat.score >= 60 ? "text-amber-400" : "text-red-400";
+                        return (
+                          <div key={cat.key} className="rounded-xl border border-border/40 bg-muted/20 p-2.5 text-center">
+                            <div className={`text-xl font-bold ${color}`}>{grade}</div>
+                            <div className="text-[11px] font-medium mt-0.5">{cat.label}</div>
+                            <div className="text-[10px] text-muted-foreground">{cat.score}/100 · {cat.weight}%</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="space-y-1.5">
+                      {result.seoBreakdown.checks.map((c) => (
+                        <div key={c.id} className="flex items-start gap-2 text-xs rounded-lg border border-border/30 bg-muted/10 px-2.5 py-1.5">
+                          <span className={`flex-shrink-0 mt-0.5 font-bold ${c.status === "pass" ? "text-emerald-400" : c.status === "warn" ? "text-amber-400" : "text-red-400"}`}>
+                            {c.status === "pass" ? "✓" : c.status === "warn" ? "⚠" : "✕"}
+                          </span>
+                          <span className="font-medium">{c.label}</span>
+                          <span className="text-muted-foreground ml-auto text-right">{c.detail}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Read report — honest account of what was scanned */}
+              {result.scanReport && (
+                <Card className="glass-card border-border/40">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-primary" />Reporte de lectura
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.homeReadable ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-red-400/40 bg-red-400/10 text-red-400"}`}>
+                        {result.scanReport.homeReadable ? "✓ Página principal leída" : "✕ Página principal no legible"}
+                      </span>
+                      <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.sitemapFound ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-amber-400/40 bg-amber-400/10 text-amber-400"}`}>
+                        {result.scanReport.sitemapFound ? `✓ Sitemap encontrado (${result.scanReport.sitemapUrlCount} URLs)` : "⚠ Sin sitemap"}
+                      </span>
+                      <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.storeCatalogFound ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-border/40 bg-muted/20 text-muted-foreground"}`}>
+                        {result.scanReport.storeCatalogFound ? "✓ Catálogo de tienda detectado" : "Sin catálogo automático"}
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded-lg border border-blue-400/40 bg-blue-400/10 text-blue-400">
+                        {result.scanReport.pagesReadCount} página(s) leída(s)
+                      </span>
+                    </div>
+
+                    {result.scanReport.pagesRead.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-foreground mb-1">Páginas leídas:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {result.scanReport.pagesRead.map((p, i) => (
+                            <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-muted/40 text-muted-foreground font-mono">{p}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {result.scanReport.warnings.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        {result.scanReport.warnings.map((w, i) => (
+                          <div key={i} className="flex items-start gap-2 text-xs text-amber-300/90 bg-amber-400/5 border border-amber-400/20 rounded-lg p-2">
+                            <span className="flex-shrink-0 mt-0.5">⚠</span>
+                            <span>{w}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Topics learned */}
               <Card className="glass-card border-border/40">
