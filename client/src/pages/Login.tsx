@@ -88,6 +88,32 @@ export default function Login() {
         return;
       }
 
+      // ── Anti-loop guard: confirm the session cookie actually stuck BEFORE
+      // redirecting to the dashboard. Without this, a cookie that didn't
+      // persist sends the user to /dashboard → "not authenticated" → back to
+      // /login → the dreaded login loop. Retry a couple of times (the cookie
+      // can take a moment), then show a clear error instead of looping.
+      let sessionOk = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const meRes = await fetch("/api/trpc/auth.me", { credentials: "include" });
+          const meJson = await meRes.json();
+          const meUser = meJson?.result?.data?.json ?? meJson?.result?.data ?? null;
+          if (meUser) { sessionOk = true; break; }
+        } catch { /* transient */ }
+        await new Promise((r) => setTimeout(r, 350));
+      }
+
+      if (!sessionOk) {
+        const onWrongHost = window.location.hostname === "lynxaiassistant.com";
+        setError(
+          onWrongHost
+            ? "Tu sesión no se pudo guardar porque estás en lynxaiassistant.com (versión vieja). Entra por https://www.lynxaiassistant.com/login"
+            : "No se pudo guardar tu sesión. Revisa que tu navegador permita cookies para este sitio e inténtalo de nuevo."
+        );
+        return;
+      }
+
       window.location.href = "/dashboard";
     } catch {
       setError("Network error. Please check your connection and try again.");

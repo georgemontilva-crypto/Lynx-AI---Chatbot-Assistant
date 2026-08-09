@@ -42,6 +42,18 @@ async function startServer() {
   // Trust reverse proxy (required for express-rate-limit to read real client IP)
   app.set("trust proxy", 1);
 
+  // ── Canonical host redirect ────────────────────────────────────────────────
+  // The session cookie lives on www.lynxaiassistant.com. If a request arrives on
+  // the bare apex domain, redirect to www so login/session always work on ONE
+  // host (a cookie set on one host isn't sent to the other → login loop).
+  app.use((req, res, next) => {
+    const host = String(req.headers.host ?? "").toLowerCase();
+    if (host === "lynxaiassistant.com") {
+      return res.redirect(301, `https://www.lynxaiassistant.com${req.originalUrl}`);
+    }
+    next();
+  });
+
   // Gzip/Brotli compression for all responses
   app.use(compression());
 

@@ -181,6 +181,8 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
   }
 
   if (!isAuthenticated) {
+    const onLegacyHost =
+      typeof window !== "undefined" && window.location.hostname === "lynxaiassistant.com";
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center max-w-sm px-6">
@@ -191,9 +193,28 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
           <p className="text-muted-foreground text-sm mb-8">
             Sign in to manage your Lynx AI chatbot and view your analytics.
           </p>
+          {onLegacyHost && (
+            <div className="mb-6 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-left">
+              <p className="text-xs text-amber-500">
+                Estás en <span className="font-mono">lynxaiassistant.com</span> (versión antigua) — aquí la sesión no se guarda.
+              </p>
+              <a
+                href={`https://www.lynxaiassistant.com${typeof window !== "undefined" ? window.location.pathname : "/dashboard"}`}
+                className="text-xs font-semibold text-amber-400 underline mt-1 inline-block"
+              >
+                Ir a www.lynxaiassistant.com →
+              </a>
+            </div>
+          )}
           <Button
             className="lynx-gradient text-white border-0 w-full font-semibold"
-            onClick={() => navigate("/login")}
+            onClick={() => {
+              if (onLegacyHost) {
+                window.location.href = "https://www.lynxaiassistant.com/login";
+              } else {
+                navigate("/login");
+              }
+            }}
           >
             Sign in
           </Button>
