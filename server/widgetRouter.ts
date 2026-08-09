@@ -2263,12 +2263,17 @@ const LOADER_SCRIPT = `
   // ── Styles for button + iframe container ──
   var style = document.createElement('style');
   style.textContent = [
-    '#lynx-loader-btn{position:fixed;bottom:20px;' + (isLeft?'left:20px;':'right:20px;') + 'z-index:2147483647;width:60px;height:60px;border-radius:50%;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.24);background:#111;padding:0;transition:transform 0.18s;overflow:hidden;}',
-    '#lynx-loader-btn:hover{transform:scale(1.06);}',
-    '#lynx-loader-btn img{width:100%;height:100%;object-fit:cover;border-radius:50%;display:none;}',
-    '#lynx-loader-frame{position:fixed;bottom:92px;' + (isLeft?'left:20px;':'right:20px;') + 'z-index:2147483646;width:380px;height:600px;max-width:calc(100vw - 40px);max-height:calc(100vh - 120px);border:none;border-radius:16px;box-shadow:0 8px 48px rgba(0,0,0,0.22);background:transparent;display:none;opacity:0;transform:translateY(12px) scale(0.98);transition:opacity 0.22s cubic-bezier(0.23,1,0.32,1),transform 0.22s cubic-bezier(0.23,1,0.32,1);}',
-    '#lynx-loader-frame.open{display:block;opacity:1;transform:translateY(0) scale(1);}',
-    '@media (max-width:480px){#lynx-loader-frame{bottom:0;left:0;right:0;top:0;width:100vw;height:100vh;height:100dvh;max-width:100vw;max-height:100dvh;border-radius:0;}#lynx-loader-btn.hidden-mobile{display:none;}}'
+    // Every rule is !important so host-site CSS (Tailwind preflight, resets,
+    // global button/img/svg styles) can NEVER dislodge or distort the widget.
+    '#lynx-loader-btn{position:fixed!important;bottom:20px!important;top:auto!important;' + (isLeft?'left:20px!important;right:auto!important;':'right:20px!important;left:auto!important;') + 'z-index:2147483647!important;width:60px!important;height:60px!important;min-width:60px!important;min-height:60px!important;max-width:60px!important;max-height:60px!important;border-radius:50%!important;border:none!important;cursor:pointer!important;box-shadow:0 4px 16px rgba(0,0,0,0.24)!important;background:#111!important;padding:0!important;margin:0!important;transition:transform 0.18s!important;overflow:hidden!important;display:block!important;line-height:0!important;box-sizing:border-box!important;transform:none;}',
+    '#lynx-loader-btn:hover{transform:scale(1.06)!important;}',
+    '#lynx-loader-btn>div{width:100%!important;height:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;border-radius:50%!important;box-sizing:border-box!important;margin:0!important;padding:0!important;}',
+    '#lynx-loader-btn svg{display:inline-block!important;width:28px!important;height:28px!important;margin:0!important;flex-shrink:0!important;}',
+    '#lynx-loader-btn img{width:100%!important;height:100%!important;max-width:100%!important;object-fit:cover!important;border-radius:50%!important;margin:0!important;}',
+    '#lynx-loader-btn img#lynx-loader-avatar{display:none;}',
+    '#lynx-loader-frame{position:fixed!important;bottom:92px!important;top:auto!important;' + (isLeft?'left:20px!important;right:auto!important;':'right:20px!important;left:auto!important;') + 'z-index:2147483646!important;width:380px!important;height:600px!important;max-width:calc(100vw - 40px)!important;max-height:calc(100vh - 120px)!important;border:none!important;border-radius:16px!important;box-shadow:0 8px 48px rgba(0,0,0,0.22)!important;background:transparent!important;display:none;opacity:0;transform:translateY(12px) scale(0.98);transition:opacity 0.22s cubic-bezier(0.23,1,0.32,1),transform 0.22s cubic-bezier(0.23,1,0.32,1)!important;margin:0!important;padding:0!important;}',
+    '#lynx-loader-frame.open{display:block!important;opacity:1!important;transform:translateY(0) scale(1)!important;}',
+    '@media (max-width:480px){#lynx-loader-frame{bottom:0!important;left:0!important;right:0!important;top:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-width:100vw!important;max-height:100dvh!important;border-radius:0!important;}#lynx-loader-btn.hidden-mobile{display:none!important;}}'
   ].join('');
   document.head.appendChild(style);
 
@@ -2277,7 +2282,7 @@ const LOADER_SCRIPT = `
   btn.id = 'lynx-loader-btn';
   btn.setAttribute('aria-label', 'Open chat');
   btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:50%;">' +
-    '<svg id="lynx-loader-deficon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
+    '<svg id="lynx-loader-deficon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1f2937" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
     '<img id="lynx-loader-avatar" src="" alt="Chat" />' +
   '</div>';
   document.body.appendChild(btn);

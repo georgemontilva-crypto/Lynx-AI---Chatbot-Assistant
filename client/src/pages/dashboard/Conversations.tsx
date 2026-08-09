@@ -121,7 +121,7 @@ function ConversationsContent() {
                         </div>
                         <div className="min-w-0">
                           <div className="text-xs font-medium truncate">{visitorLabel}{conv.leadCompany ? <span className="text-muted-foreground font-normal"> · {conv.leadCompany}</span> : null}</div>
-                          <div className="text-xs text-muted-foreground truncate font-mono">{conv.pageUrl ?? "/"}</div>
+                          <div className="text-xs text-muted-foreground truncate">{conv.leadEmail ?? "Visitante sin registrar"}</div>
                         </div>
                       </div>
                       {rating > 0 && (
@@ -152,12 +152,14 @@ function ConversationsContent() {
               <Card className="glass-card border-border/40">
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="font-semibold text-sm">{getVisitorLabel(selected)}</div>
-                      <div className="text-xs text-muted-foreground font-mono mt-0.5">{selected.pageUrl ?? "/"}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-sm truncate">{getVisitorLabel(selected)}</div>
                       {selected.leadEmail && (
-                        <div className="text-xs text-emerald-400 mt-1">{selected.leadEmail}{selected.leadName ? ` — ${selected.leadName}` : ""}{(selected as ConvRow).leadCompany ? ` · ${(selected as ConvRow).leadCompany}` : ""}</div>
+                        <div className="text-xs text-emerald-400 mt-0.5 truncate">{selected.leadEmail}{selected.leadName ? ` — ${selected.leadName}` : ""}{(selected as ConvRow).leadCompany ? ` · ${(selected as ConvRow).leadCompany}` : ""}</div>
                       )}
+                      <div className="text-xs text-muted-foreground mt-1 truncate" title={selected.pageUrl ?? "/"}>
+                        Página: {(() => { try { return new URL(selected.pageUrl ?? "/", "https://x").pathname; } catch { return selected.pageUrl ?? "/"; } })()}
+                      </div>
                     </div>
                     <div className="text-right shrink-0">
                       {(selected.satisfactionRating ?? 0) > 0 && (
