@@ -168,7 +168,9 @@ export const appRouter = router({
     }),
     save: protectedProcedure
       .input(z.object({
-        name: z.string().min(1).max(128).optional(),
+        // Allow an empty name — an empty name is a valid choice that makes the
+        // widget show the full logo (with the brand baked in) instead of icon+text.
+        name: z.string().max(128).optional(),
         primaryColor: z.string().optional(),
         secondaryColor: z.string().optional(),
         welcomeMessage: z.string().max(512).optional(),
@@ -186,7 +188,10 @@ export const appRouter = router({
         disclaimer: z.string().max(300).nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const chatbot = await upsertChatbot({ userId: ctx.user.id, name: "Lynx AI", ...input });
+        // Only default the name when it wasn't provided at all. An explicit empty
+        // string is a valid choice (show the full logo) and must be preserved.
+        const nameValue = input.name === undefined ? "Lynx AI" : input.name;
+        const chatbot = await upsertChatbot({ userId: ctx.user.id, ...input, name: nameValue });
         return chatbot;
       }),
     usage: protectedProcedure.query(async ({ ctx }) => {
@@ -457,11 +462,26 @@ export const appRouter = router({
         let measuredLoadSpeed = 0;           // seconds, real fetch timing
         let realMobileScore = 0;             // heuristic from real HTML signals
         const pageExtracts: Array<{ path: string; text: string }> = [];
+
+        // ── Scan diagnostics: an honest, user-facing report of what we read,
+        // what we couldn't, and any warnings — so the user can trust the result
+        // and fix their own site if something is missing. ──
+        const scanReport = {
+          homeReadable: false,          // did the home page fetch return real content?
+          sitemapFound: false,          // did we find a sitemap.xml?
+          sitemapUrlCount: 0,           // how many URLs the sitemap listed
+          storeCatalogFound: false,     // did a Shopify/Woo JSON catalog respond?
+          pagesRead: [] as string[],    // paths we actually read content from
+          pagesFailed: [] as string[],  // paths that failed to load
+          warnings: [] as string[],     // human-readable notes for the user
+        };
         try {
           const fetchStart = Date.now();
           const { text: raw } = await safeFetchText(input.url);
           measuredLoadSpeed = Math.round(((Date.now() - fetchStart) / 1000) * 100) / 100;
           rawHome = raw;
+          scanReport.homeReadable = raw.replace(/<[^>]+>/g, "").trim().length > 200;
+          scanReport.pagesRead.push("/");
 
           // ── Real mobile signals (heuristic, but from actual HTML) ──────────
           const hasViewport = /<meta[^>]+name=["']viewport["']/i.test(raw);
@@ -509,6 +529,7 @@ export const appRouter = router({
           // the real products/prices/links without any manual training.
           try {
             const storeCatalog = await fetchStoreCatalog(input.url);
+            if (storeCatalog.length > 0) scanReport.storeCatalogFound = true;
             for (const p of storeCatalog) {
               if (!allProducts.some(ep => ep.name === p.name)) allProducts.push(p);
             }
@@ -519,6 +540,8 @@ export const appRouter = router({
           // every real URL. We classify them into product vs info pages.
           let sitemapUrls: string[] = [];
           try { sitemapUrls = await fetchSitemapUrls(input.url); } catch { /* none */ }
+          scanReport.sitemapFound = sitemapUrls.length > 0;
+          scanReport.sitemapUrlCount = sitemapUrls.length;
           const productPatternsRe = /\/products?\b|\/tienda\b|\/shop\b|\/catalog(?:o)?\b|\/store\b|\/collection|\/categoria|\/category|\/compounds?\b|\/item\b/i;
           const infoPatternsRe = /faq|preguntas|about|nosotros|quienes|contact|contacto|shipping|envio|delivery|returns?|devolucion|refund|reembolso|policy|policies|politica|terms|terminos|privacy|privacidad|help|ayuda|support|soporte|pricing|precios|services?|servicios?/i;
           const sitemapProductPages = sitemapUrls.filter(u => productPatternsRe.test(new URL(u).pathname));
@@ -543,8 +566,9 @@ export const appRouter = router({
                 for (const p of pageProducts) {
                   if (!allProducts.some(ep => ep.name === p.name)) allProducts.push(p);
                 }
+                scanReport.pagesRead.push(new URL(link).pathname);
                 if (allProducts.length >= 200) break;
-              } catch { /* skip inaccessible pages */ }
+              } catch { scanReport.pagesFailed.push(new URL(link).pathname); }
             }
           }
 
@@ -560,8 +584,9 @@ export const appRouter = router({
               const text = htmlToText(pageHtml, 2500);
               if (text.length > 100) {
                 pageExtracts.push({ path: new URL(link).pathname, text });
+                scanReport.pagesRead.push(new URL(link).pathname);
               }
-            } catch { /* skip inaccessible pages */ }
+            } catch { scanReport.pagesFailed.push(new URL(link).pathname); }
           }
 
           htmlContent = htmlToText(raw, 5000);
@@ -569,6 +594,18 @@ export const appRouter = router({
           console.warn("[Scanner] Could not fetch URL:", err);
           htmlContent = `Site at ${input.url} (content could not be fetched, analyze based on URL structure)`;
           seoContext = "(HTML not accessible — analyze based on URL structure only)";
+          scanReport.warnings.push("No pudimos leer la página principal del sitio. Verifica que la URL sea correcta y que el sitio esté en línea y accesible públicamente.");
+        }
+
+        // ── Build human-readable warnings from what we found (or didn't) ──────
+        if (scanReport.homeReadable && !scanReport.sitemapFound) {
+          scanReport.warnings.push("No se encontró un sitemap.xml. Leímos las páginas enlazadas desde el inicio, pero un sitemap ayuda a que se descubran TODAS tus páginas. Considera agregar uno (la mayoría de plataformas lo generan solo).");
+        }
+        if (scanReport.homeReadable && scanReport.pagesRead.length <= 1 && !scanReport.storeCatalogFound) {
+          scanReport.warnings.push("Solo pudimos leer la página principal. Si tu sitio carga su contenido con JavaScript, puede que el resto de páginas no sean legibles por un lector automático — revisa que tengas un sitemap y enlaces internos normales.");
+        }
+        if (scanReport.pagesFailed.length > 0) {
+          scanReport.warnings.push(`Algunas páginas no se pudieron leer (${scanReport.pagesFailed.length}): ${scanReport.pagesFailed.slice(0, 5).join(", ")}${scanReport.pagesFailed.length > 5 ? "…" : ""}.`);
         }
 
         // ── Deterministic SEO score from REAL extracted signals ──────────────
@@ -851,6 +888,17 @@ Return ONLY valid JSON matching this exact schema:
           chatbotId: chatbot.id,
           productsFound: allProducts.length,
           products: allProducts.slice(0, 10),
+          // Honest read report so the user sees exactly what was scanned.
+          scanReport: {
+            homeReadable: scanReport.homeReadable,
+            sitemapFound: scanReport.sitemapFound,
+            sitemapUrlCount: scanReport.sitemapUrlCount,
+            storeCatalogFound: scanReport.storeCatalogFound,
+            pagesRead: scanReport.pagesRead,
+            pagesReadCount: scanReport.pagesRead.length,
+            pagesFailed: scanReport.pagesFailed,
+            warnings: scanReport.warnings,
+          },
         };
       }),
 
