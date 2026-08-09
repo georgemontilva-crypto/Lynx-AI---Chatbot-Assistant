@@ -14,6 +14,9 @@ const requireUser = t.middleware(async opts => {
   const { ctx, next } = opts;
 
   if (!ctx.user) {
+    // Diagnostic: log WHICH procedure rejected and why context had no user,
+    // so production logs reveal the root cause of spurious UNAUTHORIZED errors.
+    console.warn(`[auth] UNAUTHORIZED on "${opts.path}" — no user in context (cookie missing/invalid for this request)`);
     throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
   }
 

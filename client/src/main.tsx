@@ -26,10 +26,27 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
   if (!isUnauthorized) return;
 
-  // Redirect to our own login page instead of Manus OAuth
-  if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/register")) {
-    window.location.href = "/login";
-  }
+  if (window.location.pathname.startsWith("/login") || window.location.pathname.startsWith("/register")) return;
+
+  // ── Anti-loop guard ──
+  // A single stray UNAUTHORIZED from ANY query used to hard-redirect to /login
+  // even when the session was alive — the root mechanism of the login loop.
+  // Now we ask the server directly whether the session is real before kicking
+  // the user out. If the session is alive, we ignore the stray error.
+  if ((window as unknown as { __lynxAuthCheck?: boolean }).__lynxAuthCheck) return; // debounce concurrent checks
+  (window as unknown as { __lynxAuthCheck?: boolean }).__lynxAuthCheck = true;
+  fetch("/api/trpc/auth.me", { credentials: "include" })
+    .then((r) => r.json())
+    .then((j) => {
+      const user = j?.result?.data?.json ?? null;
+      if (!user) {
+        window.location.href = "/login";
+      } else {
+        console.warn("[auth] Ignored stray UNAUTHORIZED — session is alive server-side");
+      }
+    })
+    .catch(() => { window.location.href = "/login"; })
+    .finally(() => { (window as unknown as { __lynxAuthCheck?: boolean }).__lynxAuthCheck = false; });
 };
 
 queryClient.getQueryCache().subscribe(event => {
@@ -53,6 +70,10 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
+      // Long GET batch URLs can exceed server/proxy limits and fail the WHOLE
+      // batch (auth.me included → looks like "not logged in"). Cap the URL
+      // length so big batches switch to POST automatically.
+      maxURLLength: 2000,
       headers() {
         return {};
       },
