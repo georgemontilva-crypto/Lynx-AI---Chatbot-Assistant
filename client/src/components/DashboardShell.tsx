@@ -105,10 +105,68 @@ interface DashboardShellProps {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+// ─── Session rescue ───────────────────────────────────────────────────────────
+// Shown on the "Access your dashboard" screen. It asks the SERVER directly
+// whether the session cookie is alive. If it is (but the app's client-side
+// query failed to load it — the cause of the login loop), it reloads the page
+// ONCE to re-hydrate. If the session is genuinely dead, it says so clearly.
+function SessionRescue() {
+  const [state, setState] = useState<"checking" | "rescued" | "none">("checking");
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/trpc/auth.me", { credentials: "include" });
+        const j = await res.json().catch(() => null);
+        const user = j?.result?.data?.json ?? null;
+        if (cancelled) return;
+        if (user) {
+          // Session IS alive server-side — the client just failed to load it.
+          // Reload once to recover (guarded so we never reload-loop).
+          const tried = sessionStorage.getItem("lynx_sess_rescue");
+          if (tried !== "1") {
+            sessionStorage.setItem("lynx_sess_rescue", "1");
+            window.location.reload();
+            return;
+          }
+          setState("rescued");
+        } else {
+          sessionStorage.removeItem("lynx_sess_rescue");
+          setState("none");
+        }
+      } catch {
+        if (!cancelled) setState("none");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (state === "rescued") {
+    return (
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[calc(100%-2rem)] rounded-xl border border-amber-400/30 bg-amber-400/10 backdrop-blur-xl p-3 text-left">
+        <p className="text-xs text-amber-500 font-medium">
+          Tu sesión está activa, pero la app no pudo cargarla.
+        </p>
+        <button
+          onClick={() => { sessionStorage.removeItem("lynx_sess_rescue"); window.location.href = "/dashboard"; }}
+          className="text-xs font-semibold text-amber-400 underline mt-1"
+        >
+          Reintentar ahora →
+        </button>
+      </div>
+    );
+  }
+  return null;
+}
+
 export default function DashboardShell({ children, title }: DashboardShellProps) {
   const [location, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, isAuthenticated, loading } = useAuth();
+  // Session loaded fine → clear the rescue flag so auto-recovery stays armed.
+  useEffect(() => {
+    if (isAuthenticated) { try { sessionStorage.removeItem("lynx_sess_rescue"); } catch { /* ssr */ } }
+  }, [isAuthenticated]);
   const { theme, toggleTheme } = useTheme();
   const planFeatures = usePlanFeatures();
   const utils = trpc.useUtils();
@@ -185,6 +243,7 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
       typeof window !== "undefined" && window.location.hostname === "lynxaiassistant.com";
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
+        <SessionRescue />
         <div className="text-center max-w-sm px-6">
           <div className="flex items-center justify-center mx-auto mb-6">
             <LynxLogo className="h-10 w-auto object-contain" />
