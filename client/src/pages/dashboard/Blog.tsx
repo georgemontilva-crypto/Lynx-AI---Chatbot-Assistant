@@ -16,6 +16,7 @@ import {
 import {
   Plus, Edit, Trash2, Eye, Globe, FileText, Clock, Calendar, Rss,
   ExternalLink, BookOpen, Sparkles, ArrowLeft, X, Search,
+  Image as ImageIcon, Upload, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,11 +32,13 @@ type PostForm = {
   title: string; slug: string; excerpt: string; content: string;
   category: string; tags: string; author: string;
   readingTimeMinutes: number; status: "draft" | "published";
+  coverImageUrl: string;
 };
 
 const emptyForm: PostForm = {
   title: "", slug: "", excerpt: "", content: "", category: "",
   tags: "", author: "Lynx AI Team", readingTimeMinutes: 5, status: "draft",
+  coverImageUrl: "",
 };
 
 function slugify(text: string) {
@@ -63,6 +66,25 @@ export default function DashboardBlog() {
   const [showGen, setShowGen] = useState(false);
   const [genTopic, setGenTopic] = useState("");
   const [genTone, setGenTone] = useState<"professional" | "friendly" | "persuasive">("friendly");
+  const [genLang, setGenLang] = useState<"es" | "en" | "pt" | "fr" | "de" | "it">("es");
+  const [uploadingCover, setUploadingCover] = useState(false);
+
+  async function handleCoverUpload(file: File) {
+    setUploadingCover(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      if (!res.ok) throw new Error("upload failed");
+      const json = await res.json();
+      setForm((f) => ({ ...f, coverImageUrl: json.url as string }));
+      toast.success("Imagen subida");
+    } catch {
+      toast.error("No se pudo subir la imagen");
+    } finally {
+      setUploadingCover(false);
+    }
+  }
 
   const { data: posts, isLoading } = trpc.blog.adminList.useQuery();
 
@@ -110,6 +132,7 @@ export default function DashboardBlog() {
         content: data.content, category: data.category, tags: data.tags,
         author: "Lynx AI Team", readingTimeMinutes: data.readingTimeMinutes,
         status: "draft",
+        coverImageUrl: "",
       });
       setShowGen(false);
       setGenTopic("");
@@ -159,6 +182,7 @@ export default function DashboardBlog() {
       tags: tagsStr,
       author: post.author ?? "Lynx AI Team",
       readingTimeMinutes: post.readingTimeMinutes ?? 5, status: post.status,
+      coverImageUrl: (post as { coverImageUrl?: string | null }).coverImageUrl ?? "",
     });
     setView("editor");
   }
@@ -180,6 +204,7 @@ export default function DashboardBlog() {
       category: form.category || undefined, tags,
       author: form.author || undefined, readingTimeMinutes: form.readingTimeMinutes,
       status: status as "draft" | "published",
+      coverImageUrl: form.coverImageUrl || undefined,
     };
     if (editingPost) updateMutation.mutate({ id: editingPost.id, ...payload });
     else createMutation.mutate(payload);
@@ -239,6 +264,49 @@ export default function DashboardBlog() {
                   />
                 </div>
                 <div>
+                  <Label className="text-xs">Imagen de portada</Label>
+                  <div className="mt-1 flex items-center gap-3">
+                    {form.coverImageUrl ? (
+                      <img
+                        src={form.coverImageUrl}
+                        alt="Portada"
+                        className="w-28 h-20 object-cover rounded-xl border border-border/40"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : (
+                      <div className="w-28 h-20 rounded-xl border border-dashed border-border/50 bg-muted/30 flex items-center justify-center text-muted-foreground">
+                        <ImageIcon className="w-5 h-5" />
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1.5">
+                      <label>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleCoverUpload(f);
+                            e.currentTarget.value = "";
+                          }}
+                        />
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/40 bg-muted/30 text-xs font-medium cursor-pointer transition-colors hover:bg-muted/60 ${uploadingCover ? "opacity-50 pointer-events-none" : ""}`}>
+                          {uploadingCover ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                          {form.coverImageUrl ? "Cambiar imagen" : "Subir imagen"}
+                        </div>
+                      </label>
+                      {form.coverImageUrl && (
+                        <button
+                          onClick={() => setForm((f) => ({ ...f, coverImageUrl: "" }))}
+                          className="text-xs text-muted-foreground hover:text-destructive transition-colors text-left"
+                        >
+                          Quitar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div>
                   <Label className="text-xs">Slug (URL)</Label>
                   <Input
                     placeholder="url-del-articulo" value={form.slug}
@@ -247,7 +315,7 @@ export default function DashboardBlog() {
                   />
                   <p className="text-[11px] text-muted-foreground mt-1 truncate">/blog/{form.slug || "..."}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs">Categoría</Label>
                     <Input placeholder="ej: Ventas" value={form.category}
@@ -452,7 +520,7 @@ export default function DashboardBlog() {
                 <Input
                   autoFocus placeholder="ej: Cómo un chatbot aumenta las ventas en Navidad"
                   value={genTopic} onChange={(e) => setGenTopic(e.target.value)}
-                  className="mt-1" onKeyDown={(e) => { if (e.key === "Enter" && genTopic.trim()) generateMutation.mutate({ topic: genTopic, tone: genTone, language: "es" }); }}
+                  className="mt-1" onKeyDown={(e) => { if (e.key === "Enter" && genTopic.trim()) generateMutation.mutate({ topic: genTopic, tone: genTone, language: genLang }); }}
                 />
               </div>
               <div>
@@ -472,10 +540,30 @@ export default function DashboardBlog() {
                   ))}
                 </div>
               </div>
+              <div>
+                <Label className="text-xs">Idioma</Label>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  {([
+                    { key: "es" as const, label: "Español" },
+                    { key: "en" as const, label: "English" },
+                    { key: "pt" as const, label: "Português" },
+                    { key: "fr" as const, label: "Français" },
+                    { key: "de" as const, label: "Deutsch" },
+                    { key: "it" as const, label: "Italiano" },
+                  ]).map((l) => (
+                    <button key={l.key} onClick={() => setGenLang(l.key)}
+                      className={`text-xs py-2 rounded-lg border transition-colors ${
+                        genLang === l.key ? "border-primary/50 bg-primary/10 text-primary" : "border-border/50 text-muted-foreground hover:border-border"
+                      }`}>
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <Button
                 className="w-full lynx-gradient text-white border-0 gap-1.5"
                 disabled={!genTopic.trim() || generateMutation.isPending}
-                onClick={() => generateMutation.mutate({ topic: genTopic, tone: genTone, language: "es" })}>
+                onClick={() => generateMutation.mutate({ topic: genTopic, tone: genTone, language: genLang })}>
                 {generateMutation.isPending ? (
                   <>Generando artículo…</>
                 ) : (

@@ -495,7 +495,7 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
         <main
           ref={mainRef}
           data-no-pull-refresh
-          className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto"
+          className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto pb-24 lg:pb-8"
           style={{ overscrollBehavior: "none" }}
         >
 
@@ -546,6 +546,44 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
 
           {children}
         </main>
+
+        {/* ── Mobile bottom tab bar (app-like navigation) ─────────────────── */}
+        <nav
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-background/85 backdrop-blur-xl border-t border-border/40"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
+          <div className="grid grid-cols-5 h-16">
+            {[
+              { href: "/dashboard", icon: LayoutDashboard, label: "Home", exact: true },
+              { href: "/dashboard/chatbot", icon: Bot, label: "Chatbot" },
+              { href: "/dashboard/conversations", icon: MessageSquare, label: "Chats" },
+              { href: "/dashboard/leads", icon: Users, label: "Leads" },
+            ].map((tab) => {
+              const active = tab.exact ? location === tab.href : location.startsWith(tab.href);
+              const Icon = tab.icon;
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className={`relative flex flex-col items-center justify-center gap-1 transition-colors active:scale-95 ${
+                    active ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  <Icon className={`w-5 h-5 ${active ? "" : "opacity-80"}`} />
+                  <span className="text-[10px] font-medium leading-none">{tab.label}</span>
+                  {active && <span className="absolute top-0 w-8 h-0.5 rounded-full bg-primary" />}
+                </Link>
+              );
+            })}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="flex flex-col items-center justify-center gap-1 text-muted-foreground transition-colors active:scale-95"
+            >
+              <Menu className="w-5 h-5 opacity-80" />
+              <span className="text-[10px] font-medium leading-none">More</span>
+            </button>
+          </div>
+        </nav>
       </div>
     </div>
   );

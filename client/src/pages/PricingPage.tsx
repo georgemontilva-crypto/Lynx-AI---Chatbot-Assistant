@@ -323,6 +323,9 @@ export default function PricingPage() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="rounded-2xl border border-border/50 overflow-hidden bg-card"
           >
+            {/* Horizontal scroll on small screens so the 4-col table never squashes */}
+            <div className="overflow-x-auto">
+            <div className="min-w-[560px]">
             {/* Table header */}
             <div className="grid grid-cols-4 bg-muted/50 border-b border-border/50">
               <div className="p-4 font-semibold text-sm">Característica</div>
@@ -360,6 +363,8 @@ export default function PricingPage() {
                 </div>
               </div>
             ))}
+            </div>
+            </div>
           </motion.div>
         </div>
       </section>

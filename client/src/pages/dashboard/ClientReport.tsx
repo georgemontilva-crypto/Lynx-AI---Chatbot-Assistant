@@ -200,7 +200,8 @@ function ReportContent({ data, reportRef }: {
             Leads Captured ({leads.length})
           </h2>
           <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[520px]">
               <thead>
                 <tr className="border-b border-white/10">
                   <th className="text-left p-3 text-slate-400 font-medium">Name</th>
@@ -222,6 +223,7 @@ function ReportContent({ data, reportRef }: {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}

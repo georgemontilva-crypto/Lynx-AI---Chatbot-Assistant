@@ -223,12 +223,23 @@ html {
   overscroll-behavior-y: none;
   /* Allow only vertical pan gestures, prevents horizontal swipe interference */
   touch-action: pan-y;
+  /* App-like feel on mobile: no blue tap flash, no auto text scaling */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 body {
   overflow-x: clip;
   overscroll-behavior-y: none;
   overscroll-behavior-x: none;
   touch-action: pan-y;
+}
+
+/* App-like: buttons/links give subtle press feedback instead of highlight */
+@media (hover: none) and (pointer: coarse) {
+  button, a, [role="button"] {
+    -webkit-touch-callout: none;
+  }
 }
 
 /* Bloquear pull-to-refresh en contenedores scrollables del dashboard (PWA) */

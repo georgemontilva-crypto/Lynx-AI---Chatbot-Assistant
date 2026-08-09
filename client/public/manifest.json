@@ -2,13 +2,25 @@
   "name": "Lynx AI — Smart Chatbot",
   "short_name": "Lynx AI",
   "description": "AI-powered chatbot that scans your website and assists your visitors 24/7",
-  "start_url": "/",
+  "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#0d0f14",
   "theme_color": "#0d0f14",
   "lang": "en",
   "orientation": "portrait-primary",
   "categories": ["business", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Conversations",
+      "url": "/dashboard/conversations",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Leads",
+      "url": "/dashboard/leads",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ],
   "icons": [
     {
       "src": "/icon-192x192.png",

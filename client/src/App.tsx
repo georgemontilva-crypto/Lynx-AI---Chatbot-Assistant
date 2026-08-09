@@ -6,7 +6,7 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import { useSeoMeta } from "./hooks/useSeoMeta";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { ThemeProvider } from "./contexts/ThemeContext";
+import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import DashboardOverview from "./pages/dashboard/Overview";
 import DashboardChatbot from "./pages/dashboard/ChatbotConfig";
@@ -80,6 +80,24 @@ function Router() {
   );
 }
 
+// Keeps the browser/status-bar color in sync with the active theme so the
+// site feels like a native app on mobile (no mismatched chrome color).
+function DynamicThemeColor() {
+  const { theme } = useTheme();
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const color = theme === "dark" ? "#0d0f14" : "#ffffff";
+    let meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.appendChild(meta);
+    }
+    meta.content = color;
+  }, [theme]);
+  return null;
+}
+
 function DynamicFavicon() {
   const { data } = trpc.siteSettings.get.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
@@ -110,6 +128,7 @@ function App() {
       <ThemeProvider defaultTheme="light" switchable>
         <TooltipProvider>
           <Toaster />
+          <DynamicThemeColor />
           <DynamicFavicon />
           <Router />
         </TooltipProvider>
