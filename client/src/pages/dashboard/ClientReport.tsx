@@ -37,12 +37,24 @@ async function downloadPDF(reportRef: React.RefObject<HTMLDivElement | null>, cl
     const html2canvas = (await import("html2canvas")).default;
     const { jsPDF } = await import("jspdf");
 
+    // Render the PDF at a fixed desktop width so it looks the same regardless
+    // of the screen the user is on (mobile screens would otherwise produce a
+    // narrow, squashed PDF). Width is applied only during capture.
+    const prevWidth = element.style.width;
+    const prevMaxWidth = element.style.maxWidth;
+    element.style.width = "720px";
+    element.style.maxWidth = "720px";
+
     const canvas = await html2canvas(element, {
       scale: 2,
       useCORS: true,
       backgroundColor: "#0f172a",
       logging: false,
+      windowWidth: 760,
     });
+
+    element.style.width = prevWidth;
+    element.style.maxWidth = prevMaxWidth;
 
     const imgData = canvas.toDataURL("image/png");
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -75,7 +87,19 @@ async function downloadPDF(reportRef: React.RefObject<HTMLDivElement | null>, cl
 
 // ─── Report Content (printable) ───────────────────────────────────────────────
 
-function ReportContent({ data, reportRef }: {
+type SeoAnalysis = {
+  siteUrl: string;
+  breakdown: {
+    score: number;
+    categories: Array<{ key: string; label: string; score: number; weight: number }>;
+    checks: Array<{ id: string; label: string; status: "pass" | "warn" | "fail"; detail: string }>;
+  } | null;
+  error: string | null;
+} | null;
+
+function ReportContent({ data, reportRef, seo, seoLoading }: {
+  seo: SeoAnalysis;
+  seoLoading: boolean;
   data: {
     client: { id: number; name: string; siteUrl: string | null; brandName: string | null; brandColor: string | null };
     period: { from: string; to: string };
@@ -98,31 +122,37 @@ function ReportContent({ data, reportRef }: {
   ];
 
   return (
-    <div ref={reportRef} className="bg-slate-900 text-white p-8 rounded-2xl space-y-8 min-w-[700px]">
-      {/* Header */}
-      <div className="flex items-start justify-between border-b border-white/10 pb-6">
+    <div ref={reportRef} className="bg-slate-900 text-white p-5 sm:p-8 rounded-2xl space-y-8">
+      {/* Header with brand accent band */}
+      <div className="relative border-b border-white/10 pb-6">
+        <div
+          className="absolute -top-5 sm:-top-8 -left-5 sm:-left-8 -right-5 sm:-right-8 h-1.5 rounded-t-2xl"
+          style={{ background: `linear-gradient(90deg, ${accentColor}, transparent)` }}
+        />
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-lg"
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
               style={{ backgroundColor: accentColor }}
             >
               {client.name[0]?.toUpperCase()}
             </div>
-            <div>
-              <h1 className="text-2xl font-bold">{client.name}</h1>
-              <p className="text-sm text-slate-400">{client.siteUrl}</p>
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold truncate">{client.name}</h1>
+              <p className="text-sm text-slate-400 truncate">{client.siteUrl}</p>
             </div>
           </div>
           <Badge className="bg-white/10 text-white border-white/20 text-xs">
             AI Chatbot Performance Report
           </Badge>
         </div>
-        <div className="text-right">
+        <div className="text-left sm:text-right flex sm:block items-center gap-2">
           <div className="text-sm text-slate-400">Period</div>
           <div className="font-semibold">{formatDate(period.from)}</div>
           <div className="text-slate-400 text-sm">to</div>
           <div className="font-semibold">{formatDate(period.to)}</div>
+        </div>
         </div>
       </div>
 
@@ -228,6 +258,60 @@ function ReportContent({ data, reportRef }: {
         </div>
       )}
 
+      {/* Website SEO Analysis — real measured checks, included in the PDF */}
+      {(seo?.breakdown || seoLoading) && (
+        <div>
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Website SEO Analysis</h2>
+          {seoLoading && !seo?.breakdown ? (
+            <div className="bg-white/5 rounded-xl p-4 border border-white/10 text-sm text-slate-400">
+              Analyzing {"the client's"} website…
+            </div>
+          ) : seo?.breakdown ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 bg-white/5 rounded-xl p-4 border border-white/10">
+                <div className="w-16 h-16 rounded-full border-4 flex items-center justify-center flex-shrink-0"
+                  style={{ borderColor: seo.breakdown.score >= 80 ? "#34d399" : seo.breakdown.score >= 60 ? "#fbbf24" : "#f87171" }}>
+                  <span className="text-xl font-bold">{seo.breakdown.score}</span>
+                </div>
+                <div className="min-w-0">
+                  <div className="font-semibold text-sm">Overall SEO score</div>
+                  <div className="text-xs text-slate-400 truncate">{seo.siteUrl}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {seo.breakdown.categories.map((cat) => {
+                  const grade = cat.score >= 90 ? "A" : cat.score >= 80 ? "B" : cat.score >= 70 ? "C" : cat.score >= 60 ? "D" : "F";
+                  const color = cat.score >= 80 ? "text-emerald-400" : cat.score >= 60 ? "text-amber-400" : "text-red-400";
+                  return (
+                    <div key={cat.key} className="bg-white/5 rounded-xl p-3 border border-white/10 text-center">
+                      <div className={`text-lg font-bold ${color}`}>{grade}</div>
+                      <div className="text-[11px] font-medium">{cat.label}</div>
+                      <div className="text-[10px] text-slate-500">{cat.score}/100</div>
+                    </div>
+                  );
+                })}
+              </div>
+              {seo.breakdown.checks.filter((c) => c.status !== "pass").length > 0 && (
+                <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                  <div className="text-xs font-semibold text-slate-300 mb-2">Top opportunities</div>
+                  <div className="space-y-1.5">
+                    {seo.breakdown.checks.filter((c) => c.status !== "pass").slice(0, 6).map((c) => (
+                      <div key={c.id} className="flex items-start gap-2 text-xs">
+                        <span className={`flex-shrink-0 font-bold ${c.status === "fail" ? "text-red-400" : "text-amber-400"}`}>
+                          {c.status === "fail" ? "\u2715" : "\u26A0"}
+                        </span>
+                        <span className="text-slate-300">{c.label}</span>
+                        <span className="text-slate-500 ml-auto text-right">{c.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
+
       {/* Footer */}
       <div className="border-t border-white/10 pt-4 flex items-center justify-between text-xs text-slate-500">
         <span>Generated by Lynx AI · lynxaiassistant.com</span>
@@ -249,6 +333,11 @@ export default function ClientReport() {
   const { data, isLoading, error } = trpc.clients.reportData.useQuery(
     { id: clientId },
     { enabled: !!clientId && !isNaN(clientId) }
+  );
+  // SEO analysis of the client's own website — included in the printed PDF.
+  const { data: seoData, isLoading: seoLoading } = trpc.clients.seoAnalyze.useQuery(
+    { clientId },
+    { enabled: !!clientId && !isNaN(clientId), staleTime: 10 * 60 * 1000, retry: 1 }
   );
 
   async function handleDownload() {
@@ -332,7 +421,7 @@ export default function ClientReport() {
         {/* Report */}
         {data && !isLoading && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-            <ReportContent data={data} reportRef={reportRef} />
+            <ReportContent data={data} reportRef={reportRef} seo={seoData ?? null} seoLoading={seoLoading} />
           </motion.div>
         )}
 

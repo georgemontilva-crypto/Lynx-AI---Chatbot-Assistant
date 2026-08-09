@@ -44,6 +44,167 @@ import { conversations, clients, chatbots, analyticsEvents, seoHistory, webSetup
 import { TRPCError } from "@trpc/server";
 import { randomBytes } from "crypto";
 
+// ─── SEO analysis engine (module-level so client reports can reuse it) ───────
+type SeoCheck = { id: string; label: string; status: "pass" | "warn" | "fail"; detail: string };
+type SeoCategory = { key: string; label: string; score: number; weight: number };
+
+async function measureHttp(url: string): Promise<{
+  ttfbMs: number; totalMs: number; htmlKB: number; compressed: string;
+  cacheControl: string; hsts: boolean; redirected: boolean; finalUrl: string; https: boolean;
+} | null> {
+  try {
+    const t0 = Date.now();
+    const res = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(12000),
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; LynxSEO/1.0)", "Accept-Encoding": "gzip, br" },
+    });
+    const ttfbMs = Date.now() - t0; // fetch resolves when headers arrive ≈ TTFB
+    const buf = await res.arrayBuffer();
+    const totalMs = Date.now() - t0;
+    return {
+      ttfbMs, totalMs,
+      htmlKB: Math.round(buf.byteLength / 1024),
+      compressed: (res.headers.get("content-encoding") ?? "").toLowerCase(),
+      cacheControl: res.headers.get("cache-control") ?? "",
+      hsts: Boolean(res.headers.get("strict-transport-security")),
+      redirected: res.redirected,
+      finalUrl: res.url,
+      https: res.url.startsWith("https://"),
+    };
+  } catch { return null; }
+}
+
+function computeSeoBreakdown(
+  raw: string,
+  meas: Awaited<ReturnType<typeof measureHttp>>,
+  firstSampleMs: number,
+  sitemapFound: boolean,
+  pageUrl: string,
+): { score: number; categories: SeoCategory[]; checks: SeoCheck[] } {
+  const checks: SeoCheck[] = [];
+  const add = (id: string, label: string, status: SeoCheck["status"], detail: string, arr: number[], pts: number, max: number) => {
+    checks.push({ id, label, status, detail });
+    arr[0] += pts; arr[1] += max;
+  };
+
+  // ── PERFORMANCE (measured) ──
+  const perf: [number, number] = [0, 0];
+  const ttfb = meas ? Math.min(meas.ttfbMs, firstSampleMs > 0 ? firstSampleMs : meas.ttfbMs) : firstSampleMs; // best of 2 samples (GTmetrix-style)
+  if (ttfb > 0) {
+    const st = ttfb <= 500 ? "pass" : ttfb <= 1200 ? "warn" : "fail";
+    add("ttfb", "Server response time (TTFB)", st, `${ttfb} ms (good ≤ 500 ms)`, perf, st === "pass" ? 25 : st === "warn" ? 14 : 4, 25);
+  }
+  if (meas) {
+    const kb = meas.htmlKB;
+    const stSize = kb <= 100 ? "pass" : kb <= 300 ? "warn" : "fail";
+    add("htmlsize", "HTML document size", stSize, `${kb} KB (good ≤ 100 KB)`, perf, stSize === "pass" ? 15 : stSize === "warn" ? 9 : 3, 15);
+    const stComp = meas.compressed.includes("br") || meas.compressed.includes("gzip") ? "pass" : "fail";
+    add("compression", "Text compression (gzip/brotli)", stComp, meas.compressed ? `Enabled (${meas.compressed})` : "Not detected — enable gzip or brotli", perf, stComp === "pass" ? 15 : 0, 15);
+    const stCache = /max-age=[1-9]/.test(meas.cacheControl) ? "pass" : "warn";
+    add("cache", "HTML cache headers", stCache, meas.cacheControl || "No cache-control header", perf, stCache === "pass" ? 10 : 5, 10);
+  }
+  const scriptCount = (raw.match(/<script[^>]+src=/gi) ?? []).length;
+  const stScripts = scriptCount <= 8 ? "pass" : scriptCount <= 15 ? "warn" : "fail";
+  add("scripts", "External scripts", stScripts, `${scriptCount} scripts (good ≤ 8)`, perf, stScripts === "pass" ? 12 : stScripts === "warn" ? 7 : 2, 12);
+  const cssCount = (raw.match(/<link[^>]+rel=["']stylesheet["']/gi) ?? []).length;
+  const stCss = cssCount <= 4 ? "pass" : cssCount <= 8 ? "warn" : "fail";
+  add("css", "External stylesheets", stCss, `${cssCount} stylesheets (good ≤ 4)`, perf, stCss === "pass" ? 8 : stCss === "warn" ? 5 : 1, 8);
+  const imgsAll = (raw.match(/<img/gi) ?? []).length;
+  const imgsLazy = (raw.match(/<img[^>]+loading=["']lazy["']/gi) ?? []).length;
+  if (imgsAll > 3) {
+    const lazyRatio = imgsLazy / imgsAll;
+    const stLazy = lazyRatio >= 0.5 ? "pass" : lazyRatio > 0 ? "warn" : "fail";
+    add("lazy", "Image lazy loading", stLazy, `${imgsLazy}/${imgsAll} images lazy-loaded`, perf, stLazy === "pass" ? 8 : stLazy === "warn" ? 4 : 0, 8);
+  }
+  const imgsDim = (raw.match(/<img[^>]+width=/gi) ?? []).length;
+  if (imgsAll > 3) {
+    const dimRatio = imgsDim / imgsAll;
+    const stDim = dimRatio >= 0.7 ? "pass" : dimRatio >= 0.3 ? "warn" : "fail";
+    add("imgdim", "Image dimensions set (prevents layout shift)", stDim, `${imgsDim}/${imgsAll} images have width/height`, perf, stDim === "pass" ? 7 : stDim === "warn" ? 4 : 0, 7);
+  }
+
+  // ── SEO ──
+  const seo: [number, number] = [0, 0];
+  const titleTxt = raw.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() ?? "";
+  const stTitle = titleTxt.length >= 30 && titleTxt.length <= 60 ? "pass" : titleTxt.length > 0 ? "warn" : "fail";
+  add("title", "Title tag", stTitle, titleTxt ? `${titleTxt.length} chars (ideal 30–60)` : "Missing", seo, stTitle === "pass" ? 18 : stTitle === "warn" ? 12 : 0, 18);
+  const descTxt = raw.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']*)["']/i)?.[1]
+    ?? raw.match(/<meta[^>]+content=["']([^"']*)["'][^>]*name=["']description["']/i)?.[1] ?? "";
+  const stDesc = descTxt.length >= 70 && descTxt.length <= 160 ? "pass" : descTxt.length > 0 ? "warn" : "fail";
+  add("metadesc", "Meta description", stDesc, descTxt ? `${descTxt.length} chars (ideal 70–160)` : "Missing", seo, stDesc === "pass" ? 18 : stDesc === "warn" ? 12 : 0, 18);
+  const h1Count = (raw.match(/<h1[\s>]/gi) ?? []).length;
+  const stH1 = h1Count === 1 ? "pass" : h1Count > 1 ? "warn" : "fail";
+  add("h1", "Single H1 heading", stH1, h1Count === 1 ? "Exactly one H1" : h1Count > 1 ? `${h1Count} H1 tags (should be 1)` : "No H1 found", seo, stH1 === "pass" ? 12 : stH1 === "warn" ? 7 : 0, 12);
+  const hasCanonical = /<link[^>]+rel=["']canonical["']/i.test(raw);
+  add("canonical", "Canonical URL", hasCanonical ? "pass" : "warn", hasCanonical ? "Present" : "Missing — helps prevent duplicate content", seo, hasCanonical ? 10 : 0, 10);
+  add("sitemap", "XML sitemap", sitemapFound ? "pass" : "warn", sitemapFound ? "Found" : "Not found — add one so crawlers discover all pages", seo, sitemapFound ? 12 : 0, 12);
+  const hasLang = /<html[^>]+lang=/i.test(raw);
+  add("lang", "Language attribute", hasLang ? "pass" : "warn", hasLang ? "Present on <html>" : "Missing lang attribute", seo, hasLang ? 6 : 0, 6);
+  const imgsAlt = (raw.match(/<img[^>]+alt=["'][^"']+["']/gi) ?? []).length;
+  const altRatio = imgsAll > 0 ? imgsAlt / imgsAll : 1;
+  const stAlt = altRatio >= 0.9 ? "pass" : altRatio >= 0.5 ? "warn" : "fail";
+  add("alt", "Image alt text", stAlt, imgsAll > 0 ? `${imgsAlt}/${imgsAll} images have alt` : "No images", seo, Math.round(altRatio * 14), 14);
+  const hasFavicon = /<link[^>]+rel=["'][^"']*icon[^"']*["']/i.test(raw);
+  add("favicon", "Favicon", hasFavicon ? "pass" : "warn", hasFavicon ? "Present" : "Missing", seo, hasFavicon ? 4 : 0, 4);
+  const internalLinks = (raw.match(/<a[^>]+href=["'](\/[^"']*|#[^"']*)["']/gi) ?? []).length;
+  const stLinks = internalLinks >= 5 ? "pass" : internalLinks > 0 ? "warn" : "fail";
+  add("links", "Internal links", stLinks, `${internalLinks} internal links (good ≥ 5)`, seo, stLinks === "pass" ? 6 : stLinks === "warn" ? 3 : 0, 6);
+
+  // ── SOCIAL ──
+  const social: [number, number] = [0, 0];
+  const hasOgT = /<meta[^>]+property=["']og:title["']/i.test(raw);
+  const hasOgD = /<meta[^>]+property=["']og:description["']/i.test(raw);
+  const hasOgI = /<meta[^>]+property=["']og:image["']/i.test(raw);
+  const hasTw = /<meta[^>]+name=["']twitter:card["']/i.test(raw);
+  add("og", "Open Graph tags", hasOgT && hasOgD ? "pass" : hasOgT || hasOgD ? "warn" : "fail", `og:title ${hasOgT ? "✓" : "✗"}, og:description ${hasOgD ? "✓" : "✗"}`, social, (hasOgT ? 20 : 0) + (hasOgD ? 20 : 0), 40);
+  add("ogimage", "Social share image (og:image)", hasOgI ? "pass" : "warn", hasOgI ? "Present" : "Missing — links look plain when shared", social, hasOgI ? 40 : 0, 40);
+  add("twitter", "Twitter card", hasTw ? "pass" : "warn", hasTw ? "Present" : "Missing", social, hasTw ? 20 : 0, 20);
+
+  // ── STRUCTURE ──
+  const struct: [number, number] = [0, 0];
+  let jsonLdValid = 0; let jsonLdTotal = 0;
+  for (const m of Array.from(raw.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi))) {
+    jsonLdTotal++;
+    try { JSON.parse(m[1]); jsonLdValid++; } catch { /* invalid */ }
+  }
+  const stLd = jsonLdValid > 0 ? "pass" : jsonLdTotal > 0 ? "warn" : "fail";
+  add("jsonld", "Structured data (JSON-LD)", stLd, jsonLdTotal > 0 ? `${jsonLdValid}/${jsonLdTotal} blocks valid` : "None found", struct, stLd === "pass" ? 40 : stLd === "warn" ? 15 : 0, 40);
+  const hasViewportC = /<meta[^>]+name=["']viewport["']/i.test(raw);
+  add("viewport", "Mobile viewport", hasViewportC ? "pass" : "fail", hasViewportC ? "Present" : "Missing — page won't scale on phones", struct, hasViewportC ? 30 : 0, 30);
+  const hasCharset = /<meta[^>]+charset=/i.test(raw);
+  add("charset", "Character encoding", hasCharset ? "pass" : "warn", hasCharset ? "Declared" : "Missing charset", struct, hasCharset ? 15 : 0, 15);
+  const hasResponsiveImg = /srcset=|<picture/i.test(raw);
+  add("srcset", "Responsive images (srcset)", hasResponsiveImg ? "pass" : "warn", hasResponsiveImg ? "In use" : "Not detected", struct, hasResponsiveImg ? 15 : 0, 15);
+
+  // ── SECURITY ──
+  const sec: [number, number] = [0, 0];
+  const isHttps = meas ? meas.https : pageUrl.startsWith("https://");
+  add("https", "HTTPS", isHttps ? "pass" : "fail", isHttps ? "Secure connection" : "Site not served over HTTPS", sec, isHttps ? 50 : 0, 50);
+  if (meas) add("hsts", "HTTP Strict Transport Security", meas.hsts ? "pass" : "warn", meas.hsts ? "HSTS enabled" : "No HSTS header", sec, meas.hsts ? 25 : 0, 25);
+  const mixed = isHttps && /(?:src|href)=["']http:\/\//i.test(raw);
+  add("mixed", "No mixed content", mixed ? "warn" : "pass", mixed ? "Some resources load over http://" : "All resources secure", sec, mixed ? 5 : 25, 25);
+
+  // ── Weighted total ──
+  const pct = (a: [number, number]) => (a[1] > 0 ? Math.round((a[0] / a[1]) * 100) : 100);
+  const categories: SeoCategory[] = [
+    { key: "performance", label: "Performance", score: pct(perf), weight: 30 },
+    { key: "seo", label: "SEO", score: pct(seo), weight: 35 },
+    { key: "social", label: "Social", score: pct(social), weight: 10 },
+    { key: "structure", label: "Structure", score: pct(struct), weight: 15 },
+    { key: "security", label: "Security", score: pct(sec), weight: 10 },
+  ];
+  let total = Math.round(categories.reduce((s, c) => s + c.score * (c.weight / 100), 0));
+  // Critical override: a noindex page is invisible to search engines.
+  if (/<meta[^>]+name=["']robots["'][^>]*noindex/i.test(raw)) {
+    total = Math.min(total, 25);
+    checks.unshift({ id: "noindex", label: "Page is set to noindex", status: "fail", detail: "Search engines are told NOT to index this page — score capped at 25" });
+  }
+  return { score: total, categories, checks };
+}
+
+
+
 
 // ─── Training helpers ────────────────────────────────────────────────────────
 export function trainingLimitsForPlan(plan: string) {
@@ -612,166 +773,9 @@ export const appRouter = router({
         // Numbers come from REAL measurements (HTTP timing, headers, bytes) and
         // graded checks — never from the LLM. Weighted category scores like
         // Lighthouse: Performance 30, SEO 35, Social 10, Structure 15, Security 10.
-        type SeoCheck = { id: string; label: string; status: "pass" | "warn" | "fail"; detail: string };
-        type SeoCategory = { key: string; label: string; score: number; weight: number };
-
-        async function measureHttp(url: string): Promise<{
-          ttfbMs: number; totalMs: number; htmlKB: number; compressed: string;
-          cacheControl: string; hsts: boolean; redirected: boolean; finalUrl: string; https: boolean;
-        } | null> {
-          try {
-            const t0 = Date.now();
-            const res = await fetch(url, {
-              redirect: "follow",
-              signal: AbortSignal.timeout(12000),
-              headers: { "User-Agent": "Mozilla/5.0 (compatible; LynxSEO/1.0)", "Accept-Encoding": "gzip, br" },
-            });
-            const ttfbMs = Date.now() - t0; // fetch resolves when headers arrive ≈ TTFB
-            const buf = await res.arrayBuffer();
-            const totalMs = Date.now() - t0;
-            return {
-              ttfbMs, totalMs,
-              htmlKB: Math.round(buf.byteLength / 1024),
-              compressed: (res.headers.get("content-encoding") ?? "").toLowerCase(),
-              cacheControl: res.headers.get("cache-control") ?? "",
-              hsts: Boolean(res.headers.get("strict-transport-security")),
-              redirected: res.redirected,
-              finalUrl: res.url,
-              https: res.url.startsWith("https://"),
-            };
-          } catch { return null; }
-        }
-
-        function computeSeoBreakdown(
-          raw: string,
-          meas: Awaited<ReturnType<typeof measureHttp>>,
-          firstSampleMs: number,
-          sitemapFound: boolean,
-        ): { score: number; categories: SeoCategory[]; checks: SeoCheck[] } {
-          const checks: SeoCheck[] = [];
-          const add = (id: string, label: string, status: SeoCheck["status"], detail: string, arr: number[], pts: number, max: number) => {
-            checks.push({ id, label, status, detail });
-            arr[0] += pts; arr[1] += max;
-          };
-
-          // ── PERFORMANCE (measured) ──
-          const perf: [number, number] = [0, 0];
-          const ttfb = meas ? Math.min(meas.ttfbMs, firstSampleMs > 0 ? firstSampleMs : meas.ttfbMs) : firstSampleMs; // best of 2 samples (GTmetrix-style)
-          if (ttfb > 0) {
-            const st = ttfb <= 500 ? "pass" : ttfb <= 1200 ? "warn" : "fail";
-            add("ttfb", "Server response time (TTFB)", st, `${ttfb} ms (good ≤ 500 ms)`, perf, st === "pass" ? 25 : st === "warn" ? 14 : 4, 25);
-          }
-          if (meas) {
-            const kb = meas.htmlKB;
-            const stSize = kb <= 100 ? "pass" : kb <= 300 ? "warn" : "fail";
-            add("htmlsize", "HTML document size", stSize, `${kb} KB (good ≤ 100 KB)`, perf, stSize === "pass" ? 15 : stSize === "warn" ? 9 : 3, 15);
-            const stComp = meas.compressed.includes("br") || meas.compressed.includes("gzip") ? "pass" : "fail";
-            add("compression", "Text compression (gzip/brotli)", stComp, meas.compressed ? `Enabled (${meas.compressed})` : "Not detected — enable gzip or brotli", perf, stComp === "pass" ? 15 : 0, 15);
-            const stCache = /max-age=[1-9]/.test(meas.cacheControl) ? "pass" : "warn";
-            add("cache", "HTML cache headers", stCache, meas.cacheControl || "No cache-control header", perf, stCache === "pass" ? 10 : 5, 10);
-          }
-          const scriptCount = (raw.match(/<script[^>]+src=/gi) ?? []).length;
-          const stScripts = scriptCount <= 8 ? "pass" : scriptCount <= 15 ? "warn" : "fail";
-          add("scripts", "External scripts", stScripts, `${scriptCount} scripts (good ≤ 8)`, perf, stScripts === "pass" ? 12 : stScripts === "warn" ? 7 : 2, 12);
-          const cssCount = (raw.match(/<link[^>]+rel=["']stylesheet["']/gi) ?? []).length;
-          const stCss = cssCount <= 4 ? "pass" : cssCount <= 8 ? "warn" : "fail";
-          add("css", "External stylesheets", stCss, `${cssCount} stylesheets (good ≤ 4)`, perf, stCss === "pass" ? 8 : stCss === "warn" ? 5 : 1, 8);
-          const imgsAll = (raw.match(/<img/gi) ?? []).length;
-          const imgsLazy = (raw.match(/<img[^>]+loading=["']lazy["']/gi) ?? []).length;
-          if (imgsAll > 3) {
-            const lazyRatio = imgsLazy / imgsAll;
-            const stLazy = lazyRatio >= 0.5 ? "pass" : lazyRatio > 0 ? "warn" : "fail";
-            add("lazy", "Image lazy loading", stLazy, `${imgsLazy}/${imgsAll} images lazy-loaded`, perf, stLazy === "pass" ? 8 : stLazy === "warn" ? 4 : 0, 8);
-          }
-          const imgsDim = (raw.match(/<img[^>]+width=/gi) ?? []).length;
-          if (imgsAll > 3) {
-            const dimRatio = imgsDim / imgsAll;
-            const stDim = dimRatio >= 0.7 ? "pass" : dimRatio >= 0.3 ? "warn" : "fail";
-            add("imgdim", "Image dimensions set (prevents layout shift)", stDim, `${imgsDim}/${imgsAll} images have width/height`, perf, stDim === "pass" ? 7 : stDim === "warn" ? 4 : 0, 7);
-          }
-
-          // ── SEO ──
-          const seo: [number, number] = [0, 0];
-          const titleTxt = raw.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() ?? "";
-          const stTitle = titleTxt.length >= 30 && titleTxt.length <= 60 ? "pass" : titleTxt.length > 0 ? "warn" : "fail";
-          add("title", "Title tag", stTitle, titleTxt ? `${titleTxt.length} chars (ideal 30–60)` : "Missing", seo, stTitle === "pass" ? 18 : stTitle === "warn" ? 12 : 0, 18);
-          const descTxt = raw.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']*)["']/i)?.[1]
-            ?? raw.match(/<meta[^>]+content=["']([^"']*)["'][^>]*name=["']description["']/i)?.[1] ?? "";
-          const stDesc = descTxt.length >= 70 && descTxt.length <= 160 ? "pass" : descTxt.length > 0 ? "warn" : "fail";
-          add("metadesc", "Meta description", stDesc, descTxt ? `${descTxt.length} chars (ideal 70–160)` : "Missing", seo, stDesc === "pass" ? 18 : stDesc === "warn" ? 12 : 0, 18);
-          const h1Count = (raw.match(/<h1[\s>]/gi) ?? []).length;
-          const stH1 = h1Count === 1 ? "pass" : h1Count > 1 ? "warn" : "fail";
-          add("h1", "Single H1 heading", stH1, h1Count === 1 ? "Exactly one H1" : h1Count > 1 ? `${h1Count} H1 tags (should be 1)` : "No H1 found", seo, stH1 === "pass" ? 12 : stH1 === "warn" ? 7 : 0, 12);
-          const hasCanonical = /<link[^>]+rel=["']canonical["']/i.test(raw);
-          add("canonical", "Canonical URL", hasCanonical ? "pass" : "warn", hasCanonical ? "Present" : "Missing — helps prevent duplicate content", seo, hasCanonical ? 10 : 0, 10);
-          add("sitemap", "XML sitemap", sitemapFound ? "pass" : "warn", sitemapFound ? "Found" : "Not found — add one so crawlers discover all pages", seo, sitemapFound ? 12 : 0, 12);
-          const hasLang = /<html[^>]+lang=/i.test(raw);
-          add("lang", "Language attribute", hasLang ? "pass" : "warn", hasLang ? "Present on <html>" : "Missing lang attribute", seo, hasLang ? 6 : 0, 6);
-          const imgsAlt = (raw.match(/<img[^>]+alt=["'][^"']+["']/gi) ?? []).length;
-          const altRatio = imgsAll > 0 ? imgsAlt / imgsAll : 1;
-          const stAlt = altRatio >= 0.9 ? "pass" : altRatio >= 0.5 ? "warn" : "fail";
-          add("alt", "Image alt text", stAlt, imgsAll > 0 ? `${imgsAlt}/${imgsAll} images have alt` : "No images", seo, Math.round(altRatio * 14), 14);
-          const hasFavicon = /<link[^>]+rel=["'][^"']*icon[^"']*["']/i.test(raw);
-          add("favicon", "Favicon", hasFavicon ? "pass" : "warn", hasFavicon ? "Present" : "Missing", seo, hasFavicon ? 4 : 0, 4);
-          const internalLinks = (raw.match(/<a[^>]+href=["'](\/[^"']*|#[^"']*)["']/gi) ?? []).length;
-          const stLinks = internalLinks >= 5 ? "pass" : internalLinks > 0 ? "warn" : "fail";
-          add("links", "Internal links", stLinks, `${internalLinks} internal links (good ≥ 5)`, seo, stLinks === "pass" ? 6 : stLinks === "warn" ? 3 : 0, 6);
-
-          // ── SOCIAL ──
-          const social: [number, number] = [0, 0];
-          const hasOgT = /<meta[^>]+property=["']og:title["']/i.test(raw);
-          const hasOgD = /<meta[^>]+property=["']og:description["']/i.test(raw);
-          const hasOgI = /<meta[^>]+property=["']og:image["']/i.test(raw);
-          const hasTw = /<meta[^>]+name=["']twitter:card["']/i.test(raw);
-          add("og", "Open Graph tags", hasOgT && hasOgD ? "pass" : hasOgT || hasOgD ? "warn" : "fail", `og:title ${hasOgT ? "✓" : "✗"}, og:description ${hasOgD ? "✓" : "✗"}`, social, (hasOgT ? 20 : 0) + (hasOgD ? 20 : 0), 40);
-          add("ogimage", "Social share image (og:image)", hasOgI ? "pass" : "warn", hasOgI ? "Present" : "Missing — links look plain when shared", social, hasOgI ? 40 : 0, 40);
-          add("twitter", "Twitter card", hasTw ? "pass" : "warn", hasTw ? "Present" : "Missing", social, hasTw ? 20 : 0, 20);
-
-          // ── STRUCTURE ──
-          const struct: [number, number] = [0, 0];
-          let jsonLdValid = 0; let jsonLdTotal = 0;
-          for (const m of Array.from(raw.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi))) {
-            jsonLdTotal++;
-            try { JSON.parse(m[1]); jsonLdValid++; } catch { /* invalid */ }
-          }
-          const stLd = jsonLdValid > 0 ? "pass" : jsonLdTotal > 0 ? "warn" : "fail";
-          add("jsonld", "Structured data (JSON-LD)", stLd, jsonLdTotal > 0 ? `${jsonLdValid}/${jsonLdTotal} blocks valid` : "None found", struct, stLd === "pass" ? 40 : stLd === "warn" ? 15 : 0, 40);
-          const hasViewportC = /<meta[^>]+name=["']viewport["']/i.test(raw);
-          add("viewport", "Mobile viewport", hasViewportC ? "pass" : "fail", hasViewportC ? "Present" : "Missing — page won't scale on phones", struct, hasViewportC ? 30 : 0, 30);
-          const hasCharset = /<meta[^>]+charset=/i.test(raw);
-          add("charset", "Character encoding", hasCharset ? "pass" : "warn", hasCharset ? "Declared" : "Missing charset", struct, hasCharset ? 15 : 0, 15);
-          const hasResponsiveImg = /srcset=|<picture/i.test(raw);
-          add("srcset", "Responsive images (srcset)", hasResponsiveImg ? "pass" : "warn", hasResponsiveImg ? "In use" : "Not detected", struct, hasResponsiveImg ? 15 : 0, 15);
-
-          // ── SECURITY ──
-          const sec: [number, number] = [0, 0];
-          const isHttps = meas ? meas.https : input.url.startsWith("https://");
-          add("https", "HTTPS", isHttps ? "pass" : "fail", isHttps ? "Secure connection" : "Site not served over HTTPS", sec, isHttps ? 50 : 0, 50);
-          if (meas) add("hsts", "HTTP Strict Transport Security", meas.hsts ? "pass" : "warn", meas.hsts ? "HSTS enabled" : "No HSTS header", sec, meas.hsts ? 25 : 0, 25);
-          const mixed = isHttps && /(?:src|href)=["']http:\/\//i.test(raw);
-          add("mixed", "No mixed content", mixed ? "warn" : "pass", mixed ? "Some resources load over http://" : "All resources secure", sec, mixed ? 5 : 25, 25);
-
-          // ── Weighted total ──
-          const pct = (a: [number, number]) => (a[1] > 0 ? Math.round((a[0] / a[1]) * 100) : 100);
-          const categories: SeoCategory[] = [
-            { key: "performance", label: "Performance", score: pct(perf), weight: 30 },
-            { key: "seo", label: "SEO", score: pct(seo), weight: 35 },
-            { key: "social", label: "Social", score: pct(social), weight: 10 },
-            { key: "structure", label: "Structure", score: pct(struct), weight: 15 },
-            { key: "security", label: "Security", score: pct(sec), weight: 10 },
-          ];
-          let total = Math.round(categories.reduce((s, c) => s + c.score * (c.weight / 100), 0));
-          // Critical override: a noindex page is invisible to search engines.
-          if (/<meta[^>]+name=["']robots["'][^>]*noindex/i.test(raw)) {
-            total = Math.min(total, 25);
-            checks.unshift({ id: "noindex", label: "Page is set to noindex", status: "fail", detail: "Search engines are told NOT to index this page — score capped at 25" });
-          }
-          return { score: total, categories, checks };
-        }
-
         const httpMeasure = rawHome ? await measureHttp(input.url) : null;
         const seoBreakdown = rawHome
-          ? computeSeoBreakdown(rawHome, httpMeasure, Math.round(measuredLoadSpeed * 1000), scanReport.sitemapFound)
+          ? computeSeoBreakdown(rawHome, httpMeasure, Math.round(measuredLoadSpeed * 1000), scanReport.sitemapFound, input.url)
           : null;
         const realSeoScore = seoBreakdown?.score ?? 0;
 
@@ -1657,6 +1661,49 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
 
   // ─── Clients (White-Label) ────────────────────────────────────────────────
   clients: router({
+    // Run the real SEO analysis engine against a client's website, so the
+    // white-label report (and its PDF) includes a graded SEO section.
+    seoAnalyze: protectedProcedure
+      .input(z.object({ clientId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        const { eq: eqOp, and: andOp } = await import("drizzle-orm");
+        const [client] = await db.select().from(clients)
+          .where(andOp(eqOp(clients.id, input.clientId), eqOp(clients.userId, ctx.user.id)))
+          .limit(1);
+        if (!client) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found" });
+        let url = client.siteUrl.trim();
+        if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+        // Basic SSRF guard: block private/localhost targets
+        try {
+          const h = new URL(url).hostname;
+          if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.)/i.test(h) || h === "::1") {
+            throw new Error("blocked");
+          }
+        } catch { throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid site URL" }); }
+        const t0 = Date.now();
+        let raw = "";
+        try {
+          const res = await fetch(url, {
+            redirect: "follow",
+            signal: AbortSignal.timeout(12000),
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; LynxSEO/1.0)" },
+          });
+          raw = await res.text();
+        } catch { /* unreachable site → breakdown null below */ }
+        const firstMs = Date.now() - t0;
+        if (!raw) return { siteUrl: url, breakdown: null, error: "No pudimos leer el sitio del cliente" };
+        const meas = await measureHttp(url);
+        // Sitemap check for the client's site (quick best-effort)
+        let sitemapFound = false;
+        try {
+          const smRes = await fetch(new URL("/sitemap.xml", url).href, { signal: AbortSignal.timeout(6000) });
+          sitemapFound = smRes.ok && /<(urlset|sitemapindex)/i.test(await smRes.text());
+        } catch { /* none */ }
+        const breakdown = computeSeoBreakdown(raw, meas, firstMs, sitemapFound, url);
+        return { siteUrl: url, breakdown, error: null };
+      }),
     list: protectedProcedure.query(async ({ ctx }) => {
       const db = await getDb();
       if (!db) return [];
