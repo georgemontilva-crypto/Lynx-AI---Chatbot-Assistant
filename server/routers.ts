@@ -48,6 +48,54 @@ import { randomBytes } from "crypto";
 type SeoCheck = { id: string; label: string; status: "pass" | "warn" | "fail"; detail: string };
 type SeoCategory = { key: string; label: string; score: number; weight: number };
 
+// ─── Real Lighthouse metrics via Google PageSpeed Insights API ───────────────
+// This is the SAME Lighthouse engine GTmetrix runs, executed on Google's
+// servers — it renders the page in Chrome and measures real Web Vitals
+// (LCP, TBT, CLS) plus the official Performance score. Free API; an optional
+// PAGESPEED_API_KEY env raises the quota.
+type PageSpeedResult = {
+  performanceScore: number;          // 0-100, official Lighthouse score
+  lcpMs: number | null;              // Largest Contentful Paint
+  tbtMs: number | null;              // Total Blocking Time
+  cls: number | null;                // Cumulative Layout Shift
+  fcpMs: number | null;              // First Contentful Paint
+  speedIndexMs: number | null;
+  lighthouseVersion: string;
+} | null;
+
+async function fetchPageSpeed(url: string): Promise<PageSpeedResult> {
+  try {
+    const key = process.env.PAGESPEED_API_KEY;
+    const api = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
+    api.searchParams.set("url", url);
+    api.searchParams.set("strategy", "mobile");
+    api.searchParams.set("category", "performance");
+    if (key) api.searchParams.set("key", key);
+    const res = await fetch(api.href, { signal: AbortSignal.timeout(45000) });
+    if (!res.ok) return null;
+    const j = await res.json() as {
+      lighthouseResult?: {
+        lighthouseVersion?: string;
+        categories?: { performance?: { score?: number } };
+        audits?: Record<string, { numericValue?: number }>;
+      };
+    };
+    const lr = j.lighthouseResult;
+    if (!lr?.categories?.performance) return null;
+    const a = lr.audits ?? {};
+    const num = (id: string) => (typeof a[id]?.numericValue === "number" ? a[id]!.numericValue! : null);
+    return {
+      performanceScore: Math.round((lr.categories.performance.score ?? 0) * 100),
+      lcpMs: num("largest-contentful-paint"),
+      tbtMs: num("total-blocking-time"),
+      cls: a["cumulative-layout-shift"]?.numericValue ?? null,
+      fcpMs: num("first-contentful-paint"),
+      speedIndexMs: num("speed-index"),
+      lighthouseVersion: lr.lighthouseVersion ?? "12",
+    };
+  } catch { return null; }
+}
+
 async function measureHttp(url: string): Promise<{
   ttfbMs: number; totalMs: number; htmlKB: number; compressed: string;
   cacheControl: string; hsts: boolean; redirected: boolean; finalUrl: string; https: boolean;
@@ -81,7 +129,12 @@ function computeSeoBreakdown(
   firstSampleMs: number,
   sitemapFound: boolean,
   pageUrl: string,
-): { score: number; categories: SeoCategory[]; checks: SeoCheck[] } {
+  psi?: PageSpeedResult,
+): {
+  score: number; categories: SeoCategory[]; checks: SeoCheck[];
+  source: "lighthouse" | "estimated";
+  webVitals: { lcpMs: number | null; tbtMs: number | null; cls: number | null; fcpMs: number | null; lighthouseVersion: string } | null;
+} {
   const checks: SeoCheck[] = [];
   const add = (id: string, label: string, status: SeoCheck["status"], detail: string, arr: number[], pts: number, max: number) => {
     checks.push({ id, label, status, detail });
@@ -194,13 +247,46 @@ function computeSeoBreakdown(
     { key: "structure", label: "Structure", score: pct(struct), weight: 15 },
     { key: "security", label: "Security", score: pct(sec), weight: 10 },
   ];
+
+  // ── Real Lighthouse override ──
+  // When Google PageSpeed (the same Lighthouse engine GTmetrix runs) responded,
+  // the Performance category uses ITS official score, and the real Web Vitals
+  // become graded checks with Google's official thresholds.
+  let vitalsSource: "lighthouse" | "estimated" = "estimated";
+  if (psi) {
+    vitalsSource = "lighthouse";
+    const perfCat = categories.find((c) => c.key === "performance");
+    if (perfCat) perfCat.score = psi.performanceScore;
+    const vitalChecks: SeoCheck[] = [];
+    if (psi.lcpMs != null) {
+      const s = psi.lcpMs <= 2500 ? "pass" : psi.lcpMs <= 4000 ? "warn" : "fail";
+      vitalChecks.push({ id: "lcp", label: "Largest Contentful Paint (LCP)", status: s, detail: `${(psi.lcpMs / 1000).toFixed(1)} s (good \u2264 2.5 s)` });
+    }
+    if (psi.tbtMs != null) {
+      const s = psi.tbtMs <= 200 ? "pass" : psi.tbtMs <= 600 ? "warn" : "fail";
+      vitalChecks.push({ id: "tbt", label: "Total Blocking Time (TBT)", status: s, detail: `${Math.round(psi.tbtMs)} ms (good \u2264 200 ms)` });
+    }
+    if (psi.cls != null) {
+      const s = psi.cls <= 0.1 ? "pass" : psi.cls <= 0.25 ? "warn" : "fail";
+      vitalChecks.push({ id: "cls", label: "Cumulative Layout Shift (CLS)", status: s, detail: `${psi.cls.toFixed(2)} (good \u2264 0.10)` });
+    }
+    if (psi.fcpMs != null) {
+      const s = psi.fcpMs <= 1800 ? "pass" : psi.fcpMs <= 3000 ? "warn" : "fail";
+      vitalChecks.push({ id: "fcp", label: "First Contentful Paint (FCP)", status: s, detail: `${(psi.fcpMs / 1000).toFixed(1)} s (good \u2264 1.8 s)` });
+    }
+    checks.unshift(...vitalChecks);
+  }
   let total = Math.round(categories.reduce((s, c) => s + c.score * (c.weight / 100), 0));
   // Critical override: a noindex page is invisible to search engines.
   if (/<meta[^>]+name=["']robots["'][^>]*noindex/i.test(raw)) {
     total = Math.min(total, 25);
     checks.unshift({ id: "noindex", label: "Page is set to noindex", status: "fail", detail: "Search engines are told NOT to index this page — score capped at 25" });
   }
-  return { score: total, categories, checks };
+  return {
+    score: total, categories, checks,
+    source: vitalsSource,
+    webVitals: psi ? { lcpMs: psi.lcpMs, tbtMs: psi.tbtMs, cls: psi.cls, fcpMs: psi.fcpMs, lighthouseVersion: psi.lighthouseVersion } : null,
+  };
 }
 
 
@@ -636,6 +722,9 @@ export const appRouter = router({
           pagesFailed: [] as string[],  // paths that failed to load
           warnings: [] as string[],     // human-readable notes for the user
         };
+        // Launch the real Lighthouse run (Google PageSpeed) in PARALLEL with the
+        // crawl — it takes 15-40s and we await it right before scoring.
+        const psiPromise = fetchPageSpeed(input.url);
         try {
           const fetchStart = Date.now();
           const { text: raw } = await safeFetchText(input.url);
@@ -774,8 +863,9 @@ export const appRouter = router({
         // graded checks — never from the LLM. Weighted category scores like
         // Lighthouse: Performance 30, SEO 35, Social 10, Structure 15, Security 10.
         const httpMeasure = rawHome ? await measureHttp(input.url) : null;
+        const psiResult = rawHome ? await psiPromise : null;
         const seoBreakdown = rawHome
-          ? computeSeoBreakdown(rawHome, httpMeasure, Math.round(measuredLoadSpeed * 1000), scanReport.sitemapFound, input.url)
+          ? computeSeoBreakdown(rawHome, httpMeasure, Math.round(measuredLoadSpeed * 1000), scanReport.sitemapFound, input.url, psiResult)
           : null;
         const realSeoScore = seoBreakdown?.score ?? 0;
 
@@ -1682,6 +1772,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
             throw new Error("blocked");
           }
         } catch { throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid site URL" }); }
+        const clientPsiPromise = fetchPageSpeed(url);
         const t0 = Date.now();
         let raw = "";
         try {
@@ -1701,7 +1792,8 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
           const smRes = await fetch(new URL("/sitemap.xml", url).href, { signal: AbortSignal.timeout(6000) });
           sitemapFound = smRes.ok && /<(urlset|sitemapindex)/i.test(await smRes.text());
         } catch { /* none */ }
-        const breakdown = computeSeoBreakdown(raw, meas, firstMs, sitemapFound, url);
+        const clientPsi = await clientPsiPromise;
+        const breakdown = computeSeoBreakdown(raw, meas, firstMs, sitemapFound, url, clientPsi);
         return { siteUrl: url, breakdown, error: null };
       }),
     list: protectedProcedure.query(async ({ ctx }) => {

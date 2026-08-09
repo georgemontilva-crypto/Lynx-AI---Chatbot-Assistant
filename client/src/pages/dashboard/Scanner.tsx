@@ -56,6 +56,8 @@ type ScanResult = {
     score: number;
     categories: Array<{ key: string; label: string; score: number; weight: number }>;
     checks: Array<{ id: string; label: string; status: "pass" | "warn" | "fail"; detail: string }>;
+    source?: "lighthouse" | "estimated";
+    webVitals?: { lcpMs: number | null; tbtMs: number | null; cls: number | null; fcpMs: number | null; lighthouseVersion: string } | null;
   } | null;
 };
 
@@ -282,8 +284,28 @@ export default function Scanner() {
                       <FileText className="w-4 h-4 text-primary" />Desglose del puntaje SEO
                       <span className="ml-auto text-lg font-bold">{result.seoBreakdown.score}<span className="text-xs text-muted-foreground font-normal">/100</span></span>
                     </CardTitle>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {result.seoBreakdown.source === "lighthouse"
+                        ? `Performance medido con Google Lighthouse ${result.seoBreakdown.webVitals?.lighthouseVersion ?? ""} (el mismo motor de GTmetrix/PageSpeed)`
+                        : "Performance estimado por mediciones HTTP (Lighthouse no disponible para esta URL)"}
+                    </p>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {result.seoBreakdown.webVitals && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          { label: "LCP", value: result.seoBreakdown.webVitals.lcpMs != null ? `${(result.seoBreakdown.webVitals.lcpMs / 1000).toFixed(1)}s` : "—", ok: (result.seoBreakdown.webVitals.lcpMs ?? 0) <= 2500, mid: (result.seoBreakdown.webVitals.lcpMs ?? 0) <= 4000 },
+                          { label: "TBT", value: result.seoBreakdown.webVitals.tbtMs != null ? `${Math.round(result.seoBreakdown.webVitals.tbtMs)}ms` : "—", ok: (result.seoBreakdown.webVitals.tbtMs ?? 0) <= 200, mid: (result.seoBreakdown.webVitals.tbtMs ?? 0) <= 600 },
+                          { label: "CLS", value: result.seoBreakdown.webVitals.cls != null ? result.seoBreakdown.webVitals.cls.toFixed(2) : "—", ok: (result.seoBreakdown.webVitals.cls ?? 0) <= 0.1, mid: (result.seoBreakdown.webVitals.cls ?? 0) <= 0.25 },
+                          { label: "FCP", value: result.seoBreakdown.webVitals.fcpMs != null ? `${(result.seoBreakdown.webVitals.fcpMs / 1000).toFixed(1)}s` : "—", ok: (result.seoBreakdown.webVitals.fcpMs ?? 0) <= 1800, mid: (result.seoBreakdown.webVitals.fcpMs ?? 0) <= 3000 },
+                        ].map((v) => (
+                          <div key={v.label} className="rounded-xl border border-border/40 bg-muted/20 p-2.5 text-center">
+                            <div className={`text-base font-bold ${v.ok ? "text-emerald-400" : v.mid ? "text-amber-400" : "text-red-400"}`}>{v.value}</div>
+                            <div className="text-[10px] text-muted-foreground font-medium">{v.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                       {result.seoBreakdown.categories.map((cat) => {
                         const grade = cat.score >= 90 ? "A" : cat.score >= 80 ? "B" : cat.score >= 70 ? "C" : cat.score >= 60 ? "D" : "F";
