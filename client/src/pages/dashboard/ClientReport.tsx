@@ -112,6 +112,15 @@ function ReportContent({ data, reportRef, seo, seoLoading }: {
       {/* KPI Cards */}
       <div>
         <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Summary</h2>
+        {totals.pageViews + totals.chatOpens + totals.messagesSent + totals.leadsCaptures === 0 && (
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 mb-4">
+            <p className="text-[11px] text-amber-300 leading-relaxed">
+              No visitor activity recorded in this period. These metrics come from the chat widget
+              installed on the site — they fill in automatically once the snippet is live and visitors
+              start browsing. The SEO analysis below is independent and available right away.
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {kpis.map((kpi) => (
             <div key={kpi.label} className="bg-white/5 rounded-xl p-4 border border-white/10">

@@ -221,7 +221,7 @@ export default function ChatbotConfig() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-xs">Primary color</Label>
                     <div className="flex items-center gap-2">
@@ -264,7 +264,7 @@ export default function ChatbotConfig() {
                     <p className="text-xs text-muted-foreground">
                       Logo shown at the top of the open chat, next to the name. Tip: leave the "Chatbot name" field empty to show a full logo (with the name built in), like the menu logo.
                     </p>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       {/* Current icon preview — circular, fills the space */}
                       <div className="w-14 h-14 rounded-full border border-border/40 bg-muted/30 flex items-center justify-center overflow-hidden flex-shrink-0">
                         {config.avatarUrl ? (
@@ -274,7 +274,7 @@ export default function ChatbotConfig() {
                         )}
                       </div>
                       <div className="flex flex-col gap-2 flex-1">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <label className="cursor-pointer">
                             <div className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border/40 bg-muted/30 text-sm font-medium transition-colors hover:bg-muted/60 ${uploadingAvatar ? "opacity-50 pointer-events-none" : ""}`}>
                               {uploadingAvatar ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
@@ -299,7 +299,7 @@ export default function ChatbotConfig() {
                           )}
                         </div>
                         {config.avatarUrl && (
-                          <p className="text-xs text-muted-foreground truncate max-w-[220px]">{config.avatarUrl}</p>
+                          <p className="text-xs text-muted-foreground truncate max-w-full min-w-0">{config.avatarUrl}</p>
                         )}
                       </div>
                     </div>
@@ -310,7 +310,7 @@ export default function ChatbotConfig() {
                       <p className="text-xs text-muted-foreground mt-0.5 mb-2">
                         Icon on the floating button when the chat is closed. Leave empty to use the default dark chat icon.
                       </p>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <div className="w-14 h-14 rounded-full border border-border/40 bg-neutral-900 flex items-center justify-center overflow-hidden flex-shrink-0">
                           {config.buttonIconUrl ? (
                             <img src={config.buttonIconUrl} alt="Button icon" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
@@ -318,7 +318,7 @@ export default function ChatbotConfig() {
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e5e7eb" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                           )}
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <label className="cursor-pointer">
                             <div className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border/40 bg-muted/30 text-sm font-medium transition-colors hover:bg-muted/60 ${uploadingButton ? "opacity-50 pointer-events-none" : ""}`}>
                               {uploadingButton ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
@@ -344,7 +344,7 @@ export default function ChatbotConfig() {
                       {/* Button color — used when there is no button icon */}
                       <div className="mt-3">
                         <Label className="text-xs">Button color{config.buttonIconUrl ? " (hidden while a button icon is set)" : ""}</Label>
-                        <div className="flex items-center gap-2 mt-1.5">
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                           <input
                             type="color"
                             value={/^#[0-9a-fA-F]{6}$/.test(config.buttonColor) ? config.buttonColor : "#111827"}
@@ -355,7 +355,7 @@ export default function ChatbotConfig() {
                             value={config.buttonColor}
                             onChange={(e) => update("buttonColor", e.target.value)}
                             placeholder="#111827"
-                            className="bg-muted/30 border-border/40 text-sm font-mono w-32"
+                            className="bg-muted/30 border-border/40 text-sm font-mono flex-1 min-w-[110px] max-w-[160px]"
                           />
                           <div
                             className="w-10 h-10 rounded-full border border-border/40 flex items-center justify-center shrink-0"
