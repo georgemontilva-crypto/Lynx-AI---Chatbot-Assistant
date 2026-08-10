@@ -338,9 +338,12 @@ export default function ClientReport() {
     { enabled: !!clientId && !isNaN(clientId) }
   );
   // SEO analysis of the client's own website — included in the printed PDF.
+  // IMPORTANT: enabled only after reportData arrives, so this slow query
+  // (Lighthouse can take 20-40s) travels in its OWN request and never holds
+  // the report data hostage inside a shared HTTP batch.
   const { data: seoData, isLoading: seoLoading } = trpc.clients.seoAnalyze.useQuery(
     { clientId },
-    { enabled: !!clientId && !isNaN(clientId), staleTime: 10 * 60 * 1000, retry: 1 }
+    { enabled: !!clientId && !isNaN(clientId) && !!data, staleTime: 10 * 60 * 1000, retry: 1 }
   );
 
   async function handleDownload() {

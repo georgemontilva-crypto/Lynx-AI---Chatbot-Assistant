@@ -121,7 +121,7 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
                 className="h-8 text-xs gap-1.5 w-full sm:w-auto"
                 onClick={copySnippet}
               >
-                <Copy className="w-3 h-3" />Copiar snippet
+                <Copy className="w-3 h-3" />Copy snippet
               </Button>
             </div>
           </div>
@@ -169,7 +169,7 @@ function ClientFormModal({
           <div className="flex items-start gap-2.5 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3">
             <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-500 leading-relaxed">
-              Al agregar una web a tus clientes, <span className="font-semibold">no se podrá eliminar durante 72 horas</span> desde el momento en que se agregue.
+              When you add a website as a client, <span className="font-semibold">it cannot be removed for 72 hours</span> from the moment it is added.
             </p>
           </div>
         )}
@@ -269,6 +269,8 @@ function ClientsContent() {
     | { status: "error"; message: string }
     | { status: "done"; score: number; source: "lighthouse" | "estimated"; categories: Array<{ key: string; label: string; score: number; weight: number }> };
   const [seoRuns, setSeoRuns] = useState<Record<number, SeoRun>>({});
+  // Mobile: tapping a client card expands its action buttons (with labels)
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const runSeoAnalysis = async (clientId: number) => {
     setSeoRuns((s) => ({ ...s, [clientId]: { status: "loading" } }));
@@ -276,7 +278,7 @@ function ClientsContent() {
       await utils.clients.seoAnalyze.invalidate({ clientId });
       const res = await utils.clients.seoAnalyze.fetch({ clientId });
       if (!res.breakdown) {
-        setSeoRuns((s) => ({ ...s, [clientId]: { status: "error", message: res.error ?? "No se pudo analizar el sitio" } }));
+        setSeoRuns((s) => ({ ...s, [clientId]: { status: "error", message: res.error ?? "Could not analyze the site" } }));
         return;
       }
       setSeoRuns((s) => ({
@@ -289,7 +291,7 @@ function ClientsContent() {
         },
       }));
     } catch (e) {
-      setSeoRuns((s) => ({ ...s, [clientId]: { status: "error", message: e instanceof Error ? e.message : "Error al analizar" } }));
+      setSeoRuns((s) => ({ ...s, [clientId]: { status: "error", message: e instanceof Error ? e.message : "Analysis failed" } }));
     }
   };
 
@@ -326,7 +328,7 @@ function ClientsContent() {
         </motion.div>
 
         {/* Stats row */}
-        <div className="flex sm:grid sm:grid-cols-3 gap-4 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory">
+        <div className="flex sm:grid sm:grid-cols-3 gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
           {[
             { label: "Active clients", value: `${clientList.length} / ${maxSlots}`, icon: Users2, color: "text-emerald-400", bg: "bg-emerald-500/10" },
             { label: "Total chatbots", value: String(clientList.length), icon: Globe, color: "text-blue-400", bg: "bg-blue-500/10" },
@@ -408,7 +410,10 @@ function ClientsContent() {
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ delay: i * 0.06, duration: 0.3 }}
                 >
-                  <Card className="glass-card border-border/40 hover:border-border/70 transition-colors">
+                  <Card
+                    className="glass-card border-border/40 hover:border-border/70 transition-colors sm:cursor-default cursor-pointer active:scale-[0.995]"
+                    onClick={() => setExpandedId((cur) => (cur === client.id ? null : client.id))}
+                  >
                     <CardContent className="p-4">
                       <div className="flex items-center gap-4">
                         {/* Color dot */}
@@ -446,15 +451,15 @@ function ClientsContent() {
                           </p>
                         </div>
 
-                        {/* Actions */}
-                        <div className="flex items-center gap-1 shrink-0">
+                        {/* Actions (desktop; on mobile they appear when tapping the card) */}
+                        <div className="hidden sm:flex items-center gap-1 shrink-0">
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-8 text-xs gap-1.5 text-amber-400 hover:text-amber-300"
                             onClick={() => runSeoAnalysis(client.id)}
                             disabled={seoRuns[client.id]?.status === "loading"}
-                            title="Analizar SEO de este sitio"
+                            title="Run SEO analysis for this site"
                           >
                             {seoRuns[client.id]?.status === "loading"
                               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -510,13 +515,53 @@ function ClientsContent() {
                         </div>
                       </div>
 
+                      {/* Mobile action panel — appears when the card is tapped */}
+                      {expandedId === client.id && (
+                        <div className="sm:hidden mt-3 grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
+                          <Button variant="outline" size="sm" className="h-9 text-xs gap-1.5 text-amber-400"
+                            onClick={() => runSeoAnalysis(client.id)}
+                            disabled={seoRuns[client.id]?.status === "loading"}>
+                            {seoRuns[client.id]?.status === "loading" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Gauge className="w-3.5 h-3.5" />}
+                            SEO analysis
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-9 text-xs gap-1.5 text-emerald-400"
+                            onClick={() => navigate(`/dashboard/clients/${client.id}/report`)}>
+                            <FileText className="w-3.5 h-3.5" />Report
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-9 text-xs gap-1.5 text-primary"
+                            onClick={() => setSnippetClient(client)}>
+                            <Code2 className="w-3.5 h-3.5" />Snippet
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-9 text-xs gap-1.5"
+                            onClick={() => setEditClient({
+                              id: client.id,
+                              name: client.name,
+                              siteUrl: client.siteUrl,
+                              brandName: client.brandName ?? "AI Assistant",
+                              brandColor: client.brandColor ?? "#3b82f6",
+                              welcomeMessage: client.welcomeMessage ?? "Hi! How can I help you?",
+                            })}>
+                            <Pencil className="w-3.5 h-3.5" />Edit
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-9 text-xs gap-1.5 text-destructive col-span-2"
+                            onClick={() => {
+                              if (confirm(`Remove ${client.name}? This cannot be undone.`)) {
+                                deleteMutation.mutate({ id: client.id });
+                              }
+                            }}
+                            disabled={deleteMutation.isPending}>
+                            <Trash2 className="w-3.5 h-3.5" />Delete client
+                          </Button>
+                        </div>
+                      )}
+
                       {/* SEO analysis panel — loading / result / error */}
                       {seoRuns[client.id] && (
-                        <div className="mt-3 rounded-xl border border-border/40 bg-muted/20 p-3">
+                        <div className="mt-3 rounded-xl border border-border/40 bg-muted/20 p-3" onClick={(e) => e.stopPropagation()}>
                           {seoRuns[client.id].status === "loading" && (
                             <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
                               <Loader2 className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
-                              <span>Analizando SEO de <span className="font-medium text-foreground/80">{client.siteUrl}</span>… (Lighthouse tarda 20-40 s)</span>
+                              <span>Analyzing SEO of <span className="font-medium text-foreground/80">{client.siteUrl}</span>… (Lighthouse takes 20-40 s)</span>
                             </div>
                           )}
                           {seoRuns[client.id].status === "error" && (
@@ -524,7 +569,7 @@ function ClientsContent() {
                               <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
                               <span className="text-red-400">{(seoRuns[client.id] as { message: string }).message}</span>
                               <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 ml-auto" onClick={() => runSeoAnalysis(client.id)}>
-                                <RefreshCw className="w-3 h-3" />Reintentar
+                                <RefreshCw className="w-3 h-3" />Retry
                               </Button>
                             </div>
                           )}
@@ -540,11 +585,11 @@ function ClientsContent() {
                                   <div className="min-w-0 flex-1">
                                     <div className="text-xs font-semibold">SEO score</div>
                                     <div className="text-[10px] text-muted-foreground">
-                                      {run.source === "lighthouse" ? "Medido con Google Lighthouse" : "Estimado (Lighthouse no disponible)"}
+                                      {run.source === "lighthouse" ? "Measured with Google Lighthouse" : "Estimated (Lighthouse unavailable)"}
                                     </div>
                                   </div>
-                                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 shrink-0" onClick={() => runSeoAnalysis(client.id)} title="Analizar de nuevo">
-                                    <RefreshCw className="w-3 h-3" />Re-analizar
+                                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 shrink-0" onClick={() => runSeoAnalysis(client.id)} title="Run the analysis again">
+                                    <RefreshCw className="w-3 h-3" />Re-analyze
                                   </Button>
                                 </div>
                                 <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">

@@ -63,7 +63,7 @@ type PageSpeedResult = {
   lighthouseVersion: string;
 } | null;
 
-async function fetchPageSpeed(url: string): Promise<PageSpeedResult> {
+async function fetchPageSpeed(url: string, timeoutMs = 45000): Promise<PageSpeedResult> {
   try {
     const key = process.env.PAGESPEED_API_KEY;
     const api = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
@@ -71,7 +71,7 @@ async function fetchPageSpeed(url: string): Promise<PageSpeedResult> {
     api.searchParams.set("strategy", "mobile");
     api.searchParams.set("category", "performance");
     if (key) api.searchParams.set("key", key);
-    const res = await fetch(api.href, { signal: AbortSignal.timeout(45000) });
+    const res = await fetch(api.href, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
     const j = await res.json() as {
       lighthouseResult?: {
@@ -1773,7 +1773,8 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
             throw new Error("blocked");
           }
         } catch { throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid site URL" }); }
-        const clientPsiPromise = fetchPageSpeed(url);
+        // 25s cap: the whole request must finish under the proxy timeout (~30s)
+        const clientPsiPromise = fetchPageSpeed(url, 25000);
         const t0 = Date.now();
         let raw = "";
         try {
