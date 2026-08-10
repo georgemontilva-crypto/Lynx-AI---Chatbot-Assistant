@@ -47,15 +47,23 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
     onError: () => toast.error("Failed to regenerate key"),
   });
 
-  const snippet = `<script>
-  window.LynxAIConfig = {
-    apiKey: "${client.apiKey}",
-    brandName: "${client.brandName ?? "AI Assistant"}",
-    brandColor: "${client.brandColor ?? "#3b82f6"}",
-    welcomeMessage: "${client.welcomeMessage ?? "Hi! How can I help you?"}"
+  // Canonical origin from the server (falls back to the current URL, forcing www
+  // on the legacy apex so snippets/links never point at the old Manus server).
+  const { data: originData } = trpc.chatbotConfig.widgetOrigin.useQuery();
+  const siteOrigin =
+    originData?.origin ??
+    (typeof window !== "undefined"
+      ? window.location.origin.replace("://lynxaiassistant.com", "://www.lynxaiassistant.com")
+      : "https://www.lynxaiassistant.com");
+
+  // Modern loader snippet — brand name/colors come from the dashboard config,
+  // so one line is all the client's site needs.
+  const snippet = `<script src="${siteOrigin}/api/widget.js" data-api-key="${client.apiKey}" defer></script>`;
+  const chatLink = `${siteOrigin}/chat/${client.apiKey}`;
+  const copyChatLink = () => {
+    navigator.clipboard.writeText(chatLink);
+    toast.success("Chat link copied");
   };
-</script>
-<script src="https://lynxaiassistant.com/widget.js" async></script>`;
 
   const copySnippet = () => {
     navigator.clipboard.writeText(snippet);
@@ -123,6 +131,22 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
               >
                 <Copy className="w-3 h-3" />Copy snippet
               </Button>
+            </div>
+
+            {/* Shareable full-screen chat link */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">Shareable chat link (full screen)</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex-1 min-w-0 basis-full sm:basis-auto font-mono text-[11px] bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate" title={chatLink}>
+                  {chatLink}
+                </div>
+                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={copyChatLink}>
+                  <Copy className="w-3 h-3" />Copy
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => window.open(chatLink, "_blank")}>
+                  <ExternalLink className="w-3 h-3" />Open
+                </Button>
+              </div>
             </div>
           </div>
         </div>
