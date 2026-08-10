@@ -47,6 +47,7 @@ export const chatbots = mysqlTable("chatbots", {
   name: varchar("name", { length: 128 }).notNull().default("Lynx AI"),
   avatarUrl: text("avatarUrl"),
   buttonIconUrl: text("buttonIconUrl"),
+  buttonColor: varchar("buttonColor", { length: 32 }),
   disclaimer: varchar("disclaimer", { length: 300 }),
   primaryColor: varchar("primaryColor", { length: 16 }).default("#3b82f6"),
   secondaryColor: varchar("secondaryColor", { length: 16 }).default("#1e40af"),

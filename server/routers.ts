@@ -431,6 +431,7 @@ export const appRouter = router({
         avatarUrl: z.string().nullable().optional(),
         // White-Label only: separate icon for the closed floating button (optional)
         buttonIconUrl: z.string().nullable().optional(),
+        buttonColor: z.string().max(32).nullable().optional(),
         // Small legal/branding text shown under the chat input (e.g. "For educational purposes only")
         disclaimer: z.string().max(300).nullable().optional(),
       }))
@@ -844,18 +845,18 @@ export const appRouter = router({
           console.warn("[Scanner] Could not fetch URL:", err);
           htmlContent = `Site at ${input.url} (content could not be fetched, analyze based on URL structure)`;
           seoContext = "(HTML not accessible — analyze based on URL structure only)";
-          scanReport.warnings.push("No pudimos leer la página principal del sitio. Verifica que la URL sea correcta y que el sitio esté en línea y accesible públicamente.");
+          scanReport.warnings.push("We could not read the site's homepage. Check that the URL is correct and the site is online and publicly accessible.");
         }
 
         // ── Build human-readable warnings from what we found (or didn't) ──────
         if (scanReport.homeReadable && !scanReport.sitemapFound) {
-          scanReport.warnings.push("No se encontró un sitemap.xml. Leímos las páginas enlazadas desde el inicio, pero un sitemap ayuda a que se descubran TODAS tus páginas. Considera agregar uno (la mayoría de plataformas lo generan solo).");
+          scanReport.warnings.push("No sitemap.xml was found. We read the pages linked from the homepage, but a sitemap helps discover ALL your pages. Consider adding one (most platforms generate it automatically).");
         }
         if (scanReport.homeReadable && scanReport.pagesRead.length <= 1 && !scanReport.storeCatalogFound) {
-          scanReport.warnings.push("Solo pudimos leer la página principal. Si tu sitio carga su contenido con JavaScript, puede que el resto de páginas no sean legibles por un lector automático — revisa que tengas un sitemap y enlaces internos normales.");
+          scanReport.warnings.push("We could only read the homepage. If your site loads its content with JavaScript, other pages may not be readable by an automated reader — make sure you have a sitemap and regular internal links.");
         }
         if (scanReport.pagesFailed.length > 0) {
-          scanReport.warnings.push(`Algunas páginas no se pudieron leer (${scanReport.pagesFailed.length}): ${scanReport.pagesFailed.slice(0, 5).join(", ")}${scanReport.pagesFailed.length > 5 ? "…" : ""}.`);
+          scanReport.warnings.push(`Some pages could not be read (${scanReport.pagesFailed.length}): ${scanReport.pagesFailed.slice(0, 5).join(", ")}${scanReport.pagesFailed.length > 5 ? "\u2026" : ""}.`);
         }
 
         // ── GTmetrix-style SEO/performance report ────────────────────────────
@@ -1784,7 +1785,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
           raw = await res.text();
         } catch { /* unreachable site → breakdown null below */ }
         const firstMs = Date.now() - t0;
-        if (!raw) return { siteUrl: url, breakdown: null, error: "No pudimos leer el sitio del cliente" };
+        if (!raw) return { siteUrl: url, breakdown: null, error: "Could not read the client's website" };
         const meas = await measureHttp(url);
         // Sitemap check for the client's site (quick best-effort)
         let sitemapFound = false;
@@ -1893,7 +1894,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
           const hoursLeft = Math.ceil((LOCK_MS - elapsed) / (60 * 60 * 1000));
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: `Este cliente no se puede eliminar todavía: quedan ${hoursLeft}h del período de 72 horas desde que se agregó.`,
+            message: `This client cannot be removed yet: ${hoursLeft}h remain of the 72-hour period since it was added.`,
           });
         }
         // Remove the linked chatbot (same apiKey) too, so no orphan remains

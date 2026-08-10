@@ -384,6 +384,7 @@ export function registerWidgetRoutes(app: Express) {
         // avatarUrl = header logo; buttonIconUrl = closed-bubble icon (optional).
         avatarUrl,
         buttonIconUrl,
+        buttonColor: (chatbot as { buttonColor?: string | null }).buttonColor ?? null,
       });
     } catch (err) {
       console.error("[Widget] Config error:", err);
@@ -2246,6 +2247,22 @@ const LOADER_SCRIPT = `
   })();
   var API_KEY = script.getAttribute('data-api-key') || '';
   var POSITION = script.getAttribute('data-position') || 'bottom-right';
+  // Routes where the widget must stay hidden (e.g. an app's own dashboard).
+  // Configurable per-site via data-exclude-paths="/dashboard,/admin".
+  // On the Lynx site itself we always exclude the app's private areas.
+  var EXCLUDE_PATHS = (script.getAttribute('data-exclude-paths') || '').split(',')
+    .map(function(p){ return p.trim(); }).filter(Boolean);
+  if (!EXCLUDE_PATHS.length && /(^|\.)lynxaiassistant\.com$/.test(window.location.hostname)) {
+    EXCLUDE_PATHS = ['/dashboard', '/login', '/register', '/forgot-password', '/reset-password'];
+  }
+  function isExcludedPath() {
+    var p = window.location.pathname;
+    for (var i = 0; i < EXCLUDE_PATHS.length; i++) {
+      var e = EXCLUDE_PATHS[i];
+      if (p === e || p.indexOf(e + '/') === 0) return true;
+    }
+    return false;
+  }
   var BASE_URL = (function() {
     var src = script.src || '';
     var clean = src.split('?')[0].split('#')[0];
@@ -2334,13 +2351,27 @@ const LOADER_SCRIPT = `
     setBtnIcon(false);
   }
   var _brandAvatar = '';
+  var _brandBtnColor = '';
+  // Pick a readable icon color for a given background (simple luminance test)
+  function contrastIcon(bg) {
+    try {
+      var h = String(bg).replace('#', '');
+      if (h.length === 3) h = h.charAt(0)+h.charAt(0)+h.charAt(1)+h.charAt(1)+h.charAt(2)+h.charAt(2);
+      var r = parseInt(h.substr(0,2),16), g = parseInt(h.substr(2,2),16), b = parseInt(h.substr(4,2),16);
+      return (0.299*r + 0.587*g + 0.114*b) > 150 ? '#1f2937' : '#fff';
+    } catch (e) { return '#fff'; }
+  }
   function setBtnIcon(open) {
     if (open) {
-      btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#111;border-radius:50%;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>';
+      var xBg = _brandBtnColor || '#111';
+      btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:' + xBg + ';border-radius:50%;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="' + contrastIcon(xBg) + '" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>';
     } else {
       // Restore the default chat icon (or the brand avatar if we have one)
       if (_brandAvatar) {
         btn.innerHTML = '<div style="width:100%;height:100%;background:#fff;border-radius:50%;overflow:hidden;"><img src="' + _brandAvatar + '" alt="Chat" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;" /></div>';
+      } else if (_brandBtnColor) {
+        // Custom button color: solid background + icon with readable contrast
+        btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:' + _brandBtnColor + ';border-radius:50%;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="' + contrastIcon(_brandBtnColor) + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>';
       } else {
         btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:50%;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1f2937" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>';
       }
@@ -2349,10 +2380,29 @@ const LOADER_SCRIPT = `
 
   btn.addEventListener('click', function() { isOpen ? closeChat() : openChat(); });
 
+  // ── Hide the widget on excluded routes (SPA-aware) ──
+  function applyRouteVisibility() {
+    if (isExcludedPath()) {
+      if (isOpen) closeChat();
+      btn.style.setProperty('display', 'none', 'important');
+      if (frame) frame.style.setProperty('display', 'none', 'important');
+    } else {
+      btn.style.removeProperty('display');
+      if (frame) frame.style.removeProperty('display');
+    }
+  }
+  applyRouteVisibility();
+
   // ── Prefetch config so the button shows the brand instantly (no flash), and
   // warm up the iframe in the background so the chat opens instantly. ──
   function applyBrandToButton(cfg) {
     if (!cfg) return;
+    if (cfg.buttonColor) {
+      _brandBtnColor = cfg.buttonColor;
+      // The shielded stylesheet uses !important, so inline must too
+      btn.style.setProperty('background', cfg.buttonColor, 'important');
+      if (!isOpen) setBtnIcon(false);
+    }
     if (cfg.primaryColor) {
       var inner = btn.querySelector('div');
       if (inner && !isOpen) inner.style.background = '#fff';
@@ -2405,7 +2455,7 @@ const LOADER_SCRIPT = `
   (function() {
     var _lastUrl = window.location.href;
     function checkUrl() {
-      if (window.location.href !== _lastUrl) { _lastUrl = window.location.href; trackSite('page_view'); }
+      if (window.location.href !== _lastUrl) { _lastUrl = window.location.href; trackSite('page_view'); applyRouteVisibility(); }
     }
     var _ps = history.pushState;
     history.pushState = function() { _ps.apply(this, arguments); setTimeout(checkUrl, 0); };

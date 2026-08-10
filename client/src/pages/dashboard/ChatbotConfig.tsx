@@ -30,6 +30,7 @@ const DEFAULT_CONFIG = {
   isActive: true,
   avatarUrl: null as string | null,
   buttonIconUrl: null as string | null,
+  buttonColor: "#111827",
 };
 
 export default function ChatbotConfig() {
@@ -73,6 +74,7 @@ export default function ChatbotConfig() {
         isActive: existing.isActive ?? DEFAULT_CONFIG.isActive,
         avatarUrl: existing.avatarUrl ?? null,
         buttonIconUrl: (existing as { buttonIconUrl?: string | null }).buttonIconUrl ?? null,
+        buttonColor: (existing as { buttonColor?: string | null }).buttonColor ?? DEFAULT_CONFIG.buttonColor,
       });
     }
   }, [existing]);
@@ -97,6 +99,7 @@ export default function ChatbotConfig() {
       isActive: config.isActive,
       avatarUrl: config.avatarUrl,
       buttonIconUrl: config.buttonIconUrl,
+      buttonColor: config.buttonColor,
     });
   };
 
@@ -338,6 +341,32 @@ export default function ChatbotConfig() {
                             </button>
                           )}
                         </div>
+                      {/* Button color — used when there is no button icon */}
+                      <div className="mt-3">
+                        <Label className="text-xs">Button color{config.buttonIconUrl ? " (hidden while a button icon is set)" : ""}</Label>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <input
+                            type="color"
+                            value={/^#[0-9a-fA-F]{6}$/.test(config.buttonColor) ? config.buttonColor : "#111827"}
+                            onChange={(e) => update("buttonColor", e.target.value)}
+                            className="w-10 h-10 rounded-lg cursor-pointer border border-border/40 bg-transparent"
+                          />
+                          <Input
+                            value={config.buttonColor}
+                            onChange={(e) => update("buttonColor", e.target.value)}
+                            placeholder="#111827"
+                            className="bg-muted/30 border-border/40 text-sm font-mono w-32"
+                          />
+                          <div
+                            className="w-10 h-10 rounded-full border border-border/40 flex items-center justify-center shrink-0"
+                            style={{ background: config.buttonColor }}
+                            title="Preview"
+                          >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ mixBlendMode: "difference" }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-1.5">The floating chat bubble uses this color when no button icon is uploaded. The icon adjusts to stay readable.</p>
+                      </div>
                       </div>
                     </div>
                   </div>
