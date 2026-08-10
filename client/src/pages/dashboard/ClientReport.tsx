@@ -34,7 +34,10 @@ async function downloadPDF(reportRef: React.RefObject<HTMLDivElement | null>, cl
   toast.loading("Generating PDF...", { id: "pdf-gen" });
 
   try {
-    const html2canvas = (await import("html2canvas")).default;
+    // html2canvas-pro: fork with modern CSS color support (oklch/lab). The
+    // original html2canvas crashes with "unsupported color function oklch" —
+    // this app's stylesheet uses oklch heavily, which is why PDFs failed.
+    const html2canvas = (await import("html2canvas-pro")).default;
     const { jsPDF } = await import("jspdf");
 
     // Render the PDF at a fixed desktop width so it looks the same regardless

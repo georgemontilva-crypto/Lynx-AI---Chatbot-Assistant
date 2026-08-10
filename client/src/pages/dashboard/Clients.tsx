@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Separator } from "@/components/ui/separator";
 import {
   Users2, Globe, Code2, Plus, ArrowRight, CheckCircle, Zap,
-  Copy, RefreshCw, Trash2, Pencil, Eye, EyeOff, ExternalLink, X, FileText
+  Copy, RefreshCw, Trash2, Pencil, Eye, EyeOff, ExternalLink, X, FileText,
+  Gauge, Loader2, AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
@@ -68,11 +69,11 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[85dvh] overflow-y-auto p-4 sm:p-6 rounded-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Code2 className="w-4 h-4 text-primary" />
-            Install snippet — {client.name}
+          <DialogTitle className="flex items-center gap-2 text-sm sm:text-base pr-6">
+            <Code2 className="w-4 h-4 text-primary shrink-0" />
+            <span className="truncate">Install snippet — {client.name}</span>
           </DialogTitle>
         </DialogHeader>
 
@@ -80,9 +81,9 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
           {/* API Key */}
           <div>
             <Label className="text-xs text-muted-foreground mb-1.5 block">API Key</Label>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 font-mono text-xs bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate">
-                {showKey ? client.apiKey : "lx_" + "•".repeat(40)}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex-1 min-w-0 basis-full sm:basis-auto font-mono text-xs bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate">
+                {showKey ? client.apiKey : "lx_" + "\u2022".repeat(24)}
               </div>
               <Button variant="ghost" size="icon" className="w-8 h-8 shrink-0" onClick={() => setShowKey(v => !v)}>
                 {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -111,16 +112,16 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
           {/* Snippet */}
           <div>
             <Label className="text-xs text-muted-foreground mb-1.5 block">Paste before &lt;/body&gt; on every page</Label>
-            <div className="relative">
-              <pre className="text-xs bg-muted/50 rounded-lg p-3 border border-border/40 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed">
+            <div className="space-y-2">
+              <pre className="text-xs bg-muted/50 rounded-lg p-3 border border-border/40 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed max-h-48 overflow-y-auto">
                 {snippet}
               </pre>
               <Button
                 size="sm"
-                className="absolute top-2 right-2 h-7 text-xs gap-1.5"
+                className="h-8 text-xs gap-1.5 w-full sm:w-auto"
                 onClick={copySnippet}
               >
-                <Copy className="w-3 h-3" />Copy
+                <Copy className="w-3 h-3" />Copiar snippet
               </Button>
             </div>
           </div>
@@ -160,10 +161,18 @@ function ClientFormModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-md max-h-[85dvh] overflow-y-auto p-4 sm:p-6 rounded-2xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Client" : "Add New Client"}</DialogTitle>
         </DialogHeader>
+        {!isEdit && (
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3">
+            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-500 leading-relaxed">
+              Al agregar una web a tus clientes, <span className="font-semibold">no se podrá eliminar durante 72 horas</span> desde el momento en que se agregue.
+            </p>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-3">
             <div>
@@ -252,6 +261,38 @@ function ClientsContent() {
     onError: (e) => toast.error(e.message),
   });
 
+  // ── Per-client SEO analysis state ──
+  // Runs the same real engine (Lighthouse via PageSpeed + measured checks)
+  // used by the client report, on demand from the list.
+  type SeoRun =
+    | { status: "loading" }
+    | { status: "error"; message: string }
+    | { status: "done"; score: number; source: "lighthouse" | "estimated"; categories: Array<{ key: string; label: string; score: number; weight: number }> };
+  const [seoRuns, setSeoRuns] = useState<Record<number, SeoRun>>({});
+
+  const runSeoAnalysis = async (clientId: number) => {
+    setSeoRuns((s) => ({ ...s, [clientId]: { status: "loading" } }));
+    try {
+      await utils.clients.seoAnalyze.invalidate({ clientId });
+      const res = await utils.clients.seoAnalyze.fetch({ clientId });
+      if (!res.breakdown) {
+        setSeoRuns((s) => ({ ...s, [clientId]: { status: "error", message: res.error ?? "No se pudo analizar el sitio" } }));
+        return;
+      }
+      setSeoRuns((s) => ({
+        ...s,
+        [clientId]: {
+          status: "done",
+          score: res.breakdown!.score,
+          source: (res.breakdown as { source?: "lighthouse" | "estimated" }).source ?? "estimated",
+          categories: res.breakdown!.categories,
+        },
+      }));
+    } catch (e) {
+      setSeoRuns((s) => ({ ...s, [clientId]: { status: "error", message: e instanceof Error ? e.message : "Error al analizar" } }));
+    }
+  };
+
   const maxSlots = 15;
 
   return (
@@ -285,7 +326,7 @@ function ClientsContent() {
         </motion.div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="flex sm:grid sm:grid-cols-3 gap-4 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory">
           {[
             { label: "Active clients", value: `${clientList.length} / ${maxSlots}`, icon: Users2, color: "text-emerald-400", bg: "bg-emerald-500/10" },
             { label: "Total chatbots", value: String(clientList.length), icon: Globe, color: "text-blue-400", bg: "bg-blue-500/10" },
@@ -296,6 +337,7 @@ function ClientsContent() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.08, duration: 0.4 }}
+              className="min-w-[220px] shrink-0 sm:min-w-0 sm:shrink snap-start"
             >
               <Card className="glass-card border-border/40">
                 <CardContent className="p-4 flex items-center gap-3">
@@ -409,6 +451,19 @@ function ClientsContent() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="h-8 text-xs gap-1.5 text-amber-400 hover:text-amber-300"
+                            onClick={() => runSeoAnalysis(client.id)}
+                            disabled={seoRuns[client.id]?.status === "loading"}
+                            title="Analizar SEO de este sitio"
+                          >
+                            {seoRuns[client.id]?.status === "loading"
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <Gauge className="w-3.5 h-3.5" />}
+                            <span className="hidden sm:inline">SEO</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="h-8 text-xs gap-1.5 text-emerald-400 hover:text-emerald-300"
                             onClick={() => navigate(`/dashboard/clients/${client.id}/report`)}
                           >
@@ -454,6 +509,61 @@ function ClientsContent() {
                           </Button>
                         </div>
                       </div>
+
+                      {/* SEO analysis panel — loading / result / error */}
+                      {seoRuns[client.id] && (
+                        <div className="mt-3 rounded-xl border border-border/40 bg-muted/20 p-3">
+                          {seoRuns[client.id].status === "loading" && (
+                            <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
+                              <Loader2 className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
+                              <span>Analizando SEO de <span className="font-medium text-foreground/80">{client.siteUrl}</span>… (Lighthouse tarda 20-40 s)</span>
+                            </div>
+                          )}
+                          {seoRuns[client.id].status === "error" && (
+                            <div className="flex items-center gap-2.5 text-xs flex-wrap">
+                              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                              <span className="text-red-400">{(seoRuns[client.id] as { message: string }).message}</span>
+                              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 ml-auto" onClick={() => runSeoAnalysis(client.id)}>
+                                <RefreshCw className="w-3 h-3" />Reintentar
+                              </Button>
+                            </div>
+                          )}
+                          {seoRuns[client.id].status === "done" && (() => {
+                            const run = seoRuns[client.id] as Extract<SeoRun, { status: "done" }>;
+                            const scoreColor = run.score >= 80 ? "text-emerald-400 border-emerald-400" : run.score >= 60 ? "text-amber-400 border-amber-400" : "text-red-400 border-red-400";
+                            return (
+                              <div className="space-y-2.5">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  <div className={`w-11 h-11 rounded-full border-2 flex items-center justify-center shrink-0 ${scoreColor}`}>
+                                    <span className="text-sm font-bold">{run.score}</span>
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-xs font-semibold">SEO score</div>
+                                    <div className="text-[10px] text-muted-foreground">
+                                      {run.source === "lighthouse" ? "Medido con Google Lighthouse" : "Estimado (Lighthouse no disponible)"}
+                                    </div>
+                                  </div>
+                                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 shrink-0" onClick={() => runSeoAnalysis(client.id)} title="Analizar de nuevo">
+                                    <RefreshCw className="w-3 h-3" />Re-analizar
+                                  </Button>
+                                </div>
+                                <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+                                  {run.categories.map((cat) => {
+                                    const g = cat.score >= 90 ? "A" : cat.score >= 80 ? "B" : cat.score >= 70 ? "C" : cat.score >= 60 ? "D" : "F";
+                                    const c = cat.score >= 80 ? "text-emerald-400" : cat.score >= 60 ? "text-amber-400" : "text-red-400";
+                                    return (
+                                      <div key={cat.key} className="rounded-lg border border-border/40 bg-muted/30 px-2 py-1 text-center shrink-0">
+                                        <span className={`text-xs font-bold ${c}`}>{g}</span>
+                                        <span className="text-[9px] text-muted-foreground ml-1">{cat.label}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </motion.div>

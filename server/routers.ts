@@ -1883,6 +1883,19 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         if (!existing || existing.userId !== ctx.user.id) {
           throw new TRPCError({ code: "NOT_FOUND" });
         }
+        // ── 72-hour lock ──
+        // A client website cannot be removed during the first 72 hours after
+        // being added (the disclaimer shown when adding a client states this).
+        const LOCK_MS = 72 * 60 * 60 * 1000;
+        const createdAt = existing.createdAt ? new Date(existing.createdAt).getTime() : 0;
+        const elapsed = Date.now() - createdAt;
+        if (createdAt > 0 && elapsed < LOCK_MS) {
+          const hoursLeft = Math.ceil((LOCK_MS - elapsed) / (60 * 60 * 1000));
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `Este cliente no se puede eliminar todavía: quedan ${hoursLeft}h del período de 72 horas desde que se agregó.`,
+          });
+        }
         // Remove the linked chatbot (same apiKey) too, so no orphan remains
         await db.delete(chatbots).where(eqOp(chatbots.apiKey, existing.apiKey));
         await db.delete(clients).where(eqOp(clients.id, input.id));
