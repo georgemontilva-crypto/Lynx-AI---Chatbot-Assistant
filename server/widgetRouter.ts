@@ -1486,7 +1486,7 @@ function buildFrameApp(): string {
     '#lynx-widget-header .lynx-title{font-size:15px;font-weight:700;flex:1;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:block;color:#fff;letter-spacing:-0.01em;}',
     '#lynx-widget-header .lynx-close{display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:rgba(255,255,255,0.15);border:none;border-radius:50%;cursor:pointer;color:#fff;flex-shrink:0;transition:background 0.15s;}',
     '#lynx-widget-header .lynx-close:hover{background:rgba(255,255,255,0.25);}',
-    '#lynx-widget-messages{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;padding:16px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth;}',
+    '#lynx-widget-messages{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;padding:16px;display:flex;flex-direction:column;gap:10px;}',
     '#lynx-widget-messages::-webkit-scrollbar{width:4px;}',
     '#lynx-widget-messages::-webkit-scrollbar-track{background:transparent;}',
     '#lynx-widget-messages::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px;}',
@@ -1589,33 +1589,26 @@ function buildFrameApp(): string {
 
   var messagesEl = document.getElementById('lynx-widget-messages');
 
-  // Mouse wheel over ANY part of the panel scrolls the chat — never the page.
-  panel.addEventListener('wheel', function(e) {
-    if (!messagesEl) return;
-    messagesEl.scrollTop += e.deltaY;
-    e.preventDefault();
-  }, { passive: false });
+  // NATIVE SCROLL (fluid): inside the iframe the browser fully isolates the
+  // chat scroll, so the old manual wheel/touch handlers (needed before the
+  // iframe migration) are gone — they replaced native scrolling with a manual
+  // one and killed inertia/momentum, which felt heavy. Native scroll restores
+  // smooth wheel acceleration and touch momentum on every device.
 
-  // Touch: keep the gesture inside the chat. Nudge off the exact edges so iOS
-  // never hands the scroll to the page (classic edge-chaining bug), and block
-  // touch scrolling that starts outside the message list.
-  panel.addEventListener('touchstart', function() {
-    if (!messagesEl) return;
-    if (messagesEl.scrollTop <= 0) messagesEl.scrollTop = 1;
-    var max = messagesEl.scrollHeight - messagesEl.clientHeight;
-    if (max > 0 && messagesEl.scrollTop >= max) messagesEl.scrollTop = max - 1;
-  }, { passive: true });
-  panel.addEventListener('touchmove', function(e) {
-    if (!messagesEl) return;
-    var inMessages = messagesEl.contains(e.target);
-    var scrollable = messagesEl.scrollHeight > messagesEl.clientHeight;
-    if (!inMessages || !scrollable) {
-      var t = e.target;
-      // allow typing area to behave normally
-      if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) return;
-      e.preventDefault();
-    }
-  }, { passive: false });
+  // Autoscroll helper: coalesced with requestAnimationFrame (one scroll per
+  // frame, not per streamed character) and it never yanks the visitor down
+  // if they scrolled up to read — unless forced (new message sent/opened).
+  var _scrollPend = false;
+  function lynxScrollBottom(force) {
+    if (!messagesEl || _scrollPend) return;
+    _scrollPend = true;
+    requestAnimationFrame(function() {
+      _scrollPend = false;
+      if (!messagesEl) return;
+      var nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
+      if (force || nearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
+  }
   var inputEl = document.getElementById('lynx-widget-input');
   var sendBtn = document.getElementById('lynx-widget-send');
   var IS_FULL = _params.get('full') === '1';
@@ -1767,7 +1760,7 @@ function buildFrameApp(): string {
       '<div id="lynx-rating-thanks" style="display:none;">&#10084;&#65039; Thank you! / &#161;Gracias!</div>';
     if (messagesEl) {
       messagesEl.appendChild(bubble);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      lynxScrollBottom(true);
     }
     var stars = bubble.querySelectorAll('.lynx-star');
     stars.forEach(function(star) {
@@ -1900,7 +1893,7 @@ function buildFrameApp(): string {
     card.innerHTML = '<p>&#128190; <b>Conversaci\\u00f3n guardada / Conversation saved</b></p>' +
       '<p style="margin:0;font-weight:400;">' + escapeHtml(email) + ' &mdash; puedes retomarla desde cualquier dispositivo escribiendo tu correo en el chat. / You can pick it up on any device by typing your email in the chat.</p>';
     messagesEl.appendChild(card);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    lynxScrollBottom(true);
   }
 
   function addMessage(role, text, extraClass) {
@@ -1909,7 +1902,7 @@ function buildFrameApp(): string {
     if (role === 'assistant') { renderRichText(div, text); } else { div.textContent = text; }
     if (messagesEl) {
       messagesEl.appendChild(div);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      lynxScrollBottom(true);
     }
     return div;
   }
@@ -1920,7 +1913,7 @@ function buildFrameApp(): string {
     div.textContent = '';
     if (messagesEl) {
       messagesEl.appendChild(div);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      lynxScrollBottom(true);
     }
     var i = 0;
     var speed = Math.max(12, Math.min(28, Math.floor(2200 / text.length))); // adaptive speed
@@ -1928,11 +1921,11 @@ function buildFrameApp(): string {
       if (i < text.length) {
         div.textContent += text.charAt(i);
         i++;
-        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+        lynxScrollBottom(false);
         setTimeout(tick, speed);
       } else {
         renderRichText(div, text);
-        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+        lynxScrollBottom(true);
         if (onDone) onDone();
       }
     }
@@ -1967,7 +1960,7 @@ function buildFrameApp(): string {
       container.appendChild(btn2);
     });
     messagesEl.appendChild(container);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    lynxScrollBottom(true);
   }
 
   function showTyping() {
@@ -1977,7 +1970,7 @@ function buildFrameApp(): string {
     div.innerHTML = '<span></span><span></span><span></span>';
     if (messagesEl) {
       messagesEl.appendChild(div);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      lynxScrollBottom(true);
     }
   }
 
@@ -2100,7 +2093,7 @@ function buildFrameApp(): string {
       assistantDiv.textContent = '';
       if (messagesEl) {
         messagesEl.appendChild(assistantDiv);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+        lynxScrollBottom(true);
       }
 
       var reader = res.body.getReader();
@@ -2126,7 +2119,7 @@ function buildFrameApp(): string {
                 accumulatedReply += evt.token;
                 if (assistantDiv) {
                   assistantDiv.textContent = accumulatedReply;
-                  if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+                  lynxScrollBottom(true);
                 }
               } else if (evt.done) {
                 // Stream finished — render final text with links & product images
