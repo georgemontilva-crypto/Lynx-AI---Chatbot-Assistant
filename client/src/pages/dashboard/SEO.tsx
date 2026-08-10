@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { motion } from "framer-motion";
 import DashboardShell from "@/components/DashboardShell";
 import UpgradeGate from "@/components/UpgradeGate";
@@ -9,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import {
   BarChart3, TrendingUp, AlertTriangle, CheckCircle, XCircle,
-  Lightbulb, Globe, Gauge, Smartphone, Search, ExternalLink, ScanLine, History,
+  Lightbulb, Globe, Gauge, Smartphone, Search, ExternalLink, ScanLine, History, Download,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
@@ -52,6 +53,12 @@ function SEOContent() {
   const utils = trpc.useUtils();
   const { data: report, isLoading } = trpc.seo.getReport.useQuery();
   const { data: history = [] } = trpc.seo.getHistory.useQuery();
+  const reportRef = useRef<HTMLDivElement | null>(null);
+  const downloadSeoPdf = async () => {
+    if (!reportRef.current) return;
+    const { exportElementToPdf } = await import("@/lib/pdfExport");
+    await exportElementToPdf(reportRef.current, "seo-report.pdf", { width: 900 });
+  };
   const reAnalyzeMutation = trpc.scanner.scan.useMutation({
     onSuccess: () => {
       utils.seo.getReport.invalidate();
@@ -105,7 +112,7 @@ function SEOContent() {
 
   return (
     <DashboardShell title="SEO Analysis">
-      <div className="space-y-6">
+      <div className="space-y-6" ref={reportRef}>
         {/* Score + quick stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
@@ -126,6 +133,14 @@ function SEOContent() {
                   ) : (
                     <><ScanLine className="w-3 h-3" />Re-analyze</>
                   )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 text-xs h-7 px-3 gap-1.5 border-border/50"
+                  onClick={downloadSeoPdf}
+                >
+                  <Download className="w-3 h-3" />Download PDF
                 </Button>
               </CardContent>
             </Card>

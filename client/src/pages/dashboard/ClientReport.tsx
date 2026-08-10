@@ -25,67 +25,17 @@ function formatDay(day: string) {
   return new Date(day + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// ─── PDF Generator ────────────────────────────────────────────────────────────
+// ─── PDF Generator (shared helper with native print fallback) ────────────────
 
 async function downloadPDF(reportRef: React.RefObject<HTMLDivElement | null>, clientName: string) {
   const element = reportRef.current;
   if (!element) return;
-
-  toast.loading("Generating PDF...", { id: "pdf-gen" });
-
-  try {
-    // html2canvas-pro: fork with modern CSS color support (oklch/lab). The
-    // original html2canvas crashes with "unsupported color function oklch" —
-    // this app's stylesheet uses oklch heavily, which is why PDFs failed.
-    const html2canvas = (await import("html2canvas-pro")).default;
-    const { jsPDF } = await import("jspdf");
-
-    // Render the PDF at a fixed desktop width so it looks the same regardless
-    // of the screen the user is on (mobile screens would otherwise produce a
-    // narrow, squashed PDF). Width is applied only during capture.
-    const prevWidth = element.style.width;
-    const prevMaxWidth = element.style.maxWidth;
-    element.style.width = "720px";
-    element.style.maxWidth = "720px";
-
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: "#0f172a",
-      logging: false,
-      windowWidth: 760,
-    });
-
-    element.style.width = prevWidth;
-    element.style.maxWidth = prevMaxWidth;
-
-    const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-    const pageHeight = pdf.internal.pageSize.getHeight();
-
-    let heightLeft = pdfHeight;
-    let position = 0;
-
-    pdf.addImage(imgData, "PNG", 0, position, pdfWidth, pdfHeight);
-    heightLeft -= pageHeight;
-
-    while (heightLeft > 0) {
-      position = heightLeft - pdfHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, "PNG", 0, position, pdfWidth, pdfHeight);
-      heightLeft -= pageHeight;
-    }
-
-    const fileName = `${clientName.replace(/\s+/g, "-").toLowerCase()}-report-${new Date().toISOString().slice(0, 10)}.pdf`;
-    pdf.save(fileName);
-    toast.success("PDF downloaded!", { id: "pdf-gen" });
-  } catch (err) {
-    console.error(err);
-    toast.error("Failed to generate PDF", { id: "pdf-gen" });
-  }
+  const { exportElementToPdf } = await import("@/lib/pdfExport");
+  await exportElementToPdf(
+    element,
+    `${clientName.replace(/\s+/g, "-").toLowerCase()}-report.pdf`,
+    { width: 720, background: "#0f172a" },
+  );
 }
 
 // ─── Report Content (printable) ───────────────────────────────────────────────
