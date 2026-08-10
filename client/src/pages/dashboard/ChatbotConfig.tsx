@@ -197,7 +197,23 @@ export default function ChatbotConfig() {
                   <Input value={config.placeholder} onChange={(e) => update("placeholder", e.target.value)} className="bg-muted/30 border-border/40 text-sm" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Disclaimer (texto pequeño bajo el chat)</Label>
+                  <Label className="text-xs">Bot native language</Label>
+                  <select
+                    value={config.language}
+                    onChange={(e) => update("language", e.target.value)}
+                    className="w-full h-10 rounded-lg bg-muted/30 border border-border/40 text-sm px-3"
+                  >
+                    <option value="en">English (default)</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="it">Italian</option>
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">The bot opens and defaults to this language, and adapts if the visitor writes in another one.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Disclaimer (small text under the chat)</Label>
                   <Textarea
                     value={config.disclaimer}
                     onChange={(e) => update("disclaimer", e.target.value)}
