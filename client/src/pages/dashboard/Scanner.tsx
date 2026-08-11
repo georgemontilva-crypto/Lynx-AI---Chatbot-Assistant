@@ -51,6 +51,10 @@ type ScanResult = {
     pagesReadCount: number;
     pagesFailed: string[];
     warnings: string[];
+    productsFromHome?: number;
+    productsFromCatalogPages?: number;
+    productsFromStoreApi?: number;
+    productsWithImage?: number;
   };
   seoBreakdown?: {
     score: number;
@@ -356,6 +360,17 @@ export default function Scanner() {
                       <span className="text-xs px-2 py-1 rounded-lg border border-blue-400/40 bg-blue-400/10 text-blue-400">
                         {result.scanReport.pagesReadCount} page(s) read
                       </span>
+                      {/* Where the products came from — makes a thin catalog diagnosable */}
+                      {typeof result.scanReport.productsWithImage === "number" && (result.productsFound ?? 0) > 0 && (
+                        <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.productsWithImage > 0 ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-amber-400/40 bg-amber-400/10 text-amber-400"}`}>
+                          {result.scanReport.productsWithImage}/{result.productsFound} products with photo
+                        </span>
+                      )}
+                      {(result.scanReport.productsFromStoreApi ?? 0) > 0 && (
+                        <span className="text-xs px-2 py-1 rounded-lg border border-emerald-400/40 bg-emerald-400/10 text-emerald-400">
+                          {result.scanReport.productsFromStoreApi} from store API
+                        </span>
+                      )}
                     </div>
 
                     {result.scanReport.pagesRead.length > 0 && (

@@ -483,10 +483,11 @@ function extractProductsFromHtml(html: string, baseUrl: string): ProductEntry[] 
             name: String(item.name ?? "").trim().slice(0, 120),
             price: price ? `${price}${currency ? " " + currency : ""}` : undefined,
             description: String(item.description ?? "").trim().slice(0, 200) || undefined,
-            // Fall back to the page the product was found on: JSON-LD often
-            // omits "url" on a product's own page, and a card with no link is
-            // a dead end for the visitor.
-            url: url ? new URL(url, baseUrl).href : baseUrl,
+            // Resolved after the loop: falling back to the page URL is only
+            // correct on a single-product page. On a collection page it gave
+            // every item the SAME url, and dedupe-by-url then collapsed the
+            // whole catalog into one entry (0-1 products detected).
+            url: url ? new URL(url, baseUrl).href : undefined,
             image: img ? new URL(String(img), baseUrl).href : extractPageImage(html, baseUrl),
           });
         }
@@ -507,15 +508,41 @@ function extractProductsFromHtml(html: string, baseUrl: string): ProductEntry[] 
       }
     }
   }
+  // A page holding exactly one Product IS that product's page — safe to use as
+  // its link. On listing pages we instead look for the anchor whose text or
+  // href matches the product name, so each item keeps its own real URL.
+  if (products.length === 1 && !products[0].url) {
+    products[0].url = baseUrl;
+    if (!products[0].image) products[0].image = extractPageImage(html, baseUrl);
+  } else if (products.length > 1) {
+    const anchors = Array.from(html.matchAll(/<a[^>]+href=["']([^"'#]+)["'][^>]*>([\s\S]{0,160}?)<\/a>/gi))
+      .map(m => ({ href: m[1], text: m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() }));
+    const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    for (const prod of products) {
+      if (prod.url || !prod.name) continue;
+      const target = norm(prod.name);
+      if (!target) continue;
+      const hit = anchors.find(a => norm(a.text) === target)
+        ?? anchors.find(a => a.text && (norm(a.text).includes(target) || target.includes(norm(a.text))))
+        ?? anchors.find(a => norm(decodeURIComponent(a.href)).includes(target));
+      if (hit) {
+        try { prod.url = new URL(hit.href, baseUrl).href; } catch { /* bad href */ }
+      }
+    }
+  }
   return products.slice(0, 200); // max 200 products
 }
 
 // ─── Helper: find product/catalog page links ──────────────────────────
 function findProductPageLinks(html: string, baseUrl: string): string[] {
   const base = new URL(baseUrl);
+  // Keep in sync with the sitemap classifier: a store that calls its catalog
+  // /compounds (or /item, /produkt…) was invisible to the home-page crawler,
+  // so its catalog page was never read and zero products were detected.
   const productPatterns = [
-    /\/products?\b/i, /\/tienda\b/i, /\/shop\b/i, /\/catalog(?:o)?\b/i,
+    /\/products?\b/i, /\/tienda\b/i, /\/shop\b/i, /\/catalog(?:o|ue)?\b/i,
     /\/store\b/i, /\/collection/i, /\/categoria/i, /\/category/i,
+    /\/compounds?\b/i, /\/item\b/i, /\/produkt/i, /\/merch\b/i,
   ];
   const seen = new Set<string>();
   const links: string[] = [];
@@ -532,6 +559,38 @@ function findProductPageLinks(html: string, baseUrl: string): string[] {
         if (links.length >= 15) break;
       }
     } catch { /* invalid URL */ }
+  }
+  return links;
+}
+
+/**
+ * Every internal page linked from this HTML, minus the obvious noise.
+ *
+ * WHY: link discovery used to keep only URLs whose path matched a hardcoded
+ * word list (/products, /shop, /collection…). A store that names its catalog
+ * anything else — /compounds, /formulas, /lineup — was invisible, and the scan
+ * reported zero products. Reading every internal link instead means discovery
+ * no longer depends on guessing the owner's naming; the word lists are now only
+ * used to PRIORITIZE what gets read first, not to decide what exists.
+ */
+function findAllInternalLinks(html: string, baseUrl: string): string[] {
+  const base = new URL(baseUrl);
+  // Files and account/checkout routes: never useful as knowledge, and some
+  // (cart, logout) have side effects or infinite variations.
+  const skip = /\.(jpg|jpeg|png|gif|webp|svg|ico|css|js|pdf|zip|mp4|woff2?)$|\/(cart|checkout|account|login|signin|signup|register|logout|wp-admin|wp-login|admin)\b/i;
+  const seen = new Set<string>();
+  const links: string[] = [];
+  for (const m of Array.from(html.matchAll(/href=["']([^"'#]+)["']/gi))) {
+    try {
+      const href = new URL(m[1], baseUrl);
+      if (href.hostname !== base.hostname) continue;
+      if (href.protocol !== "http:" && href.protocol !== "https:") continue;
+      const path = href.pathname.replace(/\/+$/, "") || "/";
+      if (path === "/" || seen.has(path) || skip.test(path)) continue;
+      seen.add(path);
+      links.push(href.origin + path);
+      if (links.length >= 150) break;
+    } catch { /* invalid href */ }
   }
   return links;
 }
@@ -750,22 +809,40 @@ export async function buildSiteKnowledge(
     addToIndex(u, productRe.test(path) ? "product" : infoRe.test(path) ? "info" : "page");
   }
 
+  const allInternal = findAllInternalLinks(rawHome, siteUrl);
   const productLinks = Array.from(new Set([
     ...sitemapUrls.filter(u => { try { return productRe.test(new URL(u).pathname); } catch { return false; } }),
     ...findProductPageLinks(rawHome, siteUrl),
+    ...allInternal,
   ]));
   await crawlPages(productLinks.slice(0, budgetPages), (link, html) => {
     if (products.length >= 200) return;
-    for (const p of extractProductsFromHtml(html, link)) {
-      upsertProduct(products, p);
+    const found = extractProductsFromHtml(html, link);
+    for (const p of found) upsertProduct(products, p);
+    const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "";
+    const path = new URL(link).pathname;
+    if (found.length === 0) {
+      // No products here — it's an informational page. Let CONTENT decide what
+      // a page is instead of its URL, so a policy page named anything at all
+      // still gets learned rather than silently discarded.
+      const text = htmlToText(html, 2500);
+      if (text.length > 100) {
+        pageExtracts.push({ path, text, title, kind: classifyInfoPage(path, title) });
+        addToIndex(link, "info", title);
+      } else {
+        addToIndex(link, "page", title);
+      }
+    } else {
+      addToIndex(link, "product", title);
     }
-    addToIndex(link, "product", html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "");
-    pagesRead.push(new URL(link).pathname);
+    pagesRead.push(path);
   }, { deadline });
 
+  const readPaths = new Set(pagesRead);
   const infoLinks = Array.from(new Set([
     ...sitemapUrls.filter(u => { try { return infoRe.test(new URL(u).pathname); } catch { return false; } }),
     ...findInfoPageLinks(rawHome, siteUrl),
+    ...allInternal.filter(u => { try { return !readPaths.has(new URL(u).pathname); } catch { return false; } }),
   ]));
   await crawlPages(infoLinks.slice(0, budgetPages), (link, html) => {
     const text = htmlToText(html, 2500);
@@ -1015,6 +1092,10 @@ export const appRouter = router({
           sitemapFound: false,          // did we find a sitemap.xml?
           sitemapUrlCount: 0,           // how many URLs the sitemap listed
           storeCatalogFound: false,     // did a Shopify/Woo JSON catalog respond?
+          productsFromHome: 0,          // products found in the home page markup
+          productsFromCatalogPages: 0,  // products found while crawling catalog pages
+          productsFromStoreApi: 0,      // products returned by the Shopify/Woo API
+          productsWithImage: 0,         // how many ended up with a usable photo
           pagesRead: [] as string[],    // paths we actually read content from
           pagesFailed: [] as string[],  // paths that failed to load
           warnings: [] as string[],     // human-readable notes for the user
@@ -1071,6 +1152,7 @@ export const appRouter = router({
 
           // Extract products from home page
           allProducts = extractProductsFromHtml(raw, input.url);
+          scanReport.productsFromHome = allProducts.length;
 
           // ── Store JSON catalog (Shopify/WooCommerce) — the reliable path ───
           // This works even on JS-rendered stores, so the assistant always knows
@@ -1078,6 +1160,7 @@ export const appRouter = router({
           try {
             const storeCatalog = await fetchStoreCatalog(input.url);
             if (storeCatalog.length > 0) scanReport.storeCatalogFound = true;
+            scanReport.productsFromStoreApi = storeCatalog.length;
             for (const p of storeCatalog) {
               upsertProduct(allProducts, p);
             }
@@ -1108,18 +1191,34 @@ export const appRouter = router({
             // Prefer sitemap-discovered product pages (works on JS sites),
             // falling back to home-page links.
             const homeLinks = findProductPageLinks(raw, input.url);
-            const productPageLinks = Array.from(new Set([...sitemapProductPages, ...homeLinks]));
+            // Known catalog-looking URLs first, then EVERY other internal link:
+            // discovery no longer depends on the site using words we recognize.
+            const allInternal = findAllInternalLinks(raw, input.url);
+            const productPageLinks = Array.from(new Set([...sitemapProductPages, ...homeLinks, ...allInternal]));
             const catalogBudget =
               ctx.user.plan === "whitelabel" ? 100 :
               ctx.user.plan === "embedded" ? 50 :
               ctx.user.plan === "cloud" ? 20 : 4;
             await crawlPages(productPageLinks.slice(0, catalogBudget), (link, pageHtml) => {
               if (allProducts.length >= 200) return;
-              for (const p of extractProductsFromHtml(pageHtml, link)) {
-                upsertProduct(allProducts, p);
+              const found = extractProductsFromHtml(pageHtml, link);
+              for (const p of found) upsertProduct(allProducts, p);
+              const pageTitle = pageHtml.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "";
+              const path = new URL(link).pathname;
+              if (found.length === 0) {
+                // Not a product page after all — keep its text as an info page
+                // so nothing read is thrown away just because of its URL.
+                const text = htmlToText(pageHtml, 2500);
+                if (text.length > 100) {
+                  pageExtracts.push({ path, text, title: pageTitle, kind: classifyInfoPage(path, pageTitle) });
+                  addToIndex(link, "info", pageTitle);
+                } else {
+                  addToIndex(link, "page", pageTitle);
+                }
+              } else {
+                addToIndex(link, "product", pageTitle);
               }
-              addToIndex(link, "product", pageHtml.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "");
-              scanReport.pagesRead.push(new URL(link).pathname);
+              scanReport.pagesRead.push(path);
             }, {
               deadline: crawlDeadline,
               onFail: (link) => { try { scanReport.pagesFailed.push(new URL(link).pathname); } catch { /* bad url */ } },
@@ -1130,7 +1229,12 @@ export const appRouter = router({
           // These are the pages visitors ask about most; budget is plan-based.
           // Merge sitemap-discovered info pages with home-page links.
           const homeInfoLinks = findInfoPageLinks(raw, input.url);
-          const infoLinks = Array.from(new Set([...sitemapInfoPages, ...homeInfoLinks]));
+          // Same idea: recognized info pages first, then anything else internal
+          // that the catalog pass did not already read.
+          const alreadyRead = new Set(scanReport.pagesRead);
+          const otherInternal = findAllInternalLinks(raw, input.url)
+            .filter(u => { try { return !alreadyRead.has(new URL(u).pathname); } catch { return false; } });
+          const infoLinks = Array.from(new Set([...sitemapInfoPages, ...homeInfoLinks, ...otherInternal]));
           const remainingBudget = Math.max(0, crawlBudget - 1); // home already fetched
           await crawlPages(infoLinks.slice(0, remainingBudget), (link, pageHtml) => {
             const text = htmlToText(pageHtml, 2500);
@@ -1344,8 +1448,20 @@ Return ONLY valid JSON matching this exact schema:
           chatbot = await upsertChatbot({ userId: ctx.user.id, name: "Lynx AI" });
         }
 
+        scanReport.productsFromCatalogPages = Math.max(
+          0,
+          allProducts.length - scanReport.productsFromHome - scanReport.productsFromStoreApi
+        );
+
         // Fill in any product photo the catalog sources did not provide
         await hydrateMissingImages(allProducts, crawlDeadline);
+        scanReport.productsWithImage = allProducts.filter(p => p.image).length;
+
+        if (allProducts.length === 0 && scanReport.homeReadable) {
+          scanReport.warnings.push("No products were detected. If this site sells online, its catalog is probably rendered by JavaScript or uses a layout we could not read — check that product pages expose structured data (JSON-LD) or an og:image, and that a sitemap.xml lists them.");
+        } else if (allProducts.length > 0 && scanReport.productsWithImage === 0) {
+          scanReport.warnings.push("Products were found but none had a usable photo, so product cards in the chat will show a placeholder. Adding an og:image tag to each product page fixes this.");
+        }
 
         // 4. Build product catalog section for chatbot context
         let productCatalogSection = "";
@@ -1485,6 +1601,10 @@ Return ONLY valid JSON matching this exact schema:
             sitemapFound: scanReport.sitemapFound,
             sitemapUrlCount: scanReport.sitemapUrlCount,
             storeCatalogFound: scanReport.storeCatalogFound,
+            productsFromHome: scanReport.productsFromHome,
+            productsFromCatalogPages: scanReport.productsFromCatalogPages,
+            productsFromStoreApi: scanReport.productsFromStoreApi,
+            productsWithImage: scanReport.productsWithImage,
             pagesRead: scanReport.pagesRead,
             pagesReadCount: scanReport.pagesRead.length,
             pagesFailed: scanReport.pagesFailed,
