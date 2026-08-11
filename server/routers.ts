@@ -333,6 +333,39 @@ export function buildTrainingPromptSection(chatbot: { customInstructions?: strin
   return parts.length > 0 ? `\n\n${parts.join("\n\n")}` : "";
 }
 
+/**
+ * Fetch many pages in parallel under a wall-clock deadline.
+ *
+ * WHY: crawling used to run one page at a time with an 8s timeout each. On a
+ * White-Label plan (up to 59 pages) the worst case ran past 8 MINUTES, so the
+ * edge proxy cut the connection and returned an HTML error page — which the
+ * tRPC client reports as "Unable to transform response from server". Bounded
+ * concurrency plus a hard deadline keeps every scan inside the proxy window;
+ * whatever was read by then is kept, and the rest is simply skipped.
+ */
+async function crawlPages<T>(
+  links: string[],
+  handler: (url: string, html: string) => T | void,
+  opts: { deadline: number; concurrency?: number; timeoutMs?: number; onFail?: (url: string) => void }
+): Promise<void> {
+  const concurrency = opts.concurrency ?? 6;
+  const timeoutMs = opts.timeoutMs ?? 6000;
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < links.length) {
+      if (Date.now() > opts.deadline) return;
+      const link = links[cursor++];
+      try {
+        const { text } = await safeFetchText(link, { timeoutMs });
+        handler(link, text);
+      } catch {
+        opts.onFail?.(link);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, links.length) }, worker));
+}
+
 // ─── Site-scan helpers (module level so BOTH the owner scan and the
 // per-client scan use exactly the same crawling and learning logic) ─────────
 // ─── Helper: extract products from JSON-LD Product schema ─────────────
@@ -588,8 +621,10 @@ async function fetchStoreCatalog(siteUrl: string): Promise<ProductEntry[]> {
  */
 export async function buildSiteKnowledge(
   siteUrl: string,
-  budgetPages = 20
+  budgetPages = 20,
+  crawlMs = 45000
 ): Promise<{ context: string; products: number; pagesRead: string[]; indexed: number }> {
+  const deadline = Date.now() + crawlMs;
   const products: ProductEntry[] = [];
   const pageExtracts: { path: string; text: string; title: string; kind: string }[] = [];
   const pageIndex: { path: string; kind: string; title: string }[] = [];
@@ -626,35 +661,28 @@ export async function buildSiteKnowledge(
     ...sitemapUrls.filter(u => { try { return productRe.test(new URL(u).pathname); } catch { return false; } }),
     ...findProductPageLinks(rawHome, siteUrl),
   ]));
-  for (const link of productLinks.slice(0, budgetPages)) {
-    try {
-      const { text: html } = await safeFetchText(link, { timeoutMs: 8000 });
-      for (const p of extractProductsFromHtml(html, link)) {
-        if (!products.some(ep => ep.name === p.name)) products.push(p);
-      }
-      addToIndex(link, "product", html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "");
-      pagesRead.push(new URL(link).pathname);
-      if (products.length >= 200) break;
-    } catch { /* unreadable page */ }
-  }
+  await crawlPages(productLinks.slice(0, budgetPages), (link, html) => {
+    if (products.length >= 200) return;
+    for (const p of extractProductsFromHtml(html, link)) {
+      if (!products.some(ep => ep.name === p.name)) products.push(p);
+    }
+    addToIndex(link, "product", html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "");
+    pagesRead.push(new URL(link).pathname);
+  }, { deadline });
 
   const infoLinks = Array.from(new Set([
     ...sitemapUrls.filter(u => { try { return infoRe.test(new URL(u).pathname); } catch { return false; } }),
     ...findInfoPageLinks(rawHome, siteUrl),
   ]));
-  for (const link of infoLinks.slice(0, budgetPages)) {
-    try {
-      const { text: html } = await safeFetchText(link, { timeoutMs: 8000 });
-      const text = htmlToText(html, 2500);
-      if (text.length > 100) {
-        const path = new URL(link).pathname;
-        const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "";
-        pageExtracts.push({ path, text, title, kind: classifyInfoPage(path, title) });
-        addToIndex(link, "info", title);
-        pagesRead.push(path);
-      }
-    } catch { /* unreadable page */ }
-  }
+  await crawlPages(infoLinks.slice(0, budgetPages), (link, html) => {
+    const text = htmlToText(html, 2500);
+    if (text.length <= 100) return;
+    const path = new URL(link).pathname;
+    const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "";
+    pageExtracts.push({ path, text, title, kind: classifyInfoPage(path, title) });
+    addToIndex(link, "info", title);
+    pagesRead.push(path);
+  }, { deadline });
 
   // Same budgeted assembly as the owner scan: highest-value section first, and
   // a byte-aware final cut (MySQL TEXT is 65,535 BYTES, not characters).
@@ -849,6 +877,12 @@ export const appRouter = router({
           }
         }
         // ─── Per-plan crawl budget (total pages incl. home) ───────────────────
+        // Hard wall-clock budget for the whole crawl. The edge proxy drops the
+        // connection well before a minute-long request finishes, so we stop
+        // crawling in time and answer with whatever we managed to read.
+        const CRAWL_MS = 45000;
+        const crawlDeadline = Date.now() + CRAWL_MS;
+
         const crawlBudget =
           ctx.user.plan === "whitelabel" ? 40 :
           ctx.user.plan === "embedded" ? 20 :
@@ -979,18 +1013,17 @@ export const appRouter = router({
               ctx.user.plan === "whitelabel" ? 20 :
               ctx.user.plan === "embedded" ? 10 :
               ctx.user.plan === "cloud" ? 6 : 3;
-            for (const link of productPageLinks.slice(0, catalogBudget)) {
-              try {
-                const { text: pageHtml } = await safeFetchText(link, { timeoutMs: 8000 });
-                const pageProducts = extractProductsFromHtml(pageHtml, link);
-                for (const p of pageProducts) {
-                  if (!allProducts.some(ep => ep.name === p.name)) allProducts.push(p);
-                }
-                addToIndex(link, "product", pageHtml.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "");
-                scanReport.pagesRead.push(new URL(link).pathname);
-                if (allProducts.length >= 200) break;
-              } catch { scanReport.pagesFailed.push(new URL(link).pathname); }
-            }
+            await crawlPages(productPageLinks.slice(0, catalogBudget), (link, pageHtml) => {
+              if (allProducts.length >= 200) return;
+              for (const p of extractProductsFromHtml(pageHtml, link)) {
+                if (!allProducts.some(ep => ep.name === p.name)) allProducts.push(p);
+              }
+              addToIndex(link, "product", pageHtml.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "");
+              scanReport.pagesRead.push(new URL(link).pathname);
+            }, {
+              deadline: crawlDeadline,
+              onFail: (link) => { try { scanReport.pagesFailed.push(new URL(link).pathname); } catch { /* bad url */ } },
+            });
           }
 
           // ── Crawl informational pages (FAQ, about, policies, shipping…) ────
@@ -999,19 +1032,18 @@ export const appRouter = router({
           const homeInfoLinks = findInfoPageLinks(raw, input.url);
           const infoLinks = Array.from(new Set([...sitemapInfoPages, ...homeInfoLinks]));
           const remainingBudget = Math.max(0, crawlBudget - 1); // home already fetched
-          for (const link of infoLinks.slice(0, remainingBudget)) {
-            try {
-              const { text: pageHtml } = await safeFetchText(link, { timeoutMs: 8000 });
-              const text = htmlToText(pageHtml, 2500);
-              if (text.length > 100) {
-                const path = new URL(link).pathname;
-                const pageTitle = pageHtml.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "";
-                pageExtracts.push({ path, text, title: pageTitle, kind: classifyInfoPage(path, pageTitle) });
-                addToIndex(link, "info", pageTitle);
-                scanReport.pagesRead.push(path);
-              }
-            } catch { scanReport.pagesFailed.push(new URL(link).pathname); }
-          }
+          await crawlPages(infoLinks.slice(0, remainingBudget), (link, pageHtml) => {
+            const text = htmlToText(pageHtml, 2500);
+            if (text.length <= 100) return;
+            const path = new URL(link).pathname;
+            const pageTitle = pageHtml.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "";
+            pageExtracts.push({ path, text, title: pageTitle, kind: classifyInfoPage(path, pageTitle) });
+            addToIndex(link, "info", pageTitle);
+            scanReport.pagesRead.push(path);
+          }, {
+            deadline: crawlDeadline,
+            onFail: (link) => { try { scanReport.pagesFailed.push(new URL(link).pathname); } catch { /* bad url */ } },
+          });
 
           htmlContent = htmlToText(raw, 5000);
         } catch (err) {
@@ -1028,6 +1060,9 @@ export const appRouter = router({
         if (scanReport.homeReadable && scanReport.pagesRead.length <= 1 && !scanReport.storeCatalogFound) {
           scanReport.warnings.push("We could only read the homepage. If your site loads its content with JavaScript, other pages may not be readable by an automated reader — make sure you have a sitemap and regular internal links.");
         }
+        if (Date.now() > crawlDeadline) {
+          scanReport.warnings.push("The scan hit its time limit, so some pages were not read. Everything we did read was saved — run the scan again to pick up more.");
+        }
         if (scanReport.pagesFailed.length > 0) {
           scanReport.warnings.push(`Some pages could not be read (${scanReport.pagesFailed.length}): ${scanReport.pagesFailed.slice(0, 5).join(", ")}${scanReport.pagesFailed.length > 5 ? "\u2026" : ""}.`);
         }
@@ -1037,7 +1072,14 @@ export const appRouter = router({
         // graded checks — never from the LLM. Weighted category scores like
         // Lighthouse: Performance 30, SEO 35, Social 10, Structure 15, Security 10.
         const httpMeasure = rawHome ? await measureHttp(input.url) : null;
-        const psiResult = rawHome ? await psiPromise : null;
+        // Lighthouse can take 45s on its own. Never let it push the request past
+        // the proxy window: if it is not back in time, score without it.
+        const psiResult = rawHome
+          ? await Promise.race([
+              psiPromise,
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), Math.max(2000, crawlDeadline + 15000 - Date.now()))),
+            ])
+          : null;
         const seoBreakdown = rawHome
           ? computeSeoBreakdown(rawHome, httpMeasure, Math.round(measuredLoadSpeed * 1000), scanReport.sitemapFound, input.url, psiResult)
           : null;
