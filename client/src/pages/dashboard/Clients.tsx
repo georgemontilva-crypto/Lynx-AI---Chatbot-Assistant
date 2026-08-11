@@ -120,7 +120,7 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[85dvh] overflow-y-auto p-4 sm:p-6 rounded-2xl">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[85dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 rounded-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm sm:text-base pr-6">
             <Code2 className="w-4 h-4 text-primary shrink-0" />
@@ -133,8 +133,8 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
           <div>
             <Label className="text-xs text-muted-foreground mb-1.5 block">API Key</Label>
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex-1 min-w-0 basis-full sm:basis-auto font-mono text-xs bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate">
-                {showKey ? client.apiKey : "lx_" + "\u2022".repeat(24)}
+              <div className="flex-1 min-w-0 max-w-full basis-full sm:basis-auto font-mono text-xs bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate">
+                {showKey ? client.apiKey : "lx_" + "•".repeat(24)}
               </div>
               <Button variant="ghost" size="icon" className="w-8 h-8 shrink-0" onClick={() => setShowKey(v => !v)}>
                 {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -164,7 +164,7 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
           <div>
             <Label className="text-xs text-muted-foreground mb-1.5 block">Paste before &lt;/body&gt; on every page</Label>
             <div className="space-y-2">
-              <pre className="text-xs bg-muted/50 rounded-lg p-3 border border-border/40 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed max-h-48 overflow-y-auto">
+              <pre className="text-xs bg-muted/50 rounded-lg p-3 border border-border/40 whitespace-pre-wrap break-all [overflow-wrap:anywhere] w-full max-w-full leading-relaxed max-h-48 overflow-y-auto">
                 {snippet}
               </pre>
               <Button
@@ -180,7 +180,7 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Shareable chat link (full screen)</p>
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex-1 min-w-0 basis-full sm:basis-auto font-mono text-[11px] bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate" title={chatLink}>
+                <div className="flex-1 min-w-0 max-w-full basis-full sm:basis-auto font-mono text-[11px] bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate" title={chatLink}>
                   {chatLink}
                 </div>
                 <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={copyChatLink}>
@@ -196,9 +196,9 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Branded chat page (masked link)</p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Download a ready-made HTML page with the chat embedded. Upload it to the client\u2019s
-                own website (e.g. as <span className="font-mono">/chat</span>) \u2014 visitors will see the
-                client\u2019s domain in the address bar, with their brand name and colors.
+                Download a ready-made HTML page with the chat embedded. Upload it to the client's
+                own website (e.g. as <span className="font-mono">/chat</span>) — visitors will see the
+                client's domain in the address bar, with their brand name and colors.
               </p>
               <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={downloadChatPage}>
                 <FileText className="w-3 h-3" />Download chat page (HTML)
@@ -262,7 +262,7 @@ function ClientFormModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-md max-h-[85dvh] overflow-y-auto p-4 sm:p-6 rounded-2xl">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-md max-h-[85dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 rounded-2xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Client" : "Add New Client"}</DialogTitle>
         </DialogHeader>
@@ -317,7 +317,7 @@ function ClientFormModal({
                       Remove
                     </button>
                   )}
-                  <p className="basis-full text-[11px] text-muted-foreground">Shown in the chat header and on the floating button of this client\u2019s widget.</p>
+                  <p className="basis-full text-[11px] text-muted-foreground">Shown in the chat header and on the floating button of this client's widget.</p>
                 </div>
                 <Label htmlFor="brandColor" className="text-xs">Brand color</Label>
                 <Input id="brandColor" value={form.brandColor} onChange={set("brandColor")} placeholder="#3b82f6" className="mt-1 font-mono text-xs" />
