@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { Code2, Copy, CheckCircle, Globe, Zap, BookOpen, Terminal, RefreshCw, ExternalLink, Info, BarChart3, AlertTriangle } from "lucide-react";
+import { Code2, Copy, CheckCircle, Globe, Zap, BookOpen, Terminal, RefreshCw, ExternalLink, Info, BarChart3, AlertTriangle, Download } from "lucide-react";
 
 const steps = [
   { step: "01", title: "Copy the code", desc: "Select your preferred installation method and copy the snippet." },
@@ -106,6 +106,46 @@ export default function Snippet() {
 
   // Shareable full-page chat link for this chatbot (support / social / "talk to us")
   const shareLink = apiKey ? `${siteOrigin}/chat/${apiKey}` : "";
+
+  // Branded chat page: standalone HTML the owner hosts on their own domain —
+  // visitors see the owner's domain in the address bar (masked link).
+  const downloadChatPage = () => {
+    if (!apiKey) return;
+    const brand = (chatbotName || "Chat").replace(/</g, "");
+    const color = chatbot?.primaryColor ?? "#3b82f6";
+    const html = [
+      "<!DOCTYPE html>",
+      '<html lang="en">',
+      "<head>",
+      '<meta charset="utf-8">',
+      '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">',
+      `<title>${brand} — Chat</title>`,
+      `<meta name="theme-color" content="${color}">`,
+      "<style>",
+      "html,body{margin:0;padding:0;height:100%;background:#f5f6f8;}",
+      ".w{position:fixed;inset:0;}",
+      "iframe{width:100%;height:100%;border:0;display:block;}",
+      ".ld{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#f5f6f8;transition:opacity .3s;pointer-events:none;}",
+      `.sp{width:36px;height:36px;border:3px solid rgba(0,0,0,.08);border-top-color:${color};border-radius:50%;animation:r 1s linear infinite;}`,
+      "@keyframes r{to{transform:rotate(360deg)}}",
+      "</style>",
+      "</head>",
+      "<body>",
+      '<div class="w">',
+      '<div class="ld" id="ld"><div class="sp"></div></div>',
+      `<iframe src="${shareLink}" allow="clipboard-write" title="${brand} chat" onload="var l=document.getElementById(&quot;ld&quot;);l.style.opacity=&quot;0&quot;;setTimeout(function(){l.remove()},350)"></iframe>`,
+      "</div>",
+      "</body>",
+      "</html>",
+    ].join("\n");
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "chat.html";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const handleCopyLink = () => {
     if (!shareLink) return;
     navigator.clipboard.writeText(shareLink);
@@ -187,6 +227,19 @@ export default function Snippet() {
                   <button onClick={handleCopyLink} className="text-muted-foreground hover:text-foreground transition-colors ml-1 shrink-0" title="Copy link">
                     {copiedLink ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
+                </div>
+              )}
+              {apiKey && (
+                <div className="mt-4 pt-4 border-t border-border/40">
+                  <div className="text-xs font-medium mb-1">Branded chat page (masked link)</div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed mb-2">
+                    Download a ready-made HTML page with this chat embedded. Upload it to your own
+                    website (e.g. as <span className="font-mono">/chat</span>) — visitors will see your
+                    domain in the address bar, with your brand name and colors.
+                  </p>
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={downloadChatPage}>
+                    <Download className="w-3 h-3" />Download chat page (HTML)
+                  </Button>
                 </div>
               )}
             </CardContent>
