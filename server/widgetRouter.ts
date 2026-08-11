@@ -2095,14 +2095,9 @@ function buildFrameApp(): string {
     isOpen = true;
     panel.classList.add('open');
     lockPageScroll();
-    // Mobile fullscreen: hide the floating button while open — the header's X
-    // is the close control, and the bubble would sit on top of the send button.
-    if (window.matchMedia && window.matchMedia('(max-width: 480px)').matches) {
-      btn.style.display = 'none';
-    }
+    // The stub button never shows inside the frame — the parent owns the bubble.
+    btn.style.display = 'none';
     trackEvent('chat_open');
-    // Show X icon when open, keep logo visible
-    btn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     if (!configLoaded) {
       loadConfig();
     } else {
@@ -2115,6 +2110,8 @@ function buildFrameApp(): string {
   }
 
   function renderBtnIcon() {
+    // Keep the stub hidden no matter who calls this — see closePanel().
+    btn.style.display = 'none';
     // Render the button icon based on config.buttonIconUrl (falls back to a
     // generic dark chat bubble on a white circle).
     if (config.buttonIconUrl) {
@@ -2131,11 +2128,13 @@ function buildFrameApp(): string {
   function closePanel() {
     notifyParent('close');
     unlockPageScroll();
-    btn.style.display = '';
     isOpen = false;
-    panel.classList.remove('open');
-    // Restore the custom icon (or default) — never hardcode Lynx AI icon here
-    renderBtnIcon();
+    // IFRAME ARCHITECTURE: the visible floating button lives in the PARENT page
+    // (the loader draws it). The stub button in here must stay hidden forever —
+    // showing it again left the iframe displaying a full-width avatar instead of
+    // the chat on the next open. The panel also stays mounted: the parent hides
+    // the whole iframe, so removing .open here only broke reopening.
+    btn.style.display = 'none';
   }
 
   btn.addEventListener('click', function() {

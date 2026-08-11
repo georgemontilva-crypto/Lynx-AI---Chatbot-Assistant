@@ -616,6 +616,30 @@ function ClientsContent() {
                             {" · "}
                             <span className="font-mono">lx_••••••••</span>
                           </p>
+                          {/* Each resold chatbot has its own monthly allowance */}
+                          {(client as { usage?: { used: number; limit: number } }).usage?.limit ? (() => {
+                            const u = (client as { usage: { used: number; limit: number } }).usage;
+                            const pct = Math.min(100, Math.round((u.used / u.limit) * 100));
+                            const tone = pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-emerald-500";
+                            return (
+                              <div className="mt-1.5 max-w-[220px]">
+                                <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0.5">
+                                  <span>Monthly messages</span>
+                                  <span className={pct >= 80 ? "text-amber-400 font-medium" : ""}>
+                                    {u.used.toLocaleString()} / {u.limit.toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="h-1 rounded-full bg-muted/40 overflow-hidden">
+                                  <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })() : null}
+                          {(client as { hasChatbot?: boolean }).hasChatbot === false && (
+                            <p className="text-[10px] text-red-400 mt-1">
+                              No chatbot linked to this API key — the widget will fail. Regenerate the key to relink it.
+                            </p>
+                          )}
                         </div>
 
                         {/* Actions (desktop; on mobile they appear when tapping the card) */}

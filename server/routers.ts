@@ -20,6 +20,7 @@ import {
   getNotificationsByUser,
   markNotificationRead,
   PLAN_LIMITS,
+  usageOf,
   getAllUsers,
   updateUserPlan,
   toggleUserBan,
@@ -454,6 +455,8 @@ export const appRouter = router({
         return chatbot;
       }),
     usage: protectedProcedure.query(async ({ ctx }) => {
+      // getChatbotByUserId excludes client chatbots, so this is always the
+      // reseller's OWN bot → the main allowance (8,000 on White-Label).
       const chatbot = await getChatbotByUserId(ctx.user.id);
       const plan = ctx.user.plan ?? "cloud";
       const limit = PLAN_LIMITS[plan] ?? 500;
@@ -1822,10 +1825,17 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         poweredByText: (b as { poweredByText?: string | null }).poweredByText ?? null,
         poweredByUrl: (b as { poweredByUrl?: string | null }).poweredByUrl ?? null,
       }]));
+      // Each resold chatbot has its OWN monthly allowance (whitelabel_client),
+      // separate from the reseller's own chatbot — no shared pool.
+      const usageByKey = new Map(bots.map((b) => [b.apiKey, usageOf(b, ctx.user.plan ?? "cloud")]));
+      const botLinked = new Set(bots.map((b) => b.apiKey));
       return rows.map((r) => ({
         ...r,
         logoUrl: logoByKey.get(r.apiKey) ?? null,
         ...(badgeByKey.get(r.apiKey) ?? { poweredByText: null, poweredByUrl: null }),
+        usage: usageByKey.get(r.apiKey) ?? { used: 0, limit: 0 },
+        // false → the client row has no chatbot behind its API key (would 403)
+        hasChatbot: botLinked.has(r.apiKey),
       }));
     }),
     create: protectedProcedure

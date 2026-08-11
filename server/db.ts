@@ -1,4 +1,4 @@
-import { eq, desc, and, sql, or } from "drizzle-orm";
+import { eq, desc, and, sql, or, asc, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { randomBytes } from "crypto";
 import {
@@ -142,10 +142,29 @@ export async function updateLastSignedIn(userId: number) {
 }
 
 // ─── Chatbots ─────────────────────────────────────────────────────────────────
+/**
+ * The user's OWN chatbot — the one their dashboard configures and whose API key
+ * is the "main" key (8,000 msg/month on White-Label).
+ *
+ * CRITICAL: on White-Label, the chatbots a reseller creates for their clients
+ * are stored under the SAME userId with isClientChatbot=true. Selecting by
+ * userId alone could return a CLIENT's chatbot, which would make the dashboard
+ * show the client's API key, overwrite the client's branding on save, and bill
+ * a client bot against the 8,000 limit. Always exclude client chatbots, and
+ * order by id so the answer is deterministic.
+ */
 export async function getChatbotByUserId(userId: number): Promise<Chatbot | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(chatbots).where(eq(chatbots.userId, userId)).limit(1);
+  const result = await db
+    .select()
+    .from(chatbots)
+    .where(and(
+      eq(chatbots.userId, userId),
+      or(eq(chatbots.isClientChatbot, false), isNull(chatbots.isClientChatbot)),
+    ))
+    .orderBy(asc(chatbots.id))
+    .limit(1);
   return result[0];
 }
 
@@ -190,11 +209,11 @@ export async function upsertChatbot(data: InsertChatbot & { userId: number }): P
     return updated[0]!;
   } else {
     // Generate a unique API key for new chatbots
-    const newData = { ...data };
+    const newData = { ...data, isClientChatbot: false };
     if (!newData.apiKey) newData.apiKey = generateApiKey();
     await db.insert(chatbots).values(newData);
-    const created = await db.select().from(chatbots).where(eq(chatbots.userId, data.userId)).limit(1);
-    return created[0]!;
+    const created = await getChatbotByUserId(data.userId);
+    return created!;
   }
 }
 
@@ -361,6 +380,22 @@ export async function checkAndIncrementUsage(
   const shouldAlertAt80 = currentCount < threshold80 && newCount >= threshold80;
 
   return { allowed: true, used: newCount, limit, shouldAlertAt80 };
+}
+
+/**
+ * Monthly usage of a single chatbot against the limit that applies to it.
+ * Read-only (never increments) — for dashboards.
+ */
+export function usageOf(
+  chatbot: { messagesThisMonth?: number | null; messagesResetAt?: Date | null; isClientChatbot?: boolean | null },
+  userPlan: string
+): { used: number; limit: number } {
+  const planKey = userPlan === "whitelabel" && chatbot.isClientChatbot ? "whitelabel_client" : userPlan;
+  const limit = PLAN_LIMITS[planKey] ?? 500;
+  const now = new Date();
+  const resetAt = chatbot.messagesResetAt ? new Date(chatbot.messagesResetAt) : new Date(0);
+  const isNewMonth = now.getFullYear() !== resetAt.getFullYear() || now.getMonth() !== resetAt.getMonth();
+  return { used: isNewMonth ? 0 : (chatbot.messagesThisMonth ?? 0), limit };
 }
 
 export async function updateChatbotSiteContext(chatbotId: number, siteUrl: string, siteContext: string) {
