@@ -977,6 +977,30 @@ export async function buildSiteKnowledge(
   return { context, products: products.length, pagesRead, indexed: pageIndex.length };
 }
 
+/**
+ * Website field that accepts what people actually type.
+ *
+ * z.string().url() rejects "acme.com" outright — the scheme is not optional in
+ * a URL — so adding a client failed with a raw "Invalid URL" validation error
+ * for a perfectly valid site. Normalize first (add https://, trim, drop a
+ * trailing slash), then validate.
+ */
+const siteUrlSchema = z.preprocess((v) => {
+  if (typeof v !== "string") return v;
+  const raw = v.trim();
+  if (!raw) return raw;
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const u = new URL(withScheme);
+    // A bare word ("my-site") becomes a technically-valid URL once a scheme is
+    // added, but it is not a real site — return the original so zod rejects it.
+    if (!u.hostname.includes(".")) return raw;
+    return u.origin + (u.pathname === "/" ? "" : u.pathname.replace(/\/+$/, ""));
+  } catch {
+    return withScheme;
+  }
+}, z.string().url({ message: "Enter a valid website, e.g. acme.com or https://acme.com" }));
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -2411,7 +2435,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
     create: protectedProcedure
       .input(z.object({
         name: z.string().min(1).max(256),
-        siteUrl: z.string().url(),
+        siteUrl: siteUrlSchema,
         brandName: z.string().max(128).optional(),
         brandColor: z.string().max(16).optional(),
         welcomeMessage: z.string().max(512).optional(),
@@ -2521,7 +2545,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
       .input(z.object({
         id: z.number().int(),
         name: z.string().min(1).max(256).optional(),
-        siteUrl: z.string().url().optional(),
+        siteUrl: siteUrlSchema.optional(),
         brandName: z.string().max(128).optional(),
         brandColor: z.string().max(16).optional(),
         welcomeMessage: z.string().max(512).optional(),

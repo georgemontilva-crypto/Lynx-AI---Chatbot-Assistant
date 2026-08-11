@@ -398,7 +398,11 @@ function ClientFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.siteUrl.trim()) return;
-    onSave(form);
+    // Accept "acme.com" as typed — the scheme is added here so the user never
+    // sees a raw "Invalid URL" for a site that is perfectly valid.
+    const url = form.siteUrl.trim();
+    const siteUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    onSave({ ...form, siteUrl });
   };
 
   return (
@@ -447,7 +451,7 @@ function ClientFormModal({
                 </div>
                 <div>
                   <Label htmlFor="siteUrl" className="text-xs">Website URL *</Label>
-                  <Input id="siteUrl" value={form.siteUrl} onChange={set("siteUrl")} placeholder="https://acme.com" type="url" className="mt-1" required />
+                  <Input id="siteUrl" value={form.siteUrl} onChange={set("siteUrl")} placeholder="acme.com" className="mt-1" required />
                   <p className="text-[11px] text-muted-foreground mt-1">The site the bot learns from — products, policies and pages.</p>
                 </div>
               </div>
@@ -720,8 +724,23 @@ function ClientsContent() {
       setShowAddModal(false);
       toast.success("Client added successfully! API key generated.");
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(friendlyError(e.message)),
   });
+
+  // tRPC surfaces zod failures as a raw JSON array ([{"code":"invalid_format"…}])
+  // — unreadable in a toast. Show the human message instead.
+  const friendlyError = (message: string): string => {
+    try {
+      const parsed = JSON.parse(message) as { message?: string; path?: string[] }[];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(issue => {
+          const field = issue.path?.[0];
+          return field ? `${field}: ${issue.message ?? "invalid value"}` : (issue.message ?? "Invalid value");
+        }).join(" · ");
+      }
+    } catch { /* not a zod payload — show as-is */ }
+    return message;
+  };
 
   const updateMutation = trpc.clients.update.useMutation({
     onSuccess: () => {
@@ -729,7 +748,7 @@ function ClientsContent() {
       setEditClient(null);
       toast.success("Client updated");
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(friendlyError(e.message)),
   });
 
   const deleteMutation = trpc.clients.delete.useMutation({
