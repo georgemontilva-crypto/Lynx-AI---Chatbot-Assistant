@@ -370,6 +370,48 @@ async function crawlPages<T>(
 // per-client scan use exactly the same crawling and learning logic) ─────────
 // ─── Helper: extract products from JSON-LD Product schema ─────────────
 interface ProductEntry { name: string; price?: string; description?: string; url?: string; image?: string; }
+
+/**
+ * Add a product to the catalog, merging duplicates.
+ *
+ * The same item legitimately arrives from up to three sources — JSON-LD on the
+ * home page, a collection page, and the store's JSON API — often with slightly
+ * different names ("BPC-157" vs "BPC-157 10mg"). Deduping on an exact name
+ * match therefore inflated the count (25 entries for a 15-product store) and
+ * fed the assistant the same product several times.
+ *
+ * Identity is the product PAGE (canonical URL) when we have one, since that is
+ * what actually distinguishes items; the normalized name is the fallback. On a
+ * merge we keep the richest data: a name from one source, an image from another.
+ */
+function upsertProduct(list: ProductEntry[], incoming: ProductEntry): void {
+  const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const normUrl = (u?: string) => {
+    if (!u) return "";
+    try {
+      const parsed = new URL(u);
+      return (parsed.origin + parsed.pathname).replace(/\/+$/, "").toLowerCase();
+    } catch { return ""; }
+  };
+  const inUrl = normUrl(incoming.url);
+  const inName = normName(incoming.name);
+  const existing = list.find((e) => {
+    const eUrl = normUrl(e.url);
+    if (inUrl && eUrl) return eUrl === inUrl;
+    return normName(e.name) === inName;
+  });
+  if (!existing) {
+    list.push(incoming);
+    return;
+  }
+  // Merge: prefer the longer name (usually the one carrying the dosage) and
+  // fill in any field the first source was missing.
+  if (incoming.name.length > existing.name.length) existing.name = incoming.name;
+  if (!existing.price && incoming.price) existing.price = incoming.price;
+  if (!existing.image && incoming.image) existing.image = incoming.image;
+  if (!existing.description && incoming.description) existing.description = incoming.description;
+  if (!existing.url && incoming.url) existing.url = incoming.url;
+}
 function extractProductsFromHtml(html: string, baseUrl: string): ProductEntry[] {
   const products: ProductEntry[] = [];
   // 1. JSON-LD Product schema (most reliable — Shopify, WooCommerce, etc.)
@@ -569,9 +611,9 @@ async function fetchStoreCatalog(siteUrl: string): Promise<ProductEntry[]> {
         const variant = Array.isArray(sp.variants) ? sp.variants[0] : undefined;
         const price = variant?.price ? `${variant.price}` : undefined;
         const name = String(sp.title ?? "").trim().slice(0, 120);
-        if (name && !out.some(ep => ep.name === name)) {
+        if (name) {
           const spImg = Array.isArray(sp.images) && sp.images[0]?.src ? String(sp.images[0].src) : undefined;
-          out.push({
+          upsertProduct(out, {
             name, price,
             description: String(sp.body_html ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined,
             url: handle, image: spImg,
@@ -594,8 +636,8 @@ async function fetchStoreCatalog(siteUrl: string): Promise<ProductEntry[]> {
           const price = wp.prices?.price
             ? `${(parseInt(wp.prices.price) / Math.pow(10, wp.prices.currency_minor_unit ?? 2)).toFixed(2)} ${wp.prices.currency_code ?? ""}`.trim()
             : undefined;
-          if (name && !out.some(ep => ep.name === name)) {
-            out.push({
+          if (name) {
+            upsertProduct(out, {
               name, price,
               description: String(wp.short_description ?? wp.description ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined,
               url: wp.permalink ?? undefined,
@@ -643,7 +685,7 @@ export async function buildSiteKnowledge(
   for (const p of extractProductsFromHtml(rawHome, siteUrl)) products.push(p);
   try {
     for (const p of await fetchStoreCatalog(siteUrl)) {
-      if (!products.some(ep => ep.name === p.name)) products.push(p);
+      upsertProduct(products, p);
     }
   } catch { /* no store API */ }
 
@@ -664,7 +706,7 @@ export async function buildSiteKnowledge(
   await crawlPages(productLinks.slice(0, budgetPages), (link, html) => {
     if (products.length >= 200) return;
     for (const p of extractProductsFromHtml(html, link)) {
-      if (!products.some(ep => ep.name === p.name)) products.push(p);
+      upsertProduct(products, p);
     }
     addToIndex(link, "product", html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "");
     pagesRead.push(new URL(link).pathname);
@@ -984,7 +1026,7 @@ export const appRouter = router({
             const storeCatalog = await fetchStoreCatalog(input.url);
             if (storeCatalog.length > 0) scanReport.storeCatalogFound = true;
             for (const p of storeCatalog) {
-              if (!allProducts.some(ep => ep.name === p.name)) allProducts.push(p);
+              upsertProduct(allProducts, p);
             }
           } catch { /* no store API */ }
 
@@ -1021,7 +1063,7 @@ export const appRouter = router({
             await crawlPages(productPageLinks.slice(0, catalogBudget), (link, pageHtml) => {
               if (allProducts.length >= 200) return;
               for (const p of extractProductsFromHtml(pageHtml, link)) {
-                if (!allProducts.some(ep => ep.name === p.name)) allProducts.push(p);
+                upsertProduct(allProducts, p);
               }
               addToIndex(link, "product", pageHtml.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "");
               scanReport.pagesRead.push(new URL(link).pathname);
