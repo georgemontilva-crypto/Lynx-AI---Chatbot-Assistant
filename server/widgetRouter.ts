@@ -24,6 +24,46 @@ import fs from "fs";
 // Language display names for the bot's native-language rule
 const LANG_NAMES: Record<string, string> = { en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese", it: "Italian" };
 
+/** A product card shown under the assistant's reply in the chat. */
+export type ProductCard = { name: string; url: string; imageUrl: string; price: string; note: string };
+
+/**
+ * Harden whatever the model returned before it reaches the widget: cards are
+ * rendered as links and images on the visitor's screen, so only absolute
+ * http(s) URLs are allowed through (no javascript:, no data:, no relative
+ * paths). A card with no name is dropped; a bad URL or image is blanked rather
+ * than dropping the card, so a good product still shows.
+ */
+export function sanitizeProducts(raw: unknown): ProductCard[] {
+  if (!Array.isArray(raw)) return [];
+  const safeUrl = (v: unknown): string => {
+    const str = typeof v === "string" ? v.trim() : "";
+    if (!str) return "";
+    try {
+      const u = new URL(str);
+      return u.protocol === "https:" || u.protocol === "http:" ? u.href : "";
+    } catch {
+      return "";
+    }
+  };
+  const out: ProductCard[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const p = item as Record<string, unknown>;
+    const name = typeof p.name === "string" ? p.name.trim().slice(0, 80) : "";
+    if (!name) continue;
+    out.push({
+      name,
+      url: safeUrl(p.url),
+      imageUrl: safeUrl(p.imageUrl),
+      price: typeof p.price === "string" ? p.price.trim().slice(0, 24) : "",
+      note: typeof p.note === "string" ? p.note.trim().slice(0, 90) : "",
+    });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
 // ─── CORS helper ─────────────────────────────────────────────────────────────
 
 function setCorsHeaders(res: Response) {
@@ -620,6 +660,7 @@ STYLE (this is what makes you feel human, not a bot):
 8. Usually 2-4 sentences. When educating (rule 5) you may go slightly longer, but keep it digestible — no long lectures, no bullet lists unless comparing a few concrete options.
 9. LANGUAGE — STRICT: Your language is ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}. Write EVERY message entirely in it, including the greeting, and NEVER mix two languages in one message (no "¡Hola!" opening an English reply). The site content, product notes and training material below may be written in a DIFFERENT language — that is reference material only and must NEVER change the language you write in. The ONLY thing that changes your language is the visitor's own message: if THEY clearly write in another language, switch fully to theirs and stay there until they switch back.
 10. Suggest 3-4 natural follow-up questions as quickReplies (under 40 chars each).
+10b. PRODUCT CARDS: when you point the visitor to specific products, visual cards with the photo, price and a button are rendered automatically right under your message. So NEVER paste a wall of raw URLs or markdown image syntax into your text — it renders as unreadable clutter. Instead write 2-4 warm sentences (what you picked and why, grouped by need if it helps) and let the cards carry the links. Mention at most 6 products at a time; if the catalog is bigger, ask what they're after and show the best matches for that.
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
 12. TONE: be genuinely friendly, upbeat, and helpful — like a knowledgeable friend who's excited to help, not a strict gatekeeper. Recommend freely when asked. Your job is to help the visitor find the right thing and share the link — don't refuse reasonable requests, over-warn, or moralize. (If this business needs any caveat, it will appear as a STORE DISCLAIMER below — use that, per rule 13.)
 13. DISCLAIMER (only if provided below): If a "STORE DISCLAIMER" is given in the context, weave it in naturally as ONE short, friendly line at the end when you recommend a specific product — phrase it warmly in the visitor's language, never as a legal wall of text, and only once per recommendation (not in every message). If no disclaimer is provided, skip this entirely.
@@ -670,9 +711,25 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
                   type: "array",
                   items: { type: "string" },
                   description: "3-4 short follow-up question buttons the user might want to ask next. Each max 40 chars."
+                },
+                products: {
+                  type: "array",
+                  description: "Products your reply points to, rendered as visual cards. Copy name/url/imageUrl/price EXACTLY from the PRODUCT CATALOG in context — never invent one. Max 6. Empty array if the reply names no specific product.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      url: { type: "string" },
+                      imageUrl: { type: "string" },
+                      price: { type: "string" },
+                      note: { type: "string" },
+                    },
+                    required: ["name", "url", "imageUrl", "price", "note"],
+                    additionalProperties: false,
+                  },
                 }
               },
-              required: ["reply", "quickReplies"],
+              required: ["reply", "quickReplies", "products"],
               additionalProperties: false
             }
           }
@@ -681,6 +738,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
 
       let reply = "Sorry, I could not process your request.";
       let quickReplies: string[] = [];
+      let products: ProductCard[] = [];
 
       try {
         const raw = response.choices[0]?.message?.content ?? "{}";
@@ -689,6 +747,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
         quickReplies = Array.isArray(parsed.quickReplies)
           ? parsed.quickReplies.slice(0, 4).map((q: unknown) => String(q).slice(0, 60))
           : [];
+        products = sanitizeProducts(parsed.products);
       } catch {
         reply = typeof response.choices[0]?.message?.content === "string"
           ? response.choices[0].message.content
@@ -706,7 +765,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
         assistantMessage: reply,
       });
 
-      return res.json({ reply, quickReplies, usage: { used: usage.used, limit: usage.limit, plan: userPlan }, emailSaved: (!emailResult.codeSent && emailResult.email) ? emailResult.email : undefined });
+      return res.json({ reply, quickReplies, products, usage: { used: usage.used, limit: usage.limit, plan: userPlan }, emailSaved: (!emailResult.codeSent && emailResult.email) ? emailResult.email : undefined });
     } catch (err) {
       console.error("[Widget] Chat error:", err);
       return res.status(500).json({ error: "Internal server error" });
@@ -835,6 +894,7 @@ STYLE (this is what makes you feel human, not a bot):
 8. Usually 2-4 sentences. When educating (rule 5) you may go slightly longer, but keep it digestible — no long lectures, no bullet lists unless comparing a few concrete options.
 9. LANGUAGE — STRICT: Your language is ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}. Write EVERY message entirely in it, including the greeting, and NEVER mix two languages in one message (no "¡Hola!" opening an English reply). The site content, product notes and training material below may be written in a DIFFERENT language — that is reference material only and must NEVER change the language you write in. The ONLY thing that changes your language is the visitor's own message: if THEY clearly write in another language, switch fully to theirs and stay there until they switch back.
 10. Do NOT include quick reply suggestions in your text response — they will be generated separately.
+10b. PRODUCT CARDS: when you point the visitor to specific products, visual cards with the photo, price and a button are rendered automatically right under your message. So NEVER paste a wall of raw URLs or markdown image syntax into your text — it renders as unreadable clutter. Instead write 2-4 warm sentences (what you picked and why, grouped by need if it helps) and let the cards carry the links. Mention at most 6 products at a time; if the catalog is bigger, ask what they're after and show the best matches for that.
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
 12. TONE: be genuinely friendly, upbeat, and helpful — like a knowledgeable friend who's excited to help, not a strict gatekeeper. Recommend freely when asked. Your job is to help the visitor find the right thing and share the link — don't refuse reasonable requests, over-warn, or moralize. (If this business needs any caveat, it will appear as a STORE DISCLAIMER below — use that, per rule 13.)
 13. DISCLAIMER (only if provided below): If a "STORE DISCLAIMER" is given in the context, weave it in naturally as ONE short, friendly line at the end when you recommend a specific product — phrase it warmly in the visitor's language, never as a legal wall of text, and only once per recommendation (not in every message). If no disclaimer is provided, skip this entirely.
@@ -950,27 +1010,43 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
         }
       }
 
-      // ── Generate quickReplies separately (non-blocking feel) ─────────────────
+      // ── Generate quickReplies + product cards (non-blocking feel) ───────────
       let quickReplies: string[] = [];
+      let products: ProductCard[] = [];
       try {
         const qrRes = await invokeLLM({
           model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5",
           messages: [
             ...messages,
             { role: "assistant" as const, content: fullReply },
-            { role: "user" as const, content: "Generate 3-4 short follow-up questions the visitor might want to ask next. Each max 40 chars. Return JSON array only." },
+            { role: "user" as const, content: "Two things, as JSON only.\n1) quickReplies: 3-4 short follow-up questions the visitor might want to ask next, each max 40 chars.\n2) products: the products your previous reply actually mentioned or recommended, so they can be shown as visual cards. Copy name / url / imageUrl / price EXACTLY from the PRODUCT CATALOG in the system context — never invent or guess a URL or an image. Max 6, in the order you mentioned them. Use \"\" for any field the catalog does not have. If your reply did not point to specific products, return an empty array." },
           ],
           responseFormat: {
             type: "json_schema",
             json_schema: {
-              name: "quick_replies",
+              name: "reply_extras",
               strict: true,
               schema: {
                 type: "object",
                 properties: {
-                  quickReplies: { type: "array", items: { type: "string" } }
+                  quickReplies: { type: "array", items: { type: "string" } },
+                  products: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string" },
+                        url: { type: "string" },
+                        imageUrl: { type: "string" },
+                        price: { type: "string" },
+                        note: { type: "string" },
+                      },
+                      required: ["name", "url", "imageUrl", "price", "note"],
+                      additionalProperties: false,
+                    },
+                  },
                 },
-                required: ["quickReplies"],
+                required: ["quickReplies", "products"],
                 additionalProperties: false,
               },
             },
@@ -981,7 +1057,8 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
         quickReplies = Array.isArray(parsed.quickReplies)
           ? parsed.quickReplies.slice(0, 4).map((q: unknown) => String(q).slice(0, 60))
           : [];
-      } catch { /* quickReplies optional */ }
+        products = sanitizeProducts(parsed.products);
+      } catch { /* extras are optional — never break the reply over them */ }
 
       // ── Fire-and-forget 80% usage alert ──────────────────────────────────────
       if (usage.shouldAlertAt80 && db) {
@@ -1006,7 +1083,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
         assistantMessage: fullReply,
       });
 
-      sendEvent({ done: true, quickReplies, usage: { used: usage.used, limit: usage.limit, plan: userPlan }, emailSaved: (!emailResult.codeSent && emailResult.email) ? emailResult.email : undefined });
+      sendEvent({ done: true, quickReplies, products, usage: { used: usage.used, limit: usage.limit, plan: userPlan }, emailSaved: (!emailResult.codeSent && emailResult.email) ? emailResult.email : undefined });
       res.end();
     } catch (err) {
       console.error("[Widget] Stream chat error:", err);
@@ -1653,6 +1730,15 @@ function buildFrameApp(): string {
     '#lynx-widget-disclaimer{font-size:10.5px;color:#9ca3af;text-align:center;padding:4px 14px 2px;line-height:1.35;background:#fff;flex-shrink:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}',
     '.lynx-msg a{color:inherit;text-decoration:underline;word-break:break-all;}',
     '.lynx-msg img.lynx-product-img{display:block;max-width:100%;border-radius:10px;margin-top:6px;}',
+    '.lynx-cards{display:flex;flex-direction:column;gap:8px;margin:8px 0 2px;}',
+    '.lynx-card{display:flex;gap:10px;align-items:center;padding:8px;border:1px solid rgba(0,0,0,0.08);border-radius:14px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.05);text-decoration:none;color:inherit;transition:transform .15s,box-shadow .15s;}',
+    'a.lynx-card:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,0.10);}',
+    '.lynx-card-img{width:56px;height:56px;border-radius:10px;object-fit:cover;background:#f3f4f6;flex-shrink:0;}',
+    '.lynx-card-body{min-width:0;flex:1;}',
+    '.lynx-card-name{font-size:13px;font-weight:700;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+    '.lynx-card-note{font-size:11px;color:#6b7280;line-height:1.3;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+    '.lynx-card-price{font-size:12px;font-weight:600;margin-top:3px;}',
+    '.lynx-card-go{font-size:11px;font-weight:600;padding:5px 10px;border-radius:999px;color:#fff;white-space:nowrap;flex-shrink:0;}',
     '@media (max-width:480px){#lynx-widget-panel{bottom:0 !important;left:0 !important;right:0 !important;width:100vw !important;max-width:100vw !important;height:100% !important;height:100dvh !important;max-height:100% !important;max-height:100dvh !important;border-radius:0 !important;}#lynx-widget-messages{padding:12px 12px !important;}.lynx-msg{font-size:14px !important;max-width:86% !important;}#lynx-widget-input-row{padding:10px 10px calc(10px + env(safe-area-inset-bottom));}#lynx-widget-input-row textarea{font-size:16px !important;}}',
     // Full-page mode (shared link): header + input span the full width; the
     // message thread is centered with a comfortable reading width (like Violet).
@@ -2116,6 +2202,65 @@ function buildFrameApp(): string {
   }
 
   // Render quick reply buttons below the last assistant message
+  // Product cards under the assistant's reply. Built with DOM nodes only —
+  // never innerHTML — so catalog text can't inject markup into the chat.
+  function showProductCards(products) {
+    if (!products || !products.length || !messagesEl) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'lynx-cards';
+    products.forEach(function(p) {
+      if (!p || !p.name) return;
+      var card = document.createElement(p.url ? 'a' : 'div');
+      card.className = 'lynx-card';
+      if (p.url) { card.href = p.url; card.target = '_blank'; card.rel = 'noopener noreferrer'; }
+
+      if (p.imageUrl) {
+        var img = document.createElement('img');
+        img.className = 'lynx-card-img';
+        img.src = p.imageUrl;
+        img.alt = '';
+        img.loading = 'lazy';
+        // A broken catalog image must not leave a grey hole in the card
+        img.onerror = function() { if (img.parentNode) img.parentNode.removeChild(img); };
+        card.appendChild(img);
+      }
+
+      var body = document.createElement('div');
+      body.className = 'lynx-card-body';
+      var nm = document.createElement('div');
+      nm.className = 'lynx-card-name';
+      nm.textContent = p.name;
+      nm.title = p.name;
+      body.appendChild(nm);
+      if (p.note) {
+        var nt = document.createElement('div');
+        nt.className = 'lynx-card-note';
+        nt.textContent = p.note;
+        body.appendChild(nt);
+      }
+      if (p.price) {
+        var pr = document.createElement('div');
+        pr.className = 'lynx-card-price';
+        pr.textContent = p.price;
+        pr.style.color = config.primaryColor || '#111827';
+        body.appendChild(pr);
+      }
+      card.appendChild(body);
+
+      if (p.url) {
+        var go = document.createElement('span');
+        go.className = 'lynx-card-go';
+        go.textContent = 'View \u2197';
+        go.style.background = config.primaryColor || '#111827';
+        card.appendChild(go);
+      }
+      wrap.appendChild(card);
+    });
+    if (!wrap.children.length) return;
+    messagesEl.appendChild(wrap);
+    lynxScrollBottom(true);
+  }
+
   function showQuickReplies(replies) {
     clearQuickReplies();
     if (!replies || replies.length === 0 || !messagesEl) return;
@@ -2302,6 +2447,9 @@ function buildFrameApp(): string {
                 if (evt.emailSaved) setTimeout(function() { showEmailSavedCard(evt.emailSaved); }, 500);
                 history.push({ role: 'assistant', content: accumulatedReply });
                 messageCount++;
+                if (evt.products && evt.products.length > 0) {
+                  showProductCards(evt.products);
+                }
                 if (evt.quickReplies && evt.quickReplies.length > 0) {
                   showQuickReplies(evt.quickReplies);
                 }
