@@ -333,6 +333,365 @@ export function buildTrainingPromptSection(chatbot: { customInstructions?: strin
   return parts.length > 0 ? `\n\n${parts.join("\n\n")}` : "";
 }
 
+// ─── Site-scan helpers (module level so BOTH the owner scan and the
+// per-client scan use exactly the same crawling and learning logic) ─────────
+// ─── Helper: extract products from JSON-LD Product schema ─────────────
+interface ProductEntry { name: string; price?: string; description?: string; url?: string; image?: string; }
+function extractProductsFromHtml(html: string, baseUrl: string): ProductEntry[] {
+  const products: ProductEntry[] = [];
+  // 1. JSON-LD Product schema (most reliable — Shopify, WooCommerce, etc.)
+  const ldMatches = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi));
+  for (const m of ldMatches) {
+    try {
+      const obj = JSON.parse(m[1]);
+      const items = Array.isArray(obj) ? obj : (obj["@graph"] ?? [obj]);
+      for (const item of items) {
+        if (item["@type"] === "Product") {
+          const price = item.offers?.price ?? item.offers?.[0]?.price ?? item.offers?.lowPrice;
+          const currency = item.offers?.priceCurrency ?? item.offers?.[0]?.priceCurrency ?? "";
+          const url = item.offers?.url ?? item.offers?.[0]?.url ?? item.url ?? "";
+          const img = typeof item.image === "string" ? item.image
+            : Array.isArray(item.image) ? item.image[0]
+            : item.image?.url;
+          products.push({
+            name: String(item.name ?? "").trim().slice(0, 120),
+            price: price ? `${price}${currency ? " " + currency : ""}` : undefined,
+            description: String(item.description ?? "").trim().slice(0, 200) || undefined,
+            // Fall back to the page the product was found on: JSON-LD often
+            // omits "url" on a product's own page, and a card with no link is
+            // a dead end for the visitor.
+            url: url ? new URL(url, baseUrl).href : baseUrl,
+            image: img ? new URL(String(img), baseUrl).href : undefined,
+          });
+        }
+      }
+    } catch { /* malformed JSON-LD */ }
+  }
+  // 2. Shopify product JSON endpoint (if available in page source as __st or window.ShopifyAnalytics)
+  const shopifyProductMatch = html.match(/"product":\s*\{[^}]*"title":\s*"([^"]+)"[^}]*"price":\s*(\d+)/g);
+  if (shopifyProductMatch && products.length === 0) {
+    for (const match of shopifyProductMatch.slice(0, 10)) {
+      const title = match.match(/"title":\s*"([^"]+)"/);
+      const price = match.match(/"price":\s*(\d+)/);
+      if (title?.[1]) {
+        products.push({
+          name: title[1].trim().slice(0, 120),
+          price: price?.[1] ? `${(parseInt(price[1]) / 100).toFixed(2)}` : undefined,
+        });
+      }
+    }
+  }
+  return products.slice(0, 200); // max 200 products
+}
+
+// ─── Helper: find product/catalog page links ──────────────────────────
+function findProductPageLinks(html: string, baseUrl: string): string[] {
+  const base = new URL(baseUrl);
+  const productPatterns = [
+    /\/products?\b/i, /\/tienda\b/i, /\/shop\b/i, /\/catalog(?:o)?\b/i,
+    /\/store\b/i, /\/collection/i, /\/categoria/i, /\/category/i,
+  ];
+  const seen = new Set<string>();
+  const links: string[] = [];
+  const hrefMatches = Array.from(html.matchAll(/href=["']([^"'#?]+)["']/gi));
+  for (const m of hrefMatches) {
+    try {
+      const href = new URL(m[1], baseUrl);
+      if (href.hostname !== base.hostname) continue;
+      const path = href.pathname;
+      if (seen.has(path)) continue;
+      if (productPatterns.some(p => p.test(path))) {
+        seen.add(path);
+        links.push(href.href);
+        if (links.length >= 15) break;
+      }
+    } catch { /* invalid URL */ }
+  }
+  return links;
+}
+
+// ─── Helper: find informational page links (FAQ, about, policies…) ────
+/**
+ * Label an informational page by what visitors actually ask about, so the
+ * assistant can find "the returns policy" instead of grepping raw text.
+ */
+function classifyInfoPage(path: string, title = ""): string {
+  const hay = `${path} ${title}`.toLowerCase();
+  if (/faq|preguntas|help|ayuda|support|soporte/.test(hay)) return "FAQ";
+  if (/shipping|envio|env\u00edo|delivery|entrega/.test(hay)) return "SHIPPING";
+  if (/return|devoluc|refund|reembolso|exchange/.test(hay)) return "RETURNS";
+  if (/privacy|privacidad/.test(hay)) return "PRIVACY POLICY";
+  if (/terms|terminos|t\u00e9rminos|conditions|legal/.test(hay)) return "TERMS";
+  if (/contact|contacto/.test(hay)) return "CONTACT";
+  if (/about|nosotros|quienes|qui\u00e9nes|story|mission/.test(hay)) return "ABOUT";
+  if (/pricing|precios|plans|planes/.test(hay)) return "PRICING";
+  if (/service|servicio/.test(hay)) return "SERVICES";
+  return "PAGE";
+}
+
+function findInfoPageLinks(html: string, baseUrl: string): string[] {
+  const base = new URL(baseUrl);
+  const infoPatterns = [
+    /faq/i, /preguntas/i, /about/i, /nosotros/i, /quienes/i,
+    /contact/i, /contacto/i, /shipping/i, /envio/i, /delivery/i,
+    /returns?/i, /devolucion/i, /refund/i, /reembolso/i,
+    /policy|policies/i, /politica/i, /terms/i, /terminos/i,
+    /privacy/i, /privacidad/i, /help|ayuda/i, /support|soporte/i,
+    /pricing|precios/i, /services?|servicios?/i,
+  ];
+  const seen = new Set<string>();
+  const links: string[] = [];
+  const hrefMatches = Array.from(html.matchAll(/href=["']([^"'#?]+)["']/gi));
+  for (const m of hrefMatches) {
+    try {
+      const href = new URL(m[1], baseUrl);
+      if (href.hostname !== base.hostname) continue;
+      const path = href.pathname;
+      if (path === "/" || seen.has(path)) continue;
+      if (infoPatterns.some(pt => pt.test(path))) {
+        seen.add(path);
+        links.push(href.href);
+        if (links.length >= 25) break;
+      }
+    } catch { /* invalid URL */ }
+  }
+  return links;
+}
+
+// ─── Helper: strip HTML to readable text ──────────────────────────────
+function htmlToText(raw: string, maxChars: number): string {
+  return raw
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, maxChars);
+}
+
+// ─── Helper: fetch sitemap.xml and return real page URLs ──────────────
+// Works even on JS/SPA sites (the sitemap is static XML), so it's the
+// most reliable way to discover every real page a crawler-fetch misses.
+async function fetchSitemapUrls(siteUrl: string): Promise<string[]> {
+  const base = new URL(siteUrl);
+  const candidates = [
+    `${base.origin}/sitemap.xml`,
+    `${base.origin}/sitemap_index.xml`,
+    `${base.origin}/sitemap-index.xml`,
+  ];
+  const found = new Set<string>();
+  const sitemapsToRead: string[] = [];
+  // 1. Try robots.txt for a Sitemap: directive first
+  try {
+    const { text: robots } = await safeFetchText(`${base.origin}/robots.txt`, { timeoutMs: 6000 });
+    for (const m of Array.from(robots.matchAll(/sitemap:\s*(\S+)/gi))) {
+      if (m[1]) sitemapsToRead.push(m[1].trim());
+    }
+  } catch { /* no robots.txt */ }
+  if (sitemapsToRead.length === 0) sitemapsToRead.push(...candidates);
+
+  let sitemapsRead = 0;
+  const queue = [...sitemapsToRead];
+  while (queue.length && sitemapsRead < 6 && found.size < 300) {
+    const sm = queue.shift()!;
+    sitemapsRead++;
+    try {
+      const { text: xml } = await safeFetchText(sm, { timeoutMs: 7000 });
+      // A sitemap index points to more sitemaps; a urlset lists pages.
+      const isIndex = /<sitemapindex/i.test(xml);
+      const locs = Array.from(xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)).map(m => m[1]);
+      for (const loc of locs) {
+        if (isIndex) {
+          if (queue.length < 10) queue.push(loc);
+        } else {
+          try {
+            const u = new URL(loc);
+            if (u.hostname === base.hostname) found.add(u.href);
+          } catch { /* skip */ }
+        }
+        if (found.size >= 300) break;
+      }
+    } catch { /* sitemap missing */ }
+  }
+  return Array.from(found);
+}
+
+// ─── Helper: pull a full product catalog from store JSON endpoints ────
+// Shopify (/products.json) and WooCommerce (Store API) expose the whole
+// catalog as JSON even when the storefront is JS-rendered. This is what
+// makes "does it sell products?" answerable without manual training.
+async function fetchStoreCatalog(siteUrl: string): Promise<ProductEntry[]> {
+  const base = new URL(siteUrl);
+  const out: ProductEntry[] = [];
+  // Shopify — paginate a couple of pages for large catalogs
+  for (let page = 1; page <= 3 && out.length < 200; page++) {
+    try {
+      const url = `${base.origin}/products.json?limit=250&page=${page}`;
+      const { text: pj } = await safeFetchText(url, { timeoutMs: 8000 });
+      const parsed = JSON.parse(pj);
+      if (!Array.isArray(parsed.products) || parsed.products.length === 0) break;
+      for (const sp of parsed.products) {
+        const handle = sp.handle ? `${base.origin}/products/${sp.handle}` : undefined;
+        const variant = Array.isArray(sp.variants) ? sp.variants[0] : undefined;
+        const price = variant?.price ? `${variant.price}` : undefined;
+        const name = String(sp.title ?? "").trim().slice(0, 120);
+        if (name && !out.some(ep => ep.name === name)) {
+          const spImg = Array.isArray(sp.images) && sp.images[0]?.src ? String(sp.images[0].src) : undefined;
+          out.push({
+            name, price,
+            description: String(sp.body_html ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined,
+            url: handle, image: spImg,
+          });
+        }
+        if (out.length >= 200) break;
+      }
+    } catch { break; /* not Shopify or blocked */ }
+  }
+  // WooCommerce Store API (public, no auth) — many WP shops expose this
+  if (out.length === 0) {
+    for (let page = 1; page <= 3 && out.length < 200; page++) {
+      try {
+        const url = `${base.origin}/wp-json/wc/store/v1/products?per_page=100&page=${page}`;
+        const { text: wj } = await safeFetchText(url, { timeoutMs: 8000 });
+        const arr = JSON.parse(wj);
+        if (!Array.isArray(arr) || arr.length === 0) break;
+        for (const wp of arr) {
+          const name = String(wp.name ?? "").trim().slice(0, 120);
+          const price = wp.prices?.price
+            ? `${(parseInt(wp.prices.price) / Math.pow(10, wp.prices.currency_minor_unit ?? 2)).toFixed(2)} ${wp.prices.currency_code ?? ""}`.trim()
+            : undefined;
+          if (name && !out.some(ep => ep.name === name)) {
+            out.push({
+              name, price,
+              description: String(wp.short_description ?? wp.description ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined,
+              url: wp.permalink ?? undefined,
+              image: Array.isArray(wp.images) && wp.images[0]?.src ? String(wp.images[0].src) : undefined,
+            });
+          }
+          if (out.length >= 200) break;
+        }
+      } catch { break; /* not WooCommerce */ }
+    }
+  }
+  return out;
+}
+
+
+
+/**
+ * Crawl a website and build the knowledge base the assistant answers from:
+ * product catalog (with URLs + images), labeled policy/info pages, and a map of
+ * the site's visible sections. Used for the owner's own site AND for every
+ * client site added under White-Label, so a client's bot learns identically.
+ * Returns the assembled context; the caller decides which chatbot to store it on.
+ */
+export async function buildSiteKnowledge(
+  siteUrl: string,
+  budgetPages = 20
+): Promise<{ context: string; products: number; pagesRead: string[]; indexed: number }> {
+  const products: ProductEntry[] = [];
+  const pageExtracts: { path: string; text: string; title: string; kind: string }[] = [];
+  const pageIndex: { path: string; kind: string; title: string }[] = [];
+  const pagesRead: string[] = [];
+  const addToIndex = (u: string, kind: string, title = "") => {
+    try {
+      const path = new URL(u).pathname;
+      if (!pageIndex.some(p => p.path === path)) pageIndex.push({ path, kind, title: title.slice(0, 70) });
+    } catch { /* skip */ }
+  };
+
+  const { text: rawHome } = await safeFetchText(siteUrl);
+  pagesRead.push("/");
+  addToIndex(siteUrl, "home", rawHome.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "");
+
+  for (const p of extractProductsFromHtml(rawHome, siteUrl)) products.push(p);
+  try {
+    for (const p of await fetchStoreCatalog(siteUrl)) {
+      if (!products.some(ep => ep.name === p.name)) products.push(p);
+    }
+  } catch { /* no store API */ }
+
+  let sitemapUrls: string[] = [];
+  try { sitemapUrls = await fetchSitemapUrls(siteUrl); } catch { /* none */ }
+  const productRe = /\/products?\b|\/tienda\b|\/shop\b|\/catalog(?:o)?\b|\/store\b|\/collection|\/categoria|\/category|\/compounds?\b|\/item\b/i;
+  const infoRe = /faq|preguntas|about|nosotros|quienes|contact|contacto|shipping|envio|delivery|returns?|devolucion|refund|reembolso|policy|policies|politica|terms|terminos|privacy|privacidad|help|ayuda|support|soporte|pricing|precios|services?|servicios?/i;
+  for (const u of sitemapUrls.slice(0, 300)) {
+    let path = "";
+    try { path = new URL(u).pathname; } catch { continue; }
+    addToIndex(u, productRe.test(path) ? "product" : infoRe.test(path) ? "info" : "page");
+  }
+
+  const productLinks = Array.from(new Set([
+    ...sitemapUrls.filter(u => { try { return productRe.test(new URL(u).pathname); } catch { return false; } }),
+    ...findProductPageLinks(rawHome, siteUrl),
+  ]));
+  for (const link of productLinks.slice(0, budgetPages)) {
+    try {
+      const { text: html } = await safeFetchText(link, { timeoutMs: 8000 });
+      for (const p of extractProductsFromHtml(html, link)) {
+        if (!products.some(ep => ep.name === p.name)) products.push(p);
+      }
+      addToIndex(link, "product", html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "");
+      pagesRead.push(new URL(link).pathname);
+      if (products.length >= 200) break;
+    } catch { /* unreadable page */ }
+  }
+
+  const infoLinks = Array.from(new Set([
+    ...sitemapUrls.filter(u => { try { return infoRe.test(new URL(u).pathname); } catch { return false; } }),
+    ...findInfoPageLinks(rawHome, siteUrl),
+  ]));
+  for (const link of infoLinks.slice(0, budgetPages)) {
+    try {
+      const { text: html } = await safeFetchText(link, { timeoutMs: 8000 });
+      const text = htmlToText(html, 2500);
+      if (text.length > 100) {
+        const path = new URL(link).pathname;
+        const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "";
+        pageExtracts.push({ path, text, title, kind: classifyInfoPage(path, title) });
+        addToIndex(link, "info", title);
+        pagesRead.push(path);
+      }
+    } catch { /* unreadable page */ }
+  }
+
+  // Same budgeted assembly as the owner scan: highest-value section first, and
+  // a byte-aware final cut (MySQL TEXT is 65,535 BYTES, not characters).
+  const clip = (t: string, max: number) => (t.length > max ? t.slice(0, max) + "\n… (truncated)" : t);
+  const catalogSection = products.length > 0
+    ? `=== PRODUCT CATALOG (${products.length} products detected) ===\n` + products.map((p, i) => {
+        let line = `${i + 1}. ${p.name}`;
+        if (p.price) line += ` | Price: ${p.price}`;
+        if (p.description) line += ` | ${p.description}`;
+        if (p.url) line += ` | URL: ${p.url}`;
+        if (p.image) line += ` | IMG: ${p.image}`;
+        return line;
+      }).join("\n")
+    : "";
+  const infoSection = pageExtracts.length > 0
+    ? pageExtracts.map(pg => `=== ${pg.kind} | ${pg.path}${pg.title ? ` | ${pg.title}` : ""} ===\n${pg.text}`).join("\n\n")
+    : "";
+  const mapSection = pageIndex.length > 0
+    ? `=== SITE MAP (visible pages — only ever link to URLs from this list or the catalog) ===\n` +
+      pageIndex.slice(0, 120).map(pg => `${pg.kind.toUpperCase().padEnd(7)} ${pg.path}${pg.title ? ` — ${pg.title}` : ""}`).join("\n")
+    : "";
+  const sellsProducts = products.length > 0 || /\/products?\b|\/shop\b|\/tienda\b|\/store\b|\/collection|add-to-cart|shopify|woocommerce/i.test(rawHome);
+
+  let context = [
+    `=== BUSINESS OVERVIEW ===\nSite: ${siteUrl}\nSells products online: ${sellsProducts ? "YES" : "not detected"}\nProducts found: ${products.length}\nPages read: ${pagesRead.length}`,
+    clip(catalogSection, 26000),
+    clip(infoSection, 20000),
+    clip(mapSection, 4000),
+    clip(htmlToText(rawHome, 4000), 4000),
+  ].filter(Boolean).join("\n\n");
+  if (Buffer.byteLength(context, "utf8") > 60000) {
+    const buf = Buffer.from(context, "utf8").subarray(0, 60000);
+    context = new TextDecoder("utf-8", { fatal: false }).decode(buf).replace(/\uFFFD+$/, "");
+  }
+  return { context, products: products.length, pagesRead, indexed: pageIndex.length };
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -489,245 +848,6 @@ export const appRouter = router({
             });
           }
         }
-        // ─── Helper: extract products from JSON-LD Product schema ─────────────
-        interface ProductEntry { name: string; price?: string; description?: string; url?: string; image?: string; }
-        function extractProductsFromHtml(html: string, baseUrl: string): ProductEntry[] {
-          const products: ProductEntry[] = [];
-          // 1. JSON-LD Product schema (most reliable — Shopify, WooCommerce, etc.)
-          const ldMatches = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi));
-          for (const m of ldMatches) {
-            try {
-              const obj = JSON.parse(m[1]);
-              const items = Array.isArray(obj) ? obj : (obj["@graph"] ?? [obj]);
-              for (const item of items) {
-                if (item["@type"] === "Product") {
-                  const price = item.offers?.price ?? item.offers?.[0]?.price ?? item.offers?.lowPrice;
-                  const currency = item.offers?.priceCurrency ?? item.offers?.[0]?.priceCurrency ?? "";
-                  const url = item.offers?.url ?? item.offers?.[0]?.url ?? item.url ?? "";
-                  const img = typeof item.image === "string" ? item.image
-                    : Array.isArray(item.image) ? item.image[0]
-                    : item.image?.url;
-                  products.push({
-                    name: String(item.name ?? "").trim().slice(0, 120),
-                    price: price ? `${price}${currency ? " " + currency : ""}` : undefined,
-                    description: String(item.description ?? "").trim().slice(0, 200) || undefined,
-                    url: url ? new URL(url, baseUrl).href : undefined,
-                    image: img ? new URL(String(img), baseUrl).href : undefined,
-                  });
-                }
-              }
-            } catch { /* malformed JSON-LD */ }
-          }
-          // 2. Shopify product JSON endpoint (if available in page source as __st or window.ShopifyAnalytics)
-          const shopifyProductMatch = html.match(/"product":\s*\{[^}]*"title":\s*"([^"]+)"[^}]*"price":\s*(\d+)/g);
-          if (shopifyProductMatch && products.length === 0) {
-            for (const match of shopifyProductMatch.slice(0, 10)) {
-              const title = match.match(/"title":\s*"([^"]+)"/);
-              const price = match.match(/"price":\s*(\d+)/);
-              if (title?.[1]) {
-                products.push({
-                  name: title[1].trim().slice(0, 120),
-                  price: price?.[1] ? `${(parseInt(price[1]) / 100).toFixed(2)}` : undefined,
-                });
-              }
-            }
-          }
-          return products.slice(0, 200); // max 200 products
-        }
-
-        // ─── Helper: find product/catalog page links ──────────────────────────
-        function findProductPageLinks(html: string, baseUrl: string): string[] {
-          const base = new URL(baseUrl);
-          const productPatterns = [
-            /\/products?\b/i, /\/tienda\b/i, /\/shop\b/i, /\/catalog(?:o)?\b/i,
-            /\/store\b/i, /\/collection/i, /\/categoria/i, /\/category/i,
-          ];
-          const seen = new Set<string>();
-          const links: string[] = [];
-          const hrefMatches = Array.from(html.matchAll(/href=["']([^"'#?]+)["']/gi));
-          for (const m of hrefMatches) {
-            try {
-              const href = new URL(m[1], baseUrl);
-              if (href.hostname !== base.hostname) continue;
-              const path = href.pathname;
-              if (seen.has(path)) continue;
-              if (productPatterns.some(p => p.test(path))) {
-                seen.add(path);
-                links.push(href.href);
-                if (links.length >= 15) break;
-              }
-            } catch { /* invalid URL */ }
-          }
-          return links;
-        }
-
-        // ─── Helper: find informational page links (FAQ, about, policies…) ────
-        /**
- * Label an informational page by what visitors actually ask about, so the
- * assistant can find "the returns policy" instead of grepping raw text.
- */
-function classifyInfoPage(path: string, title = ""): string {
-  const hay = `${path} ${title}`.toLowerCase();
-  if (/faq|preguntas|help|ayuda|support|soporte/.test(hay)) return "FAQ";
-  if (/shipping|envio|env\u00edo|delivery|entrega/.test(hay)) return "SHIPPING";
-  if (/return|devoluc|refund|reembolso|exchange/.test(hay)) return "RETURNS";
-  if (/privacy|privacidad/.test(hay)) return "PRIVACY POLICY";
-  if (/terms|terminos|t\u00e9rminos|conditions|legal/.test(hay)) return "TERMS";
-  if (/contact|contacto/.test(hay)) return "CONTACT";
-  if (/about|nosotros|quienes|qui\u00e9nes|story|mission/.test(hay)) return "ABOUT";
-  if (/pricing|precios|plans|planes/.test(hay)) return "PRICING";
-  if (/service|servicio/.test(hay)) return "SERVICES";
-  return "PAGE";
-}
-
-function findInfoPageLinks(html: string, baseUrl: string): string[] {
-          const base = new URL(baseUrl);
-          const infoPatterns = [
-            /faq/i, /preguntas/i, /about/i, /nosotros/i, /quienes/i,
-            /contact/i, /contacto/i, /shipping/i, /envio/i, /delivery/i,
-            /returns?/i, /devolucion/i, /refund/i, /reembolso/i,
-            /policy|policies/i, /politica/i, /terms/i, /terminos/i,
-            /privacy/i, /privacidad/i, /help|ayuda/i, /support|soporte/i,
-            /pricing|precios/i, /services?|servicios?/i,
-          ];
-          const seen = new Set<string>();
-          const links: string[] = [];
-          const hrefMatches = Array.from(html.matchAll(/href=["']([^"'#?]+)["']/gi));
-          for (const m of hrefMatches) {
-            try {
-              const href = new URL(m[1], baseUrl);
-              if (href.hostname !== base.hostname) continue;
-              const path = href.pathname;
-              if (path === "/" || seen.has(path)) continue;
-              if (infoPatterns.some(pt => pt.test(path))) {
-                seen.add(path);
-                links.push(href.href);
-                if (links.length >= 25) break;
-              }
-            } catch { /* invalid URL */ }
-          }
-          return links;
-        }
-
-        // ─── Helper: strip HTML to readable text ──────────────────────────────
-        function htmlToText(raw: string, maxChars: number): string {
-          return raw
-            .replace(/<script[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[\s\S]*?<\/style>/gi, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/&nbsp;/g, " ")
-            .replace(/\s{2,}/g, " ")
-            .trim()
-            .slice(0, maxChars);
-        }
-
-        // ─── Helper: fetch sitemap.xml and return real page URLs ──────────────
-        // Works even on JS/SPA sites (the sitemap is static XML), so it's the
-        // most reliable way to discover every real page a crawler-fetch misses.
-        async function fetchSitemapUrls(siteUrl: string): Promise<string[]> {
-          const base = new URL(siteUrl);
-          const candidates = [
-            `${base.origin}/sitemap.xml`,
-            `${base.origin}/sitemap_index.xml`,
-            `${base.origin}/sitemap-index.xml`,
-          ];
-          const found = new Set<string>();
-          const sitemapsToRead: string[] = [];
-          // 1. Try robots.txt for a Sitemap: directive first
-          try {
-            const { text: robots } = await safeFetchText(`${base.origin}/robots.txt`, { timeoutMs: 6000 });
-            for (const m of Array.from(robots.matchAll(/sitemap:\s*(\S+)/gi))) {
-              if (m[1]) sitemapsToRead.push(m[1].trim());
-            }
-          } catch { /* no robots.txt */ }
-          if (sitemapsToRead.length === 0) sitemapsToRead.push(...candidates);
-
-          let sitemapsRead = 0;
-          const queue = [...sitemapsToRead];
-          while (queue.length && sitemapsRead < 6 && found.size < 300) {
-            const sm = queue.shift()!;
-            sitemapsRead++;
-            try {
-              const { text: xml } = await safeFetchText(sm, { timeoutMs: 7000 });
-              // A sitemap index points to more sitemaps; a urlset lists pages.
-              const isIndex = /<sitemapindex/i.test(xml);
-              const locs = Array.from(xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)).map(m => m[1]);
-              for (const loc of locs) {
-                if (isIndex) {
-                  if (queue.length < 10) queue.push(loc);
-                } else {
-                  try {
-                    const u = new URL(loc);
-                    if (u.hostname === base.hostname) found.add(u.href);
-                  } catch { /* skip */ }
-                }
-                if (found.size >= 300) break;
-              }
-            } catch { /* sitemap missing */ }
-          }
-          return Array.from(found);
-        }
-
-        // ─── Helper: pull a full product catalog from store JSON endpoints ────
-        // Shopify (/products.json) and WooCommerce (Store API) expose the whole
-        // catalog as JSON even when the storefront is JS-rendered. This is what
-        // makes "does it sell products?" answerable without manual training.
-        async function fetchStoreCatalog(siteUrl: string): Promise<ProductEntry[]> {
-          const base = new URL(siteUrl);
-          const out: ProductEntry[] = [];
-          // Shopify — paginate a couple of pages for large catalogs
-          for (let page = 1; page <= 3 && out.length < 200; page++) {
-            try {
-              const url = `${base.origin}/products.json?limit=250&page=${page}`;
-              const { text: pj } = await safeFetchText(url, { timeoutMs: 8000 });
-              const parsed = JSON.parse(pj);
-              if (!Array.isArray(parsed.products) || parsed.products.length === 0) break;
-              for (const sp of parsed.products) {
-                const handle = sp.handle ? `${base.origin}/products/${sp.handle}` : undefined;
-                const variant = Array.isArray(sp.variants) ? sp.variants[0] : undefined;
-                const price = variant?.price ? `${variant.price}` : undefined;
-                const name = String(sp.title ?? "").trim().slice(0, 120);
-                if (name && !out.some(ep => ep.name === name)) {
-                  const spImg = Array.isArray(sp.images) && sp.images[0]?.src ? String(sp.images[0].src) : undefined;
-                  out.push({
-                    name, price,
-                    description: String(sp.body_html ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined,
-                    url: handle, image: spImg,
-                  });
-                }
-                if (out.length >= 200) break;
-              }
-            } catch { break; /* not Shopify or blocked */ }
-          }
-          // WooCommerce Store API (public, no auth) — many WP shops expose this
-          if (out.length === 0) {
-            for (let page = 1; page <= 3 && out.length < 200; page++) {
-              try {
-                const url = `${base.origin}/wp-json/wc/store/v1/products?per_page=100&page=${page}`;
-                const { text: wj } = await safeFetchText(url, { timeoutMs: 8000 });
-                const arr = JSON.parse(wj);
-                if (!Array.isArray(arr) || arr.length === 0) break;
-                for (const wp of arr) {
-                  const name = String(wp.name ?? "").trim().slice(0, 120);
-                  const price = wp.prices?.price
-                    ? `${(parseInt(wp.prices.price) / Math.pow(10, wp.prices.currency_minor_unit ?? 2)).toFixed(2)} ${wp.prices.currency_code ?? ""}`.trim()
-                    : undefined;
-                  if (name && !out.some(ep => ep.name === name)) {
-                    out.push({
-                      name, price,
-                      description: String(wp.short_description ?? wp.description ?? "").replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined,
-                      url: wp.permalink ?? undefined,
-                      image: Array.isArray(wp.images) && wp.images[0]?.src ? String(wp.images[0].src) : undefined,
-                    });
-                  }
-                  if (out.length >= 200) break;
-                }
-              } catch { break; /* not WooCommerce */ }
-            }
-          }
-          return out;
-        }
-
         // ─── Per-plan crawl budget (total pages incl. home) ───────────────────
         const crawlBudget =
           ctx.user.plan === "whitelabel" ? 40 :
@@ -1899,12 +2019,24 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
       // Each resold chatbot has its OWN monthly allowance (whitelabel_client),
       // separate from the reseller's own chatbot — no shared pool.
       const usageByKey = new Map(bots.map((b) => [b.apiKey, usageOf(b, ctx.user.plan ?? "cloud")]));
+      // Learning status per client, so the reseller can see whether the bot
+      // actually knows the site yet (and how much it learned).
+      const knowledgeByKey = new Map(bots.map((b) => {
+        const ctxText = (b as { siteContext?: string | null }).siteContext ?? "";
+        const m = ctxText.match(/PRODUCT CATALOG \((\d+) products/);
+        return [b.apiKey, {
+          lastScannedAt: (b as { lastScannedAt?: Date | null }).lastScannedAt ?? null,
+          knowledgeChars: ctxText.length,
+          productsLearned: m ? Number(m[1]) : 0,
+        }];
+      }));
       const botLinked = new Set(bots.map((b) => b.apiKey));
       return rows.map((r) => ({
         ...r,
         logoUrl: logoByKey.get(r.apiKey) ?? null,
         ...(badgeByKey.get(r.apiKey) ?? { poweredByText: null, poweredByUrl: null }),
         usage: usageByKey.get(r.apiKey) ?? { used: 0, limit: 0 },
+        ...(knowledgeByKey.get(r.apiKey) ?? { lastScannedAt: null, knowledgeChars: 0, productsLearned: 0 }),
         // false → the client row has no chatbot behind its API key (would 403)
         hasChatbot: botLinked.has(r.apiKey),
       }));
@@ -1962,7 +2094,41 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         });
 
         const [newClient] = await db.select().from(clients).where(eqOp(clients.apiKey, apiKey)).limit(1);
+
+        // Learn the client's site right away, in the background: crawling takes
+        // 20-40s and the reseller shouldn't wait on the "Add client" button.
+        // Until it finishes, the bot answers from general knowledge only.
+        void buildSiteKnowledge(input.siteUrl, 20)
+          .then((k) => db.update(chatbots)
+            .set({ siteContext: k.context, siteUrl: input.siteUrl, lastScannedAt: new Date(), updatedAt: new Date() })
+            .where(eqOp(chatbots.apiKey, apiKey)))
+          .catch((e) => console.warn("[Clients] initial site scan failed:", e));
+
         return newClient;
+      }),
+
+    /**
+     * Re-learn a client's website on demand (new products, changed policies).
+     * Writes to the CLIENT's chatbot — never the reseller's own.
+     */
+    scanSite: protectedProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        if (ctx.user.plan !== "whitelabel") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "White-Label plan required." });
+        }
+        const { eq: eqOp, and: andOp } = await import("drizzle-orm");
+        const [client] = await db.select().from(clients)
+          .where(andOp(eqOp(clients.id, input.id), eqOp(clients.userId, ctx.user.id))).limit(1);
+        if (!client) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found." });
+
+        const knowledge = await buildSiteKnowledge(client.siteUrl, 20);
+        await db.update(chatbots)
+          .set({ siteContext: knowledge.context, siteUrl: client.siteUrl, lastScannedAt: new Date(), updatedAt: new Date() })
+          .where(eqOp(chatbots.apiKey, client.apiKey));
+        return { products: knowledge.products, pagesRead: knowledge.pagesRead.length, indexed: knowledge.indexed };
       }),
     update: protectedProcedure
       .input(z.object({
@@ -1998,6 +2164,15 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         if (logoUrl !== undefined) botSync.avatarUrl = logoUrl;
         if (poweredByText !== undefined) botSync.poweredByText = poweredByText;
         if (poweredByUrl !== undefined) botSync.poweredByUrl = poweredByUrl;
+        // A changed website means the old knowledge is stale — re-learn it.
+        if (data.siteUrl) {
+          const newUrl = data.siteUrl;
+          void buildSiteKnowledge(newUrl, 20)
+            .then((k) => db.update(chatbots)
+              .set({ siteContext: k.context, siteUrl: newUrl, lastScannedAt: new Date(), updatedAt: new Date() })
+              .where(eqOp(chatbots.apiKey, existing.apiKey)))
+            .catch((e) => console.warn("[Clients] re-scan after URL change failed:", e));
+        }
         if (Object.keys(botSync).length) {
           await db.update(chatbots).set(botSync).where(eqOp(chatbots.apiKey, existing.apiKey));
         }

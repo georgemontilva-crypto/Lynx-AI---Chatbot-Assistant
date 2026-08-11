@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   Users2, Globe, Code2, Plus, ArrowRight, CheckCircle, Zap,
   Copy, RefreshCw, Trash2, Pencil, Eye, EyeOff, ExternalLink, X, FileText,
-  Gauge, Loader2, AlertTriangle
+  Gauge, Loader2, AlertTriangle, GraduationCap
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
@@ -510,6 +510,16 @@ function ClientsContent() {
   // Mobile: tapping a client card expands its action buttons (with labels)
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
+  // Re-learn a client's site: crawls it again and rewrites that client's
+  // knowledge base (products, policies, site map).
+  const scanSite = trpc.clients.scanSite.useMutation({
+    onSuccess: (r) => {
+      utils.clients.list.invalidate();
+      toast.success(`Site learned — ${r.products} products, ${r.pagesRead} pages read`);
+    },
+    onError: (e) => toast.error(e.message || "Could not read the site"),
+  });
+
   const runSeoAnalysis = async (clientId: number) => {
     setSeoRuns((s) => ({ ...s, [clientId]: { status: "loading" } }));
     try {
@@ -706,6 +716,18 @@ function ClientsContent() {
                               </div>
                             );
                           })() : null}
+                          {(() => {
+                            const k = client as { lastScannedAt?: string | Date | null; productsLearned?: number };
+                            if (!k.lastScannedAt) {
+                              return <p className="text-[10px] text-amber-400/90 mt-1">Still learning this site — the bot answers from general knowledge until it finishes.</p>;
+                            }
+                            return (
+                              <p className="text-[10px] text-muted-foreground mt-1">
+                                Learned {k.productsLearned ? `${k.productsLearned} products · ` : ""}
+                                {new Date(k.lastScannedAt).toLocaleDateString()}
+                              </p>
+                            );
+                          })()}
                           {(client as { hasChatbot?: boolean }).hasChatbot === false && (
                             <p className="text-[10px] text-red-400 mt-1">
                               No chatbot linked to this API key — the widget will fail. Regenerate the key to relink it.
@@ -715,6 +737,19 @@ function ClientsContent() {
 
                         {/* Actions (desktop; on mobile they appear when tapping the card) */}
                         <div className="hidden sm:flex items-center gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-xs gap-1.5 text-sky-400 hover:text-sky-300"
+                            onClick={() => scanSite.mutate({ id: client.id })}
+                            disabled={scanSite.isPending}
+                            title="Re-read this site so the bot learns its products and policies"
+                          >
+                            {scanSite.isPending && scanSite.variables?.id === client.id
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <GraduationCap className="w-3.5 h-3.5" />}
+                            <span className="hidden sm:inline">Train</span>
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
