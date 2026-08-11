@@ -1802,7 +1802,12 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
       const db = await getDb();
       if (!db) return [];
       const { eq: eqOp, desc: descOp } = await import("drizzle-orm");
-      return db.select().from(clients).where(eqOp(clients.userId, ctx.user.id)).orderBy(descOp(clients.createdAt));
+      const rows = await db.select().from(clients).where(eqOp(clients.userId, ctx.user.id)).orderBy(descOp(clients.createdAt));
+      // Enrich each client with its linked chatbot's logo so the edit form can
+      // show/change the chat branding per client.
+      const bots = await db.select().from(chatbots).where(eqOp(chatbots.userId, ctx.user.id));
+      const logoByKey = new Map(bots.map((b) => [b.apiKey, (b as { avatarUrl?: string | null }).avatarUrl ?? null]));
+      return rows.map((r) => ({ ...r, logoUrl: logoByKey.get(r.apiKey) ?? null }));
     }),
     create: protectedProcedure
       .input(z.object({
@@ -1811,6 +1816,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         brandName: z.string().max(128).optional(),
         brandColor: z.string().max(16).optional(),
         welcomeMessage: z.string().max(512).optional(),
+        logoUrl: z.string().nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
@@ -1845,6 +1851,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
           name: input.brandName ?? input.name ?? "AI Assistant",
           isClientChatbot: true,
           primaryColor: input.brandColor ?? "#3b82f6",
+          avatarUrl: input.logoUrl ?? null,
           welcomeMessage: input.welcomeMessage ?? "Hi! How can I help you?",
           siteUrl: input.siteUrl,
           isActive: true,
@@ -1861,17 +1868,31 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         brandName: z.string().max(128).optional(),
         brandColor: z.string().max(16).optional(),
         welcomeMessage: z.string().max(512).optional(),
+        logoUrl: z.string().nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
         const { eq: eqOp } = await import("drizzle-orm");
-        const { id, ...data } = input;
+        const { id, logoUrl, ...data } = input;
         const [existing] = await db.select().from(clients).where(eqOp(clients.id, id)).limit(1);
         if (!existing || existing.userId !== ctx.user.id) {
           throw new TRPCError({ code: "NOT_FOUND" });
         }
-        await db.update(clients).set(data).where(eqOp(clients.id, id));
+        if (Object.keys(data).length) {
+          await db.update(clients).set(data).where(eqOp(clients.id, id));
+        }
+        // ── Sync the linked chatbot ──
+        // The widget reads branding from the CHATBOT (same apiKey), so brand
+        // changes must propagate there or the client's chat never updates.
+        const botSync: Record<string, unknown> = {};
+        if (input.brandName !== undefined) botSync.name = input.brandName;
+        if (input.brandColor !== undefined) botSync.primaryColor = input.brandColor;
+        if (input.welcomeMessage !== undefined) botSync.welcomeMessage = input.welcomeMessage;
+        if (logoUrl !== undefined) botSync.avatarUrl = logoUrl;
+        if (Object.keys(botSync).length) {
+          await db.update(chatbots).set(botSync).where(eqOp(chatbots.apiKey, existing.apiKey));
+        }
         const [updated] = await db.select().from(clients).where(eqOp(clients.id, id)).limit(1);
         return updated;
       }),

@@ -25,6 +25,7 @@ interface ClientFormData {
   brandName: string;
   brandColor: string;
   welcomeMessage: string;
+  logoUrl?: string | null;
 }
 
 const defaultForm: ClientFormData = {
@@ -33,6 +34,7 @@ const defaultForm: ClientFormData = {
   brandName: "AI Assistant",
   brandColor: "#3b82f6",
   welcomeMessage: "Hi! How can I help you?",
+  logoUrl: null,
 };
 
 // ─── Snippet modal ────────────────────────────────────────────────────────────
@@ -227,6 +229,27 @@ function ClientFormModal({
 }) {
   const [form, setForm] = useState<ClientFormData>(initial ?? defaultForm);
   const isEdit = !!initial?.id;
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData, credentials: "include" });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = (await res.json()) as { url: string };
+      setForm((f) => ({ ...f, logoUrl: data.url }));
+      toast.success("Logo uploaded");
+    } catch {
+      toast.error("Logo upload failed");
+    } finally {
+      setUploadingLogo(false);
+      e.target.value = "";
+    }
+  }
 
   const set = (key: keyof ClientFormData) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [key]: e.target.value }));
@@ -273,6 +296,29 @@ function ClientFormModal({
             </div>
             <div className="flex items-center gap-3">
               <div className="flex-1">
+                <Label className="text-xs">Chat logo</Label>
+                <div className="flex items-center gap-3 flex-wrap mt-1 mb-3">
+                  <div className="w-12 h-12 rounded-full border border-border/40 bg-muted/30 overflow-hidden flex items-center justify-center shrink-0">
+                    {form.logoUrl ? (
+                      <img src={form.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                    ) : (
+                      <Users2 className="w-5 h-5 text-muted-foreground" />
+                    )}
+                  </div>
+                  <label className="cursor-pointer">
+                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                    <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border/40 bg-muted/30 text-xs hover:border-primary/40 transition-colors">
+                      {uploadingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      {uploadingLogo ? "Uploading..." : form.logoUrl ? "Change logo" : "Upload logo"}
+                    </span>
+                  </label>
+                  {form.logoUrl && (
+                    <button type="button" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => setForm((f) => ({ ...f, logoUrl: null }))}>
+                      Remove
+                    </button>
+                  )}
+                  <p className="basis-full text-[11px] text-muted-foreground">Shown in the chat header and on the floating button of this client\u2019s widget.</p>
+                </div>
                 <Label htmlFor="brandColor" className="text-xs">Brand color</Label>
                 <Input id="brandColor" value={form.brandColor} onChange={set("brandColor")} placeholder="#3b82f6" className="mt-1 font-mono text-xs" />
               </div>
@@ -573,6 +619,7 @@ function ClientsContent() {
                               brandName: client.brandName ?? "AI Assistant",
                               brandColor: client.brandColor ?? "#3b82f6",
                               welcomeMessage: client.welcomeMessage ?? "Hi! How can I help you?",
+                              logoUrl: (client as { logoUrl?: string | null }).logoUrl ?? null,
                             })}
                           >
                             <Pencil className="w-3.5 h-3.5" />
@@ -618,6 +665,7 @@ function ClientsContent() {
                               brandName: client.brandName ?? "AI Assistant",
                               brandColor: client.brandColor ?? "#3b82f6",
                               welcomeMessage: client.welcomeMessage ?? "Hi! How can I help you?",
+                              logoUrl: (client as { logoUrl?: string | null }).logoUrl ?? null,
                             })}>
                             <Pencil className="w-3.5 h-3.5" />Edit
                           </Button>
