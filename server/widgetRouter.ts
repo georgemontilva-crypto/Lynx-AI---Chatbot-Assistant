@@ -2249,6 +2249,22 @@ function buildFrameApp(): string {
     el.innerHTML = html || out;
   }
 
+  // assistantDiv/accumulatedReply live inside sendMessage, so they are passed in
+  // rather than captured — this helper is defined at frame scope.
+  var _streamRaf = null, _streamEl = null, _streamText = '';
+  function scheduleStreamRender(el, text) {
+    _streamEl = el; _streamText = text;
+    if (_streamRaf) return;
+    _streamRaf = (window.requestAnimationFrame || function(cb) { return setTimeout(cb, 16); })(function() {
+      _streamRaf = null;
+      if (!_streamEl) return;
+      // Drop a dangling bold/italic marker at the very end so half-typed
+      // markdown never flashes as a stray asterisk.
+      renderRichText(_streamEl, _streamText.replace(/\\*{1,2}$/, ''));
+      lynxScrollBottom(true);
+    });
+  }
+
   // Insert restored messages ABOVE the current thread (cross-device continuity)
   function prependMessages(msgs) {
     if (!messagesEl || !msgs || !msgs.length) return;
@@ -2570,12 +2586,15 @@ function buildFrameApp(): string {
                 prependMessages(evt.restored);
               } else if (evt.token) {
                 accumulatedReply += evt.token;
-                if (assistantDiv) {
-                  assistantDiv.textContent = accumulatedReply;
-                  lynxScrollBottom(true);
-                }
+                // Render markdown WHILE streaming, not only at the end: showing
+                // raw '**' and run-together lines for several seconds looked
+                // broken. Repainting on every token would thrash the DOM, so it
+                // is throttled to one frame, and a trailing '*' (a bold marker
+                // still being typed) is hidden until its pair arrives.
+                if (assistantDiv) scheduleStreamRender(assistantDiv, accumulatedReply);
               } else if (evt.done) {
-                // Stream finished — render final text with links & product images
+                // Stream finished — cancel any queued frame and paint the final text
+                if (_streamRaf) { (window.cancelAnimationFrame || clearTimeout)(_streamRaf); _streamRaf = null; }
                 if (assistantDiv) renderRichText(assistantDiv, accumulatedReply);
                 if (evt.emailSaved) setTimeout(function() { showEmailSavedCard(evt.emailSaved); }, 500);
                 history.push({ role: 'assistant', content: accumulatedReply });

@@ -412,6 +412,57 @@ function upsertProduct(list: ProductEntry[], incoming: ProductEntry): void {
   if (!existing.description && incoming.description) existing.description = incoming.description;
   if (!existing.url && incoming.url) existing.url = incoming.url;
 }
+/**
+ * Second pass: for products that still have no photo, open their own page and
+ * pull one. Store APIs and collection pages frequently omit images even when
+ * the product page has a perfectly good one, and a card without a photo is the
+ * difference between a catalog that looks designed and one that looks broken.
+ * Bounded by the same crawl deadline, so it can never extend a scan.
+ */
+async function hydrateMissingImages(products: ProductEntry[], deadline: number): Promise<number> {
+  const needy = products.filter(p => !p.image && p.url).slice(0, 60);
+  if (!needy.length) return 0;
+  let filled = 0;
+  await crawlPages(needy.map(p => p.url as string), (link, html) => {
+    const target = products.find(p => p.url === link);
+    if (target && !target.image) {
+      const img = extractPageImage(html, link);
+      if (img) { target.image = img; filled++; }
+    }
+  }, { deadline, concurrency: 6, timeoutMs: 5000 });
+  return filled;
+}
+
+/**
+ * Best photo for a product page, when the structured data has none.
+ *
+ * Custom-built stores (not Shopify/Woo) often publish JSON-LD without an
+ * "image" field, which left product cards with no photo. Nearly every product
+ * page still exposes one through Open Graph — that is what social previews and
+ * WhatsApp thumbnails use — with a real <img> as the last resort.
+ */
+function extractPageImage(html: string, baseUrl: string): string | undefined {
+  const abs = (u?: string) => {
+    if (!u) return undefined;
+    const clean = u.trim();
+    if (!clean || clean.startsWith("data:")) return undefined;
+    try { return new URL(clean, baseUrl).href; } catch { return undefined; }
+  };
+  const og = html.match(/<meta[^>]+property=["']og:image(?::url)?["'][^>]*content=["']([^"']+)["']/i)?.[1]
+    ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:image(?::url)?["']/i)?.[1];
+  if (og) return abs(og);
+  const tw = html.match(/<meta[^>]+name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i)?.[1];
+  if (tw) return abs(tw);
+  // Fall back to the first plausible content image, skipping logos/icons/pixels
+  for (const m of Array.from(html.matchAll(/<img[^>]+(?:data-src|srcset|src)=["']([^"'\s]+)/gi))) {
+    const candidate = m[1];
+    if (/logo|icon|favicon|sprite|placeholder|avatar|badge|\.svg(\?|$)/i.test(candidate)) continue;
+    const resolved = abs(candidate);
+    if (resolved) return resolved;
+  }
+  return undefined;
+}
+
 function extractProductsFromHtml(html: string, baseUrl: string): ProductEntry[] {
   const products: ProductEntry[] = [];
   // 1. JSON-LD Product schema (most reliable — Shopify, WooCommerce, etc.)
@@ -436,7 +487,7 @@ function extractProductsFromHtml(html: string, baseUrl: string): ProductEntry[] 
             // omits "url" on a product's own page, and a card with no link is
             // a dead end for the visitor.
             url: url ? new URL(url, baseUrl).href : baseUrl,
-            image: img ? new URL(String(img), baseUrl).href : undefined,
+            image: img ? new URL(String(img), baseUrl).href : extractPageImage(html, baseUrl),
           });
         }
       }
@@ -725,6 +776,8 @@ export async function buildSiteKnowledge(
     addToIndex(link, "info", title);
     pagesRead.push(path);
   }, { deadline });
+
+  await hydrateMissingImages(products, deadline);
 
   // Same budgeted assembly as the owner scan: highest-value section first, and
   // a byte-aware final cut (MySQL TEXT is 65,535 BYTES, not characters).
@@ -1290,6 +1343,9 @@ Return ONLY valid JSON matching this exact schema:
         if (!chatbot) {
           chatbot = await upsertChatbot({ userId: ctx.user.id, name: "Lynx AI" });
         }
+
+        // Fill in any product photo the catalog sources did not provide
+        await hydrateMissingImages(allProducts, crawlDeadline);
 
         // 4. Build product catalog section for chatbot context
         let productCatalogSection = "";
