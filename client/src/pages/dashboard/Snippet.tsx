@@ -81,6 +81,13 @@ export default function Snippet() {
   // Determine the current site origin for the widget URL
   // Prefer the server-configured canonical origin; fall back to the current URL
   const siteOrigin = originData?.origin ?? (typeof window !== "undefined" ? window.location.origin : "");
+  const pageSnippet = `<script src="${siteOrigin}/api/widget/page.js" data-api-key="${apiKey ?? "YOUR_API_KEY"}" defer></script>`;
+  const [copiedPage, setCopiedPage] = useState(false);
+  const handleCopyPageSnippet = () => {
+    navigator.clipboard.writeText(pageSnippet);
+    setCopiedPage(true);
+    setTimeout(() => setCopiedPage(false), 2000);
+  };
   const snippets = buildSnippets(apiKey ?? "YOUR_API_KEY", siteOrigin);
 
   const codeMap: Record<Tab, string> = {
@@ -233,13 +240,32 @@ export default function Snippet() {
                 <div className="mt-4 pt-4 border-t border-border/40">
                   <div className="text-xs font-medium mb-1">Branded chat page (masked link)</div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed mb-2">
-                    Download a ready-made HTML page with this chat embedded. Upload it to your own
-                    website (e.g. as <span className="font-mono">/chat</span>) — visitors will see your
-                    domain in the address bar, with your brand name and colors.
+                    A full-screen chat on <strong>your</strong> domain — your address bar, your brand,
+                    and no API key in the URL. Make an empty page on your site (e.g.{" "}
+                    <span className="font-mono">/chat</span>) and paste this in. Nothing to upload.
                   </p>
-                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={downloadChatPage}>
-                    <Download className="w-3 h-3" />Download chat page (HTML)
-                  </Button>
+                  <pre className="text-[10px] bg-muted/50 rounded-md p-2 overflow-x-auto border border-border/40 mb-2"><code>{pageSnippet}</code></pre>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={handleCopyPageSnippet}>
+                      {copiedPage ? <CheckCircle className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      Copy snippet
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={downloadChatPage}>
+                      <Download className="w-3 h-3" />Or download the HTML file
+                    </Button>
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-border/40 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
+                    <div className="font-medium text-foreground/80">Where to paste it</div>
+                    <p><strong className="text-foreground/70">Shopify:</strong> Online Store → Pages → Add page → click the <span className="font-mono">&lt;&gt;</span> button → paste → Save.</p>
+                    <p><strong className="text-foreground/70">WordPress:</strong> Pages → Add New → "Custom HTML" block → paste → Publish.</p>
+                    <p><strong className="text-foreground/70">Wix / Squarespace:</strong> new blank page → "Embed HTML" element → paste → Publish.</p>
+                    <p><strong className="text-foreground/70">Custom-built site:</strong> paste into the body of the page or route you want.</p>
+                    <div className="font-medium text-foreground/80 pt-1.5">Optional settings</div>
+                    <p><span className="font-mono text-foreground/70">data-height="700px"</span> — fixed height instead of filling the screen.</p>
+                    <p><span className="font-mono text-foreground/70">data-mount="#my-div"</span> — render inside an existing element, keeping your header and footer visible.</p>
+                    <p><span className="font-mono text-foreground/70">data-color="#403911"</span> — loading spinner color.</p>
+                  </div>
                 </div>
               )}
             </CardContent>

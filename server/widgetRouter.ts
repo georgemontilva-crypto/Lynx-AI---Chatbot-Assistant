@@ -1320,6 +1320,62 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
     }
   });
 
+  /**
+   * Full-page chat embed. Usage on the client's own site:
+   *   <script src="https://host/api/widget/page.js" data-api-key="lx_..." defer></script>
+   * Options: data-height="600" (default: fills the viewport), data-mount="#id"
+   * to place it inside an existing element instead of taking over the page.
+   */
+  function buildPageEmbedScript(): string {
+    return `
+(function() {
+  var me = document.currentScript;
+  if (!me) { var ss = document.getElementsByTagName('script'); me = ss[ss.length - 1]; }
+  var API_KEY = me.getAttribute('data-api-key') || '';
+  if (!API_KEY) { console.error('[Lynx] data-api-key is required'); return; }
+  var BASE = me.src.replace(/\\/api\\/widget\\/page\\.js.*$/, '');
+  var height = me.getAttribute('data-height') || '';
+  var mountSel = me.getAttribute('data-mount') || '';
+  var color = me.getAttribute('data-color') || '#94a3b8';
+
+  function start() {
+    var host = mountSel ? document.querySelector(mountSel) : null;
+    var wrap = document.createElement('div');
+    // Inside an existing element → fill it. Standalone → own the viewport.
+    wrap.style.cssText = host
+      ? 'position:relative;width:100%;height:' + (height || '600px') + ';overflow:hidden;'
+      : 'position:relative;width:100%;height:' + (height || '100dvh') + ';min-height:420px;overflow:hidden;';
+
+    var ld = document.createElement('div');
+    ld.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#f5f6f8;transition:opacity .3s;pointer-events:none;';
+    var sp = document.createElement('div');
+    sp.style.cssText = 'width:36px;height:36px;border:3px solid rgba(0,0,0,.08);border-top-color:' + color + ';border-radius:50%;animation:lynxpgspin 1s linear infinite;';
+    ld.appendChild(sp);
+    if (!document.getElementById('lynx-page-kf')) {
+      var st = document.createElement('style');
+      st.id = 'lynx-page-kf';
+      st.textContent = '@keyframes lynxpgspin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(st);
+    }
+
+    var f = document.createElement('iframe');
+    f.src = BASE + '/chat/' + encodeURIComponent(API_KEY);
+    f.title = 'Chat';
+    f.setAttribute('allow', 'clipboard-write');
+    f.style.cssText = 'width:100%;height:100%;border:0;display:block;';
+    f.onload = function() { ld.style.opacity = '0'; setTimeout(function(){ if (ld.parentNode) ld.parentNode.removeChild(ld); }, 350); };
+
+    wrap.appendChild(ld);
+    wrap.appendChild(f);
+    (host || (me.parentNode || document.body)).appendChild(wrap);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+`.trim();
+  }
+
   // GET /widget.js — serves the self-contained embeddable chat widget script.
   // Registered under BOTH /widget.js and /api/widget.js: some edge/proxy
   // configurations only route /api/* paths to the Node server, so /api/widget.js
@@ -1332,6 +1388,19 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
   };
   app.get("/widget.js", serveWidget);
   app.get("/api/widget.js", serveWidget);
+
+  // GET /api/widget/page.js — the "branded chat page" as a PASTE-ANYWHERE
+  // snippet instead of a file to upload. It mounts the full-screen chat inside
+  // whatever page hosts it, so the address bar keeps showing the CLIENT's own
+  // domain. Works on Shopify/Wix/Squarespace/WordPress, where you can paste
+  // code but can't upload an .html file.
+  const servePageEmbed = (req: Request, res: Response) => {
+    setCorsHeaders(res);
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=120");
+    return res.send(buildPageEmbedScript());
+  };
+  app.get("/api/widget/page.js", servePageEmbed);
 
   // GET /api/widget/frame?apiKey=xxx — the chat UI served as a standalone page,
   // embedded in an iframe by the loader. Scroll is isolated by the browser.

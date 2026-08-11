@@ -113,6 +113,14 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
     toast.success("Branded chat page downloaded");
   };
 
+  // The same masked page, but as a paste-anywhere snippet: no file to upload,
+  // works on Shopify/Wix/Squarespace where you can only paste code.
+  const pageSnippet = `<script src="${siteOrigin}/api/widget/page.js" data-api-key="${client.apiKey}" defer></script>`;
+  const copyPageSnippet = () => {
+    navigator.clipboard.writeText(pageSnippet);
+    toast.success("Chat page snippet copied");
+  };
+
   const copySnippet = () => {
     navigator.clipboard.writeText(snippet);
     toast.success("Snippet copied to clipboard");
@@ -198,6 +206,16 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
               <Button size="sm" className="h-8 text-xs gap-1.5 w-full sm:w-auto mt-2" onClick={copySnippet}>
                 <Copy className="w-3 h-3" />Copy snippet
               </Button>
+
+              <div className="mt-3 pt-3 border-t border-border/40 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
+                <div className="font-medium text-foreground/80">How to install it</div>
+                <p><strong className="text-foreground/70">Shopify:</strong> Online Store → Themes → ⋯ → Edit code → open <span className="font-mono">theme.liquid</span> → paste just before <span className="font-mono">&lt;/body&gt;</span> → Save.</p>
+                <p><strong className="text-foreground/70">WordPress:</strong> Appearance → Theme File Editor → <span className="font-mono">footer.php</span>, or use any "insert header and footer" plugin.</p>
+                <p><strong className="text-foreground/70">Wix / Squarespace:</strong> Settings → Custom Code → add to the footer of all pages.</p>
+                <p><strong className="text-foreground/70">Custom-built site:</strong> paste before the closing <span className="font-mono">&lt;/body&gt;</span> tag of the main layout.</p>
+                <p>Then reload the site — the chat bubble appears in the corner. It only needs to be installed once; branding and behaviour update automatically from here.</p>
+                <p className="text-amber-400/80">If the bubble doesn't show up: make sure the snippet is on every page (not just the home page) and that the site isn't stripping <span className="font-mono">&lt;script&gt;</span> tags.</p>
+              </div>
             </div>
           </div>
         )}
@@ -207,6 +225,13 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               Direct link to this client's chat in full screen — great for support links, social bios or a "Talk to us" button.
             </p>
+            <div className="space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
+              <div className="font-medium text-foreground/80">Ways to use it</div>
+              <p><strong className="text-foreground/70">As a button on the site:</strong> link any button or menu item to this URL — <span className="font-mono">&lt;a href="…" target="_blank"&gt;Talk to us&lt;/a&gt;</span>.</p>
+              <p><strong className="text-foreground/70">In a social bio or QR code:</strong> paste it as-is; it opens straight into the chat on any device.</p>
+              <p><strong className="text-foreground/70">In an email signature or support reply:</strong> send it to a customer to continue the conversation.</p>
+              <p className="text-amber-400/80">This link shows our domain and the API key. To show the client's own domain instead, use the Branded page tab.</p>
+            </div>
             <div className="flex items-center gap-2 w-full max-w-full overflow-hidden">
               <div className="flex-1 min-w-0 font-mono text-[11px] bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate" title={chatLink}>
                 {chatLink}
@@ -222,15 +247,61 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
         )}
 
         {tab === "page" && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Download a ready-made HTML page with the chat embedded. Upload it to the client's
-              own website (e.g. as <span className="font-mono">/chat</span>) — visitors will see the
-              client's domain in the address bar, with their brand name and colors. No mention of Lynx.
+              A full-screen chat that lives on the client's <strong>own domain</strong> — their address
+              bar, their brand, no mention of Lynx and no API key in the URL.
             </p>
-            <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={downloadChatPage}>
-              <FileText className="w-3 h-3" />Download chat page (HTML)
-            </Button>
+
+            {/* Easiest path: nothing to upload */}
+            <div className="rounded-lg border border-border/40 p-2.5 space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge className="text-[10px] px-1.5 py-0 h-4 bg-emerald-500/15 text-emerald-400 border-emerald-500/30">Easiest</Badge>
+                <span className="text-xs font-medium">Paste into a page</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                The client makes an empty page on their site (e.g. <span className="font-mono">/chat</span>)
+                and pastes this in. Nothing to upload — works on Shopify, Wix, Squarespace, WordPress and
+                anything else that lets you paste code.
+              </p>
+              <pre className="text-[10px] bg-muted/50 rounded-md p-2 overflow-x-auto border border-border/40"><code>{pageSnippet}</code></pre>
+              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={copyPageSnippet}>
+                <Copy className="w-3 h-3" />Copy snippet
+              </Button>
+
+              {/* Platform-by-platform instructions the reseller can forward as-is */}
+              <div className="pt-2 border-t border-border/40 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
+                <div className="font-medium text-foreground/80">Where to paste it</div>
+                <p><strong className="text-foreground/70">Shopify:</strong> Online Store → Pages → Add page → title it "Chat" → click the <span className="font-mono">&lt;&gt;</span> button in the editor toolbar → paste → Save. Live at <span className="font-mono">/pages/chat</span>.</p>
+                <p><strong className="text-foreground/70">WordPress:</strong> Pages → Add New → add a "Custom HTML" block → paste → Publish.</p>
+                <p><strong className="text-foreground/70">Wix / Squarespace:</strong> add a new blank page → drop in an "Embed HTML" / "Code" element → paste → Publish.</p>
+                <p><strong className="text-foreground/70">Custom-built site:</strong> paste it into the body of any page or route.</p>
+                <p className="text-amber-400/80">Give the page a blank layout if possible — the chat is designed to fill the screen on its own.</p>
+              </div>
+
+              <div className="pt-2 border-t border-border/40 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
+                <div className="font-medium text-foreground/80">Optional settings</div>
+                <p>Add these attributes to the same <span className="font-mono">&lt;script&gt;</span> tag:</p>
+                <p><span className="font-mono text-foreground/70">data-height="700px"</span> — set a fixed height instead of filling the screen.</p>
+                <p><span className="font-mono text-foreground/70">data-mount="#my-div"</span> — place the chat inside an existing element, so the site's header and footer stay visible.</p>
+                <p><span className="font-mono text-foreground/70">data-color="#403911"</span> — color of the loading spinner.</p>
+              </div>
+            </div>
+
+            {/* Fallback: a real file, for plain hosting */}
+            <div className="rounded-lg border border-border/40 p-2.5 space-y-2">
+              <span className="text-xs font-medium">Or upload a file</span>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                For hosting with file access (cPanel, Hostinger, FTP): upload it to the site root and
+                it's live at <span className="font-mono">/chat.html</span>. For a clean{" "}
+                <span className="font-mono">/chat</span> URL, create a folder named{" "}
+                <span className="font-mono">chat</span> and save the file inside it as{" "}
+                <span className="font-mono">index.html</span>.
+              </p>
+              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={downloadChatPage}>
+                <FileText className="w-3 h-3" />Download chat page (HTML)
+              </Button>
+            </div>
           </div>
         )}
 
