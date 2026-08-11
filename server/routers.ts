@@ -562,7 +562,25 @@ export const appRouter = router({
         }
 
         // ─── Helper: find informational page links (FAQ, about, policies…) ────
-        function findInfoPageLinks(html: string, baseUrl: string): string[] {
+        /**
+ * Label an informational page by what visitors actually ask about, so the
+ * assistant can find "the returns policy" instead of grepping raw text.
+ */
+function classifyInfoPage(path: string, title = ""): string {
+  const hay = `${path} ${title}`.toLowerCase();
+  if (/faq|preguntas|help|ayuda|support|soporte/.test(hay)) return "FAQ";
+  if (/shipping|envio|env\u00edo|delivery|entrega/.test(hay)) return "SHIPPING";
+  if (/return|devoluc|refund|reembolso|exchange/.test(hay)) return "RETURNS";
+  if (/privacy|privacidad/.test(hay)) return "PRIVACY POLICY";
+  if (/terms|terminos|t\u00e9rminos|conditions|legal/.test(hay)) return "TERMS";
+  if (/contact|contacto/.test(hay)) return "CONTACT";
+  if (/about|nosotros|quienes|qui\u00e9nes|story|mission/.test(hay)) return "ABOUT";
+  if (/pricing|precios|plans|planes/.test(hay)) return "PRICING";
+  if (/service|servicio/.test(hay)) return "SERVICES";
+  return "PAGE";
+}
+
+function findInfoPageLinks(html: string, baseUrl: string): string[] {
           const base = new URL(baseUrl);
           const infoPatterns = [
             /faq/i, /preguntas/i, /about/i, /nosotros/i, /quienes/i,
@@ -720,10 +738,20 @@ export const appRouter = router({
         let htmlContent = "";
         let seoContext = "";
         let allProducts: ProductEntry[] = [];
+        // Index of the site's visible pages (path + kind + title). Lets the
+        // assistant answer "what sections do you have" and stops it inventing URLs.
+        const sitePageIndex: { path: string; kind: string; title: string }[] = [];
+        const addToIndex = (u: string, kind: string, title = "") => {
+          try {
+            const path = new URL(u).pathname;
+            if (path === "/" && kind !== "home") return;
+            if (!sitePageIndex.some(p => p.path === path)) sitePageIndex.push({ path, kind, title: title.slice(0, 70) });
+          } catch { /* skip unparseable */ }
+        };
         let rawHome = "";                    // raw home HTML kept for scoring
         let measuredLoadSpeed = 0;           // seconds, real fetch timing
         let realMobileScore = 0;             // heuristic from real HTML signals
-        const pageExtracts: Array<{ path: string; text: string }> = [];
+        const pageExtracts: Array<{ path: string; text: string; title?: string; kind?: string }> = [];
 
         // ── Scan diagnostics: an honest, user-facing report of what we read,
         // what we couldn't, and any warnings — so the user can trust the result
@@ -747,6 +775,7 @@ export const appRouter = router({
           rawHome = raw;
           scanReport.homeReadable = raw.replace(/<[^>]+>/g, "").trim().length > 200;
           scanReport.pagesRead.push("/");
+          addToIndex(input.url, "home", "");
 
           // ── Real mobile signals (heuristic, but from actual HTML) ──────────
           const hasViewport = /<meta[^>]+name=["']viewport["']/i.test(raw);
@@ -811,6 +840,12 @@ export const appRouter = router({
           const infoPatternsRe = /faq|preguntas|about|nosotros|quienes|contact|contacto|shipping|envio|delivery|returns?|devolucion|refund|reembolso|policy|policies|politica|terms|terminos|privacy|privacidad|help|ayuda|support|soporte|pricing|precios|services?|servicios?/i;
           const sitemapProductPages = sitemapUrls.filter(u => productPatternsRe.test(new URL(u).pathname));
           const sitemapInfoPages = sitemapUrls.filter(u => infoPatternsRe.test(new URL(u).pathname));
+          // Index every discovered URL, not just the ones we have budget to read
+          for (const u of sitemapUrls.slice(0, 300)) {
+            const path = (() => { try { return new URL(u).pathname; } catch { return ""; } })();
+            if (!path) continue;
+            addToIndex(u, productPatternsRe.test(path) ? "product" : infoPatternsRe.test(path) ? "info" : "page");
+          }
 
           // Always crawl product/catalog pages to build a fuller catalog.
           // Product-heavy sites list items across many collection pages, so we
@@ -831,6 +866,7 @@ export const appRouter = router({
                 for (const p of pageProducts) {
                   if (!allProducts.some(ep => ep.name === p.name)) allProducts.push(p);
                 }
+                addToIndex(link, "product", pageHtml.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "");
                 scanReport.pagesRead.push(new URL(link).pathname);
                 if (allProducts.length >= 200) break;
               } catch { scanReport.pagesFailed.push(new URL(link).pathname); }
@@ -848,8 +884,11 @@ export const appRouter = router({
               const { text: pageHtml } = await safeFetchText(link, { timeoutMs: 8000 });
               const text = htmlToText(pageHtml, 2500);
               if (text.length > 100) {
-                pageExtracts.push({ path: new URL(link).pathname, text });
-                scanReport.pagesRead.push(new URL(link).pathname);
+                const path = new URL(link).pathname;
+                const pageTitle = pageHtml.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "";
+                pageExtracts.push({ path, text, title: pageTitle, kind: classifyInfoPage(path, pageTitle) });
+                addToIndex(link, "info", pageTitle);
+                scanReport.pagesRead.push(path);
               }
             } catch { scanReport.pagesFailed.push(new URL(link).pathname); }
           }
@@ -1059,7 +1098,7 @@ Return ONLY valid JSON matching this exact schema:
 
         // 4. Save site context to chatbot (includes product catalog + info pages)
         const infoPagesSection = pageExtracts.length > 0
-          ? pageExtracts.map(pg => `=== PAGE ${pg.path} ===\n${pg.text}`).join("\n\n")
+          ? pageExtracts.map(pg => `=== ${(pg as { kind?: string }).kind ?? "PAGE"} | ${pg.path}${(pg as { title?: string }).title ? ` | ${(pg as { title?: string }).title}` : ""} ===\n${pg.text}`).join("\n\n")
           : "";
         // Explicit business-type signal so the assistant always knows whether
         // this business sells products — even if the catalog came back thin.
@@ -1073,14 +1112,46 @@ Return ONLY valid JSON matching this exact schema:
           `Pages scanned: ${1 + pageExtracts.length + (allProducts.length > 0 ? 1 : 0)}`,
         ].filter(Boolean).join("\n");
 
-        const siteContextText = [
+        // ── Assemble the knowledge base under an explicit budget ─────────────
+        // MySQL TEXT holds 65,535 BYTES (not chars). The old code appended
+        // everything and cut the tail, so on content-rich sites the PRODUCT
+        // CATALOG — the most valuable section, and the last one — was silently
+        // truncated away: the assistant looked like it had "learned nothing".
+        // Now each section gets its own budget, highest value first, and the
+        // final cut is byte-aware.
+        const BUDGET_TOTAL = 60000;
+        const budgets = {
+          catalog: 26000,   // products with URL + image: what powers the cards
+          info: 20000,      // policies, shipping, returns, FAQ, about
+          sitemap: 4000,    // what sections exist, so it never invents pages
+          home: 4000,
+        };
+        const clip = (t: string, max: number) => (t.length > max ? t.slice(0, max) + "\n… (truncated)" : t);
+
+        // A map of the site's visible sections, so the assistant knows what
+        // exists even for pages it did not read in full — and never invents a URL.
+        const siteMapSection = sitePageIndex.length > 0
+          ? `=== SITE MAP (visible pages — only ever link to URLs from this list or the catalog) ===\n` +
+            sitePageIndex.slice(0, 120).map(pg => `${pg.kind.toUpperCase().padEnd(7)} ${pg.path}${pg.title ? ` — ${pg.title}` : ""}`).join("\n")
+          : "";
+
+        const sections = [
           analysis.summary,
           `Topics: ${(analysis.topics ?? []).join(", ")}`,
           businessSignal,
-          htmlContent.slice(0, 4000),
-          infoPagesSection,
-          productCatalogSection,
-        ].filter(Boolean).join("\n\n").slice(0, 60000); // MySQL TEXT limit
+          clip(productCatalogSection, budgets.catalog),
+          clip(infoPagesSection, budgets.info),
+          clip(siteMapSection, budgets.sitemap),
+          clip(htmlContent, budgets.home),
+        ].filter(Boolean);
+
+        let siteContextText = sections.join("\n\n");
+        // Byte-aware final cut: accented content makes chars ≠ bytes, and going
+        // over the column limit truncates mid-word (or errors in strict mode).
+        if (Buffer.byteLength(siteContextText, "utf8") > BUDGET_TOTAL) {
+          const buf = Buffer.from(siteContextText, "utf8").subarray(0, BUDGET_TOTAL);
+          siteContextText = new TextDecoder("utf-8", { fatal: false }).decode(buf).replace(/\uFFFD+$/, "");
+        }
         await updateChatbotSiteContext(chatbot.id, input.url, siteContextText);
 
         // 5. Save SEO report
