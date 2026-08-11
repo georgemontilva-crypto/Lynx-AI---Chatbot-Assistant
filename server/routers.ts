@@ -2364,10 +2364,25 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
       // show/change the chat branding per client.
       const bots = await db.select().from(chatbots).where(eqOp(chatbots.userId, ctx.user.id));
       const logoByKey = new Map(bots.map((b) => [b.apiKey, (b as { avatarUrl?: string | null }).avatarUrl ?? null]));
-      const badgeByKey = new Map(bots.map((b) => [b.apiKey, {
-        poweredByText: (b as { poweredByText?: string | null }).poweredByText ?? null,
-        poweredByUrl: (b as { poweredByUrl?: string | null }).poweredByUrl ?? null,
-      }]));
+      // Full appearance/behaviour of each client's bot, so the edit form opens
+      // with what is actually saved instead of falling back to defaults (which
+      // would silently overwrite the client's settings on the next save).
+      const badgeByKey = new Map(bots.map((b) => {
+        const bot = b as Record<string, unknown>;
+        return [b.apiKey, {
+          poweredByText: (bot.poweredByText as string | null) ?? null,
+          poweredByUrl: (bot.poweredByUrl as string | null) ?? null,
+          secondaryColor: (bot.secondaryColor as string | null) ?? "#1e40af",
+          buttonColor: (bot.buttonColor as string | null) ?? null,
+          buttonIconUrl: (bot.buttonIconUrl as string | null) ?? null,
+          placeholder: (bot.placeholder as string | null) ?? "Type your question...",
+          disclaimer: (bot.disclaimer as string | null) ?? "",
+          position: (bot.position as string | null) ?? "bottom-right",
+          autoOpen: Boolean(bot.autoOpen),
+          autoOpenDelay: (bot.autoOpenDelay as number | null) ?? 5,
+          language: (bot.language as string | null) ?? "en",
+        }];
+      }));
       // Each resold chatbot has its OWN monthly allowance (whitelabel_client),
       // separate from the reseller's own chatbot — no shared pool.
       const usageByKey = new Map(bots.map((b) => [b.apiKey, usageOf(b, ctx.user.plan ?? "cloud")]));
@@ -2386,7 +2401,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
       return rows.map((r) => ({
         ...r,
         logoUrl: logoByKey.get(r.apiKey) ?? null,
-        ...(badgeByKey.get(r.apiKey) ?? { poweredByText: null, poweredByUrl: null }),
+        ...(badgeByKey.get(r.apiKey) ?? {}),
         usage: usageByKey.get(r.apiKey) ?? { used: 0, limit: 0 },
         ...(knowledgeByKey.get(r.apiKey) ?? { lastScannedAt: null, knowledgeChars: 0, productsLearned: 0 }),
         // false → the client row has no chatbot behind its API key (would 403)
@@ -2403,6 +2418,15 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         logoUrl: z.string().nullable().optional(),
         poweredByText: z.string().max(64).nullable().optional(),
         poweredByUrl: z.string().max(255).nullable().optional(),
+        secondaryColor: z.string().max(16).optional(),
+        buttonColor: z.string().max(32).nullable().optional(),
+        buttonIconUrl: z.string().nullable().optional(),
+        placeholder: z.string().max(256).optional(),
+        disclaimer: z.string().max(300).nullable().optional(),
+        position: z.enum(["bottom-right", "bottom-left"]).optional(),
+        autoOpen: z.boolean().optional(),
+        autoOpenDelay: z.number().int().min(1).max(120).optional(),
+        language: z.string().max(8).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
@@ -2440,6 +2464,17 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
           avatarUrl: input.logoUrl ?? null,
           poweredByText: input.poweredByText ?? null,
           poweredByUrl: input.poweredByUrl ?? null,
+          // Full appearance/behaviour set — these columns always existed on
+          // `chatbots`, they were simply never written for client bots.
+          secondaryColor: input.secondaryColor ?? "#1e40af",
+          buttonColor: input.buttonColor ?? null,
+          buttonIconUrl: input.buttonIconUrl ?? null,
+          placeholder: input.placeholder ?? "Type your question...",
+          disclaimer: input.disclaimer ?? null,
+          position: input.position ?? "bottom-right",
+          autoOpen: input.autoOpen ?? false,
+          autoOpenDelay: input.autoOpenDelay ?? 5,
+          language: input.language ?? "en",
           welcomeMessage: input.welcomeMessage ?? "Hi! How can I help you?",
           siteUrl: input.siteUrl,
           isActive: true,
@@ -2493,12 +2528,26 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         logoUrl: z.string().nullable().optional(),
         poweredByText: z.string().max(64).nullable().optional(),
         poweredByUrl: z.string().max(255).nullable().optional(),
+        secondaryColor: z.string().max(16).optional(),
+        buttonColor: z.string().max(32).nullable().optional(),
+        buttonIconUrl: z.string().nullable().optional(),
+        placeholder: z.string().max(256).optional(),
+        disclaimer: z.string().max(300).nullable().optional(),
+        position: z.enum(["bottom-right", "bottom-left"]).optional(),
+        autoOpen: z.boolean().optional(),
+        autoOpenDelay: z.number().int().min(1).max(120).optional(),
+        language: z.string().max(8).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
         const { eq: eqOp } = await import("drizzle-orm");
-        const { id, logoUrl, poweredByText, poweredByUrl, ...data } = input;
+        const {
+          id, logoUrl, poweredByText, poweredByUrl,
+          secondaryColor, buttonColor, buttonIconUrl, placeholder,
+          disclaimer, position, autoOpen, autoOpenDelay, language,
+          ...data
+        } = input;
         const [existing] = await db.select().from(clients).where(eqOp(clients.id, id)).limit(1);
         if (!existing || existing.userId !== ctx.user.id) {
           throw new TRPCError({ code: "NOT_FOUND" });
@@ -2516,6 +2565,17 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         if (logoUrl !== undefined) botSync.avatarUrl = logoUrl;
         if (poweredByText !== undefined) botSync.poweredByText = poweredByText;
         if (poweredByUrl !== undefined) botSync.poweredByUrl = poweredByUrl;
+        // Only fields the form actually sent are touched, so editing one tab
+        // never resets settings configured in another.
+        if (secondaryColor !== undefined) botSync.secondaryColor = secondaryColor;
+        if (buttonColor !== undefined) botSync.buttonColor = buttonColor;
+        if (buttonIconUrl !== undefined) botSync.buttonIconUrl = buttonIconUrl;
+        if (placeholder !== undefined) botSync.placeholder = placeholder;
+        if (disclaimer !== undefined) botSync.disclaimer = disclaimer;
+        if (position !== undefined) botSync.position = position;
+        if (autoOpen !== undefined) botSync.autoOpen = autoOpen;
+        if (autoOpenDelay !== undefined) botSync.autoOpenDelay = autoOpenDelay;
+        if (language !== undefined) botSync.language = language;
         // A changed website means the old knowledge is stale — re-learn it.
         if (data.siteUrl) {
           const newUrl = data.siteUrl;

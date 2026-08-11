@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   Users2, Globe, Code2, Plus, ArrowRight, CheckCircle, Zap,
   Copy, RefreshCw, Trash2, Pencil, Eye, EyeOff, ExternalLink, X, FileText,
-  Gauge, Loader2, AlertTriangle, GraduationCap
+  Gauge, Loader2, AlertTriangle, GraduationCap, Palette, Sparkles, Settings2, MessageSquare
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
@@ -28,6 +28,18 @@ interface ClientFormData {
   logoUrl?: string | null;
   poweredByText?: string | null;
   poweredByUrl?: string | null;
+  // Full customization, matching what the owner's own chatbot already has.
+  // These columns already exist on `chatbots` — they were simply never exposed
+  // in this form, so every client widget sat on the defaults.
+  secondaryColor?: string;
+  buttonColor?: string;
+  buttonIconUrl?: string | null;
+  placeholder?: string;
+  disclaimer?: string;
+  position?: "bottom-right" | "bottom-left";
+  autoOpen?: boolean;
+  autoOpenDelay?: number;
+  language?: string;
 }
 
 const defaultForm: ClientFormData = {
@@ -39,6 +51,15 @@ const defaultForm: ClientFormData = {
   logoUrl: null,
   poweredByText: null,
   poweredByUrl: null,
+  secondaryColor: "#1e40af",
+  buttonColor: "#111827",
+  buttonIconUrl: null,
+  placeholder: "Type your question...",
+  disclaimer: "",
+  position: "bottom-right",
+  autoOpen: false,
+  autoOpenDelay: 5,
+  language: "en",
 };
 
 // ─── Snippet modal ────────────────────────────────────────────────────────────
@@ -327,7 +348,9 @@ function ClientFormModal({
 }) {
   const [form, setForm] = useState<ClientFormData>(initial ?? defaultForm);
   const isEdit = !!initial?.id;
+  const [tab, setTab] = useState<"brand" | "look" | "behavior">("brand");
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingIcon, setUploadingIcon] = useState(false);
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -349,6 +372,26 @@ function ClientFormModal({
     }
   }
 
+  async function handleButtonIconUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingIcon(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData, credentials: "include" });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = (await res.json()) as { url: string };
+      setForm((f) => ({ ...f, buttonIconUrl: data.url }));
+      toast.success("Icon uploaded");
+    } catch {
+      toast.error("Icon upload failed");
+    } finally {
+      setUploadingIcon(false);
+      e.target.value = "";
+    }
+  }
+
   const set = (key: keyof ClientFormData) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [key]: e.target.value }));
 
@@ -360,7 +403,7 @@ function ClientFormModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-md max-h-[85dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 rounded-2xl">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[88dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 rounded-2xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Client" : "Add New Client"}</DialogTitle>
         </DialogHeader>
@@ -373,29 +416,51 @@ function ClientFormModal({
           </div>
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-3">
-            <div>
-              <Label htmlFor="name" className="text-xs">Client name *</Label>
-              <Input id="name" value={form.name} onChange={set("name")} placeholder="Acme Corp" className="mt-1" required />
-            </div>
-            <div>
-              <Label htmlFor="siteUrl" className="text-xs">Website URL *</Label>
-              <Input id="siteUrl" value={form.siteUrl} onChange={set("siteUrl")} placeholder="https://acme.com" type="url" className="mt-1" required />
-            </div>
+          {/* Tabs keep a 16-field form readable — same grouping as the owner's
+              own Chatbot Config, so both screens feel like the same product. */}
+          <div className="flex gap-1 p-1 rounded-xl bg-muted/30 border border-border/40">
+            {([
+              { id: "brand" as const, label: "Brand", icon: Palette },
+              { id: "look" as const, label: "Appearance", icon: Sparkles },
+              { id: "behavior" as const, label: "Behavior", icon: Settings2 },
+            ]).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  tab === id ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />{label}
+              </button>
+            ))}
           </div>
 
-          <Separator />
+          {/* ── Brand: who the client is and what the bot is called ────────── */}
+          {tab === "brand" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="name" className="text-xs">Client name *</Label>
+                  <Input id="name" value={form.name} onChange={set("name")} placeholder="Acme Corp" className="mt-1" required />
+                </div>
+                <div>
+                  <Label htmlFor="siteUrl" className="text-xs">Website URL *</Label>
+                  <Input id="siteUrl" value={form.siteUrl} onChange={set("siteUrl")} placeholder="https://acme.com" type="url" className="mt-1" required />
+                  <p className="text-[11px] text-muted-foreground mt-1">The site the bot learns from — products, policies and pages.</p>
+                </div>
+              </div>
 
-          <div className="space-y-3">
-            <p className="text-xs font-medium text-muted-foreground">Chatbot Branding</p>
-            <div>
-              <Label htmlFor="brandName" className="text-xs">Chatbot name</Label>
-              <Input id="brandName" value={form.brandName} onChange={set("brandName")} placeholder="AI Assistant" className="mt-1" />
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
+              <div>
+                <Label htmlFor="brandName" className="text-xs">Chatbot name</Label>
+                <Input id="brandName" value={form.brandName} onChange={set("brandName")} placeholder="AI Assistant" className="mt-1" />
+                <p className="text-[11px] text-muted-foreground mt-1">Leave empty to show only the logo in the chat header.</p>
+              </div>
+
+              <div>
                 <Label className="text-xs">Chat logo</Label>
-                <div className="flex items-center gap-3 flex-wrap mt-1 mb-3">
+                <div className="flex items-center gap-3 flex-wrap mt-1">
                   <div className="w-12 h-12 rounded-full border border-border/40 bg-muted/30 overflow-hidden flex items-center justify-center shrink-0">
                     {form.logoUrl ? (
                       <img src={form.logoUrl} alt="Logo" className="w-full h-full object-cover" />
@@ -415,8 +480,11 @@ function ClientFormModal({
                       Remove
                     </button>
                   )}
-                  <p className="basis-full text-[11px] text-muted-foreground">Shown in the chat header and on the floating button of this client's widget.</p>
+                  <p className="basis-full text-[11px] text-muted-foreground">Shown in the chat header of this client's widget.</p>
                 </div>
+              </div>
+
+              <div>
                 <Label className="text-xs">"Powered by" badge</Label>
                 <Input
                   className="mt-1 mb-1"
@@ -426,30 +494,203 @@ function ClientFormModal({
                   onChange={(e) => setForm((f) => ({ ...f, poweredByText: e.target.value }))}
                 />
                 <Input
-                  className="mb-3"
                   value={form.poweredByUrl ?? ""}
                   maxLength={255}
                   placeholder="Link (optional) — https://clientbrand.com"
                   disabled={!(form.poweredByText ?? "Lynx AI").trim()}
                   onChange={(e) => setForm((f) => ({ ...f, poweredByUrl: e.target.value }))}
                 />
-                <Label htmlFor="brandColor" className="text-xs">Brand color</Label>
-                <Input id="brandColor" value={form.brandColor} onChange={set("brandColor")} placeholder="#3b82f6" className="mt-1 font-mono text-xs" />
-              </div>
-              <div className="mt-5">
-                <input
-                  type="color"
-                  value={form.brandColor}
-                  onChange={e => setForm(f => ({ ...f, brandColor: e.target.value }))}
-                  className="w-10 h-10 rounded-lg border border-border/40 cursor-pointer bg-transparent"
-                />
               </div>
             </div>
-            <div>
-              <Label htmlFor="welcomeMessage" className="text-xs">Welcome message</Label>
-              <Input id="welcomeMessage" value={form.welcomeMessage} onChange={set("welcomeMessage")} placeholder="Hi! How can I help you?" className="mt-1" />
+          )}
+
+          {/* ── Appearance: colors and the floating button ─────────────────── */}
+          {tab === "look" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="brandColor" className="text-xs">Primary color</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="color"
+                      value={form.brandColor}
+                      onChange={e => setForm(f => ({ ...f, brandColor: e.target.value }))}
+                      className="w-10 h-10 rounded-lg border border-border/40 cursor-pointer bg-transparent shrink-0"
+                    />
+                    <Input id="brandColor" value={form.brandColor} onChange={set("brandColor")} placeholder="#3b82f6" className="font-mono text-xs" />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="secondaryColor" className="text-xs">Secondary color</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="color"
+                      value={form.secondaryColor ?? "#1e40af"}
+                      onChange={e => setForm(f => ({ ...f, secondaryColor: e.target.value }))}
+                      className="w-10 h-10 rounded-lg border border-border/40 cursor-pointer bg-transparent shrink-0"
+                    />
+                    <Input id="secondaryColor" value={form.secondaryColor ?? ""} onChange={set("secondaryColor")} placeholder="#1e40af" className="font-mono text-xs" />
+                  </div>
+                </div>
+              </div>
+              {/* Live preview of the header gradient — the whole point of having
+                  two colors instead of one. */}
+              <div
+                className="rounded-xl h-12 flex items-center px-3 gap-2 border border-border/40"
+                style={{ background: `linear-gradient(135deg, ${form.brandColor}, ${form.secondaryColor ?? form.brandColor})` }}
+              >
+                {form.logoUrl && <img src={form.logoUrl} alt="" className="w-7 h-7 rounded-full object-cover bg-white/20" />}
+                <span className="text-white text-xs font-semibold drop-shadow">{form.brandName || "AI Assistant"}</span>
+              </div>
+
+              <Separator />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="buttonColor" className="text-xs">Floating button color</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="color"
+                      value={form.buttonColor ?? "#111827"}
+                      onChange={e => setForm(f => ({ ...f, buttonColor: e.target.value }))}
+                      className="w-10 h-10 rounded-lg border border-border/40 cursor-pointer bg-transparent shrink-0"
+                    />
+                    <Input id="buttonColor" value={form.buttonColor ?? ""} onChange={set("buttonColor")} placeholder="#111827" className="font-mono text-xs" />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">The bubble visitors see before opening the chat.</p>
+                </div>
+                <div>
+                  <Label className="text-xs">Button icon</Label>
+                  <div className="flex items-center gap-3 mt-1">
+                    <div
+                      className="w-12 h-12 rounded-full border border-border/40 overflow-hidden flex items-center justify-center shrink-0"
+                      style={{ background: form.buttonColor ?? "#111827" }}
+                    >
+                      {form.buttonIconUrl ? (
+                        <img src={form.buttonIconUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <MessageSquare className="w-5 h-5 text-white" />
+                      )}
+                    </div>
+                    <label className="cursor-pointer">
+                      <input type="file" accept="image/*" className="hidden" onChange={handleButtonIconUpload} />
+                      <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border/40 bg-muted/30 text-xs hover:border-primary/40 transition-colors">
+                        {uploadingIcon ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                        {uploadingIcon ? "Uploading..." : form.buttonIconUrl ? "Change" : "Upload"}
+                      </span>
+                    </label>
+                    {form.buttonIconUrl && (
+                      <button type="button" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => setForm((f) => ({ ...f, buttonIconUrl: null }))}>
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs">Position on screen</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {[
+                    { value: "bottom-right" as const, label: "Bottom right" },
+                    { value: "bottom-left" as const, label: "Bottom left" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, position: opt.value }))}
+                      className={`px-3 py-2 rounded-lg border text-xs transition-colors ${
+                        (form.position ?? "bottom-right") === opt.value
+                          ? "border-primary/40 bg-primary/10 text-primary"
+                          : "border-border/40 bg-muted/20 text-muted-foreground hover:border-primary/20"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* ── Behavior: what it says and when it opens ───────────────────── */}
+          {tab === "behavior" && (
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="welcomeMessage" className="text-xs">Welcome message</Label>
+                <Input id="welcomeMessage" value={form.welcomeMessage} onChange={set("welcomeMessage")} placeholder="Hi! How can I help you?" className="mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="placeholder" className="text-xs">Input placeholder</Label>
+                <Input id="placeholder" value={form.placeholder ?? ""} onChange={set("placeholder")} placeholder="Type your question..." className="mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="disclaimer" className="text-xs">Disclaimer</Label>
+                <Input id="disclaimer" value={form.disclaimer ?? ""} onChange={set("disclaimer")} maxLength={300} placeholder="e.g. For research purposes only" className="mt-1" />
+                <p className="text-[11px] text-muted-foreground mt-1">Small print under the message box. Leave empty to show nothing.</p>
+              </div>
+
+              <Separator />
+
+              <div>
+                <Label className="text-xs">Language</Label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {[
+                    { key: "en", label: "English" },
+                    { key: "es", label: "Spanish" },
+                    { key: "pt", label: "Portuguese" },
+                    { key: "fr", label: "French" },
+                    { key: "de", label: "German" },
+                    { key: "it", label: "Italian" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, language: opt.key }))}
+                      className={`px-3 py-1.5 rounded-lg border text-xs transition-colors ${
+                        (form.language ?? "en") === opt.key
+                          ? "border-primary/40 bg-primary/10 text-primary"
+                          : "border-border/40 bg-muted/20 text-muted-foreground hover:border-primary/20"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">The bot opens in this language and switches only if the visitor writes in another one.</p>
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border border-border/40 bg-muted/20 p-3">
+                <div className="min-w-0 pr-3">
+                  <p className="text-xs font-medium">Open automatically</p>
+                  <p className="text-[11px] text-muted-foreground">Pops the chat open on its own after a few seconds.</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!!form.autoOpen}
+                  onClick={() => setForm((f) => ({ ...f, autoOpen: !f.autoOpen }))}
+                  className={`w-11 h-6 rounded-full transition-colors shrink-0 relative ${form.autoOpen ? "bg-primary" : "bg-muted-foreground/30"}`}
+                >
+                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${form.autoOpen ? "left-[1.375rem]" : "left-0.5"}`} />
+                </button>
+              </div>
+              {form.autoOpen && (
+                <div>
+                  <Label htmlFor="autoOpenDelay" className="text-xs">Delay (seconds)</Label>
+                  <Input
+                    id="autoOpenDelay"
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={form.autoOpenDelay ?? 5}
+                    onChange={(e) => setForm((f) => ({ ...f, autoOpenDelay: Math.max(1, Math.min(120, Number(e.target.value) || 1)) }))}
+                    className="mt-1 w-32"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
@@ -795,6 +1036,23 @@ function ClientsContent() {
                               logoUrl: (client as { logoUrl?: string | null }).logoUrl ?? null,
                               poweredByText: (client as { poweredByText?: string | null }).poweredByText ?? null,
                               poweredByUrl: (client as { poweredByUrl?: string | null }).poweredByUrl ?? null,
+                              ...(() => {
+                                // Preload what is saved on the bot; without this the
+                                // form would open on defaults and overwrite the
+                                // client's real settings on the next save.
+                                const c = client as Record<string, unknown>;
+                                return {
+                                  secondaryColor: (c.secondaryColor as string) ?? "#1e40af",
+                                  buttonColor: (c.buttonColor as string) ?? "#111827",
+                                  buttonIconUrl: (c.buttonIconUrl as string | null) ?? null,
+                                  placeholder: (c.placeholder as string) ?? "Type your question...",
+                                  disclaimer: (c.disclaimer as string) ?? "",
+                                  position: ((c.position as string) === "bottom-left" ? "bottom-left" : "bottom-right") as "bottom-right" | "bottom-left",
+                                  autoOpen: Boolean(c.autoOpen),
+                                  autoOpenDelay: (c.autoOpenDelay as number) ?? 5,
+                                  language: (c.language as string) ?? "en",
+                                };
+                              })(),
                             })}
                           >
                             <Pencil className="w-3.5 h-3.5" />
@@ -843,6 +1101,23 @@ function ClientsContent() {
                               logoUrl: (client as { logoUrl?: string | null }).logoUrl ?? null,
                               poweredByText: (client as { poweredByText?: string | null }).poweredByText ?? null,
                               poweredByUrl: (client as { poweredByUrl?: string | null }).poweredByUrl ?? null,
+                              ...(() => {
+                                // Preload what is saved on the bot; without this the
+                                // form would open on defaults and overwrite the
+                                // client's real settings on the next save.
+                                const c = client as Record<string, unknown>;
+                                return {
+                                  secondaryColor: (c.secondaryColor as string) ?? "#1e40af",
+                                  buttonColor: (c.buttonColor as string) ?? "#111827",
+                                  buttonIconUrl: (c.buttonIconUrl as string | null) ?? null,
+                                  placeholder: (c.placeholder as string) ?? "Type your question...",
+                                  disclaimer: (c.disclaimer as string) ?? "",
+                                  position: ((c.position as string) === "bottom-left" ? "bottom-left" : "bottom-right") as "bottom-right" | "bottom-left",
+                                  autoOpen: Boolean(c.autoOpen),
+                                  autoOpenDelay: (c.autoOpenDelay as number) ?? 5,
+                                  language: (c.language as string) ?? "en",
+                                };
+                              })(),
                             })}>
                             <Pencil className="w-3.5 h-3.5" />Edit
                           </Button>
