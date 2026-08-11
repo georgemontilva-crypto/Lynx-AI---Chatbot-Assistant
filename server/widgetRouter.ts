@@ -35,6 +35,37 @@ export type ProductCard = { name: string; url: string; imageUrl: string; price: 
  * than dropping the card, so a good product still shows.
  */
 /**
+ * The site's own catalog/shop page, taken from the scanned SITE MAP.
+ * Used for the "View all products" link under the cards, so a visitor who wants
+ * the full range lands on the real shop instead of being limited to the handful
+ * of cards that fit in a chat reply.
+ */
+export function findCatalogUrl(siteContext: string | null | undefined, siteUrl: string | null | undefined): string {
+  if (!siteContext || !siteUrl) return "";
+  let origin = "";
+  try { origin = new URL(siteUrl).origin; } catch { return ""; }
+  const mapBlock = siteContext.split("=== SITE MAP")[1];
+  if (!mapBlock) return "";
+  const paths: string[] = [];
+  for (const line of mapBlock.split("\n")) {
+    const m = line.match(/^\s*(PRODUCT|PAGE|INFO)\s+(\/\S*)/);
+    if (m) paths.push(m[2]);
+  }
+  const catalogRe = /^\/(products?|shop|tienda|store|catalog(?:o|ue)?|collections?|compounds?|lineup|merch)\/?$/i;
+  // Prefer an exact catalog root; otherwise the shortest product-ish path,
+  // which on nearly every store is the listing page rather than an item page.
+  const exact = paths.find(p => catalogRe.test(p));
+  if (exact) return origin + exact;
+  const productish = paths
+    .filter(p => /products?|shop|tienda|store|catalog|collection|compounds?|lineup/i.test(p))
+    .sort((a, b) => a.split("/").length - b.split("/").length || a.length - b.length)[0];
+  if (!productish) return "";
+  // An item page like /compounds/bpc-157 → use its parent listing (/compounds)
+  const segments = productish.split("/").filter(Boolean);
+  return origin + "/" + segments[0];
+}
+
+/**
  * Fill in each card's url / image / price straight from the scanned PRODUCT
  * CATALOG, matching by name.
  *
@@ -111,7 +142,7 @@ export function sanitizeProducts(raw: unknown): ProductCard[] {
       price: typeof p.price === "string" ? p.price.trim().slice(0, 24) : "",
       note: typeof p.note === "string" ? p.note.trim().slice(0, 90) : "",
     });
-    if (out.length >= 6) break;
+    if (out.length >= 12) break;
   }
   return out;
 }
@@ -715,7 +746,7 @@ STYLE (this is what makes you feel human, not a bot):
 8. Usually 2-4 sentences. When educating (rule 5) you may go slightly longer, but keep it digestible — no long lectures, no bullet lists unless comparing a few concrete options.
 9. LANGUAGE — STRICT: Your language is ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}. Write EVERY message entirely in it, including the greeting, and NEVER mix two languages in one message (no "¡Hola!" opening an English reply). The site content, product notes and training material below may be written in a DIFFERENT language — that is reference material only and must NEVER change the language you write in. The ONLY thing that changes your language is the visitor's own message: if THEY clearly write in another language, switch fully to theirs and stay there until they switch back.
 10. Suggest 3-4 natural follow-up questions as quickReplies (under 40 chars each).
-10b. PRODUCT CARDS: when you point the visitor to specific products, visual cards with the photo, price and a button are rendered automatically right under your message. So NEVER paste a wall of raw URLs or markdown image syntax into your text — it renders as unreadable clutter. Instead write 2-4 warm sentences (what you picked and why, grouped by need if it helps) and let the cards carry the links. Mention at most 6 products at a time; if the catalog is bigger, ask what they're after and show the best matches for that.
+10b. PRODUCT CARDS: when you point the visitor to specific products, visual cards with the photo, price and a button are rendered automatically right under your message. So NEVER paste a wall of raw URLs or markdown image syntax into your text — it renders as unreadable clutter. Instead write 2-4 warm sentences (what you picked and why, grouped by need if it helps) and let the cards carry the links. When the visitor asks for "the catalog" or "what do you sell", list AT LEAST 10 (up to 12) — showing 5 of 15 looks like a broken store. Only narrow to 3-5 picks once they've told you what they're after.
 10c. FORMATTING — GLOBAL RULES, every website, every reply:
    - The chat renders markdown. Use **bold** for names, a new line per item, and "- " for bullets. NEVER run a list together inside one paragraph separated by dashes — it comes out as an unreadable block.
    - When you list products, ONE PER LINE, always in the shape: "- **Name** — what it's for". Say what each one DOES in a few words; a bare list of names and prices is useless to someone who doesn't know the field yet.
@@ -775,7 +806,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
                 },
                 products: {
                   type: "array",
-                  description: "Products your reply points to, rendered as visual cards. Copy name/url/imageUrl/price EXACTLY from the PRODUCT CATALOG in context — never invent one. Max 6. Empty array if the reply names no specific product.",
+                  description: "Products your reply points to, rendered as visual cards. Give the NAME exactly as it appears in the PRODUCT CATALOG (that is how the server matches it) plus a short 'note' saying what it is for. Leave url/imageUrl/price as empty strings — the server fills those from the catalog, so never invent or copy them. Up to 12, in the order you mentioned them. Empty array if the reply names no specific product.",
                   items: {
                     type: "object",
                     properties: {
@@ -826,7 +857,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
         assistantMessage: reply,
       });
 
-      return res.json({ reply, quickReplies, products, usage: { used: usage.used, limit: usage.limit, plan: userPlan }, emailSaved: (!emailResult.codeSent && emailResult.email) ? emailResult.email : undefined });
+      return res.json({ reply, quickReplies, products, catalogUrl: products.length ? findCatalogUrl(chatbot.siteContext, chatbot.siteUrl) : "", usage: { used: usage.used, limit: usage.limit, plan: userPlan }, emailSaved: (!emailResult.codeSent && emailResult.email) ? emailResult.email : undefined });
     } catch (err) {
       console.error("[Widget] Chat error:", err);
       return res.status(500).json({ error: "Internal server error" });
@@ -958,7 +989,7 @@ STYLE (this is what makes you feel human, not a bot):
 8. Usually 2-4 sentences. When educating (rule 5) you may go slightly longer, but keep it digestible — no long lectures, no bullet lists unless comparing a few concrete options.
 9. LANGUAGE — STRICT: Your language is ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}. Write EVERY message entirely in it, including the greeting, and NEVER mix two languages in one message (no "¡Hola!" opening an English reply). The site content, product notes and training material below may be written in a DIFFERENT language — that is reference material only and must NEVER change the language you write in. The ONLY thing that changes your language is the visitor's own message: if THEY clearly write in another language, switch fully to theirs and stay there until they switch back.
 10. Do NOT include quick reply suggestions in your text response — they will be generated separately.
-10b. PRODUCT CARDS: when you point the visitor to specific products, visual cards with the photo, price and a button are rendered automatically right under your message. So NEVER paste a wall of raw URLs or markdown image syntax into your text — it renders as unreadable clutter. Instead write 2-4 warm sentences (what you picked and why, grouped by need if it helps) and let the cards carry the links. Mention at most 6 products at a time; if the catalog is bigger, ask what they're after and show the best matches for that.
+10b. PRODUCT CARDS: when you point the visitor to specific products, visual cards with the photo, price and a button are rendered automatically right under your message. So NEVER paste a wall of raw URLs or markdown image syntax into your text — it renders as unreadable clutter. Instead write 2-4 warm sentences (what you picked and why, grouped by need if it helps) and let the cards carry the links. When the visitor asks for "the catalog" or "what do you sell", list AT LEAST 10 (up to 12) — showing 5 of 15 looks like a broken store. Only narrow to 3-5 picks once they've told you what they're after.
 10c. FORMATTING — GLOBAL RULES, every website, every reply:
    - The chat renders markdown. Use **bold** for names, a new line per item, and "- " for bullets. NEVER run a list together inside one paragraph separated by dashes — it comes out as an unreadable block.
    - When you list products, ONE PER LINE, always in the shape: "- **Name** — what it's for". Say what each one DOES in a few words; a bare list of names and prices is useless to someone who doesn't know the field yet.
@@ -1089,7 +1120,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
           messages: [
             ...messages,
             { role: "assistant" as const, content: fullReply },
-            { role: "user" as const, content: "Two things, as JSON only.\n1) quickReplies: 3-4 short follow-up questions the visitor might want to ask next, each max 40 chars.\n2) products: the products your previous reply actually mentioned or recommended, so they can be shown as visual cards. Copy name / url / imageUrl / price EXACTLY from the PRODUCT CATALOG in the system context — never invent or guess a URL or an image. Max 6, in the order you mentioned them. Use \"\" for any field the catalog does not have. If your reply did not point to specific products, return an empty array." },
+            { role: "user" as const, content: "Two things, as JSON only.\n1) quickReplies: 3-4 short follow-up questions the visitor might want to ask next, each max 40 chars.\n2) products: every product your previous reply mentioned or recommended, so they can be shown as visual cards. For each one give ONLY: name — exactly as written in the PRODUCT CATALOG, since the server matches on it — and note: 3-6 words on what it is for. Leave url, imageUrl and price as empty strings; the server fills them from the catalog, so never copy or invent them. Up to 12, in the order you mentioned them. If your reply named no specific product, return an empty array." },
           ],
           responseFormat: {
             type: "json_schema",
@@ -1153,7 +1184,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
         assistantMessage: fullReply,
       });
 
-      sendEvent({ done: true, quickReplies, products, usage: { used: usage.used, limit: usage.limit, plan: userPlan }, emailSaved: (!emailResult.codeSent && emailResult.email) ? emailResult.email : undefined });
+      sendEvent({ done: true, quickReplies, products, catalogUrl: products.length ? findCatalogUrl(chatbot.siteContext, chatbot.siteUrl) : "", usage: { used: usage.used, limit: usage.limit, plan: userPlan }, emailSaved: (!emailResult.codeSent && emailResult.email) ? emailResult.email : undefined });
       res.end();
     } catch (err) {
       console.error("[Widget] Stream chat error:", err);
@@ -1820,6 +1851,7 @@ function buildFrameApp(): string {
     '.lynx-card-price{font-size:12.5px;font-weight:700;margin-top:3px;letter-spacing:-0.01em;}',
     '.lynx-card-go{font-size:11px;font-weight:650;padding:6px 11px;border-radius:999px;color:#fff;white-space:nowrap;flex-shrink:0;letter-spacing:0.01em;}',
     // Placeholder when the catalog has no photo — keeps every card the same shape
+    '.lynx-cards-all{display:block;text-align:center;padding:9px;border:1px dashed;border-radius:12px;font-size:12px;font-weight:650;text-decoration:none;background:rgba(0,0,0,0.015);}',
     '.lynx-card-ph{width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,#f3f4f6,#e5e7eb);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;color:#9ca3af;flex-shrink:0;}',
     '@media (max-width:480px){#lynx-widget-panel{bottom:0 !important;left:0 !important;right:0 !important;width:100vw !important;max-width:100vw !important;height:100% !important;height:100dvh !important;max-height:100% !important;max-height:100dvh !important;border-radius:0 !important;}#lynx-widget-messages{padding:12px 12px !important;}.lynx-msg{font-size:14px !important;max-width:86% !important;}#lynx-widget-input-row{padding:10px 10px calc(10px + env(safe-area-inset-bottom));}#lynx-widget-input-row textarea{font-size:16px !important;}}',
     // Full-page mode (shared link): header + input span the full width; the
@@ -2344,7 +2376,7 @@ function buildFrameApp(): string {
   // Render quick reply buttons below the last assistant message
   // Product cards under the assistant's reply. Built with DOM nodes only —
   // never innerHTML — so catalog text can't inject markup into the chat.
-  function showProductCards(products) {
+  function showProductCards(products, catalogUrl) {
     if (!products || !products.length || !messagesEl) return;
     var wrap = document.createElement('div');
     wrap.className = 'lynx-cards';
@@ -2406,6 +2438,19 @@ function buildFrameApp(): string {
       wrap.appendChild(card);
     });
     if (!wrap.children.length) return;
+    // "View all" — a chat reply can only hold a handful of cards, so always
+    // offer the real shop page for the full range.
+    if (catalogUrl) {
+      var all = document.createElement('a');
+      all.className = 'lynx-cards-all';
+      all.href = catalogUrl;
+      all.target = '_blank';
+      all.rel = 'noopener noreferrer';
+      all.textContent = 'View all products \u2192';
+      all.style.color = config.primaryColor || '#111827';
+      all.style.borderColor = (config.primaryColor || '#111827') + '33';
+      wrap.appendChild(all);
+    }
     messagesEl.appendChild(wrap);
     lynxScrollBottom(true);
   }
@@ -2600,7 +2645,7 @@ function buildFrameApp(): string {
                 history.push({ role: 'assistant', content: accumulatedReply });
                 messageCount++;
                 if (evt.products && evt.products.length > 0) {
-                  showProductCards(evt.products);
+                  showProductCards(evt.products, evt.catalogUrl);
                 }
                 if (evt.quickReplies && evt.quickReplies.length > 0) {
                   showQuickReplies(evt.quickReplies);
