@@ -71,6 +71,23 @@ export interface SafeFetchResult {
  * IPs against private/loopback/link-local/metadata ranges, and re-validates
  * on every redirect hop instead of letting the HTTP client follow them blindly.
  */
+/**
+ * Discard a response body we are not going to read.
+ *
+ * CRITICAL: undici's BodyReadable emits an asynchronous 'error' event
+ * (UND_ERR_ABORTED) when destroyed mid-flight. A Readable with no 'error'
+ * listener makes Node throw "Unhandled 'error' event", which killed the whole
+ * server process — a single redirect during a site scan took the app down and
+ * Railway restarted the container, so the request died with no JSON response.
+ * Attaching the listener BEFORE destroying keeps the abort local.
+ */
+function discardBody(body: { on: (e: string, cb: (err?: unknown) => void) => void; destroy: () => void }): void {
+  try {
+    body.on("error", () => { /* aborted on purpose — nothing to handle */ });
+    body.destroy();
+  } catch { /* already closed */ }
+}
+
 export async function safeFetchText(
   inputUrl: string,
   opts: { timeoutMs?: number; maxBytes?: number; userAgent?: string } = {}
@@ -92,7 +109,7 @@ export async function safeFetchText(
     });
 
     if (statusCode >= 300 && statusCode < 400 && headers.location) {
-      body.destroy();
+      discardBody(body);
       if (hop === MAX_REDIRECTS) {
         throw new Error("Too many redirects");
       }
@@ -103,13 +120,24 @@ export async function safeFetchText(
 
     const chunks: Buffer[] = [];
     let total = 0;
-    for await (const chunk of body) {
-      total += (chunk as Buffer).length;
-      if (total > maxBytes) {
-        body.destroy();
-        break;
+    // Same reasoning as discardBody: a stream error (timeout, connection reset,
+    // aborted body) must surface as a normal rejection this caller can catch,
+    // never as an unhandled 'error' event that takes the process down.
+    body.on("error", () => { /* handled by the try/catch below */ });
+    try {
+      for await (const chunk of body) {
+        total += (chunk as Buffer).length;
+        if (total > maxBytes) {
+          discardBody(body);
+          break;
+        }
+        chunks.push(chunk as Buffer);
       }
-      chunks.push(chunk as Buffer);
+    } catch (err) {
+      // Partial content is still useful to the scanner; only fail if we got nothing.
+      if (chunks.length === 0) {
+        throw new Error(`Could not read response body: ${(err as Error)?.message ?? "aborted"}`);
+      }
     }
     return { status: statusCode, text: Buffer.concat(chunks).toString("utf-8") };
   }

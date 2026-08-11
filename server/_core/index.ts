@@ -137,6 +137,18 @@ async function startServer() {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
+  // ── Last-resort safety net ────────────────────────────────────────────────
+  // A single unhandled stream/socket error used to kill the whole process and
+  // take every user's widget down with it (Railway then restarted the
+  // container). These handlers log loudly and keep serving: a failed background
+  // task must never be an outage. Genuine startup failures still exit below.
+  process.on("uncaughtException", (err) => {
+    console.error("[FATAL-CAUGHT] Uncaught exception — server kept alive:", err);
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error("[FATAL-CAUGHT] Unhandled promise rejection — server kept alive:", reason);
+  });
+
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
   });
