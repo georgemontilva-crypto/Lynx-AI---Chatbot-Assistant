@@ -12,7 +12,7 @@ import { trpc } from "@/lib/trpc";
 import {
   Globe, Search, CheckCircle, AlertCircle, Loader2,
   FileText, ShoppingBag, BookOpen, Shield, RefreshCw,
-  Zap, Clock, TrendingUp, Gauge,
+  Zap, Clock, TrendingUp, Gauge, Sparkles,
 } from "lucide-react";
 
 type ScanStatus = "idle" | "scanning" | "complete" | "error";
@@ -118,8 +118,12 @@ export default function Scanner() {
 
   return (
     <DashboardShell title="Site Scanner">
-      <div className="space-y-6 max-w-4xl">
-        {/* URL Input */}
+      {/* Full width: the scanner report is dense (stats, SEO grades, page list,
+          catalog) and was squeezed into a 4xl column with the right half empty. */}
+      <div className="space-y-6 max-w-[1600px]">
+        {/* URL Input — paired with a "what happens" panel so the idle screen
+            isn't a small box floating in an empty page. */}
+        <div className={status === "idle" ? "grid grid-cols-1 lg:grid-cols-2 gap-6 items-start" : ""}>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
           <Card className="glass-card border-border/40">
             <CardHeader className="pb-3">
@@ -161,6 +165,42 @@ export default function Scanner() {
             </CardContent>
           </Card>
         </motion.div>
+
+        {status === "idle" && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
+            <Card className="glass-card border-border/40 h-full">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  What the scan learns
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    { icon: ShoppingBag, title: "Products", text: "Names, prices, links and photos — this is what powers the product cards in chat." },
+                    { icon: Shield, title: "Policies", text: "Shipping, returns, FAQ and terms, so answers match what your site actually says." },
+                    { icon: FileText, title: "Pages & structure", text: "A map of your visible sections, so the assistant never invents a URL." },
+                    { icon: TrendingUp, title: "SEO & speed", text: "A graded report of what's working and what to fix." },
+                  ].map(({ icon: Icon, title, text }) => (
+                    <div key={title} className="rounded-xl border border-border/40 bg-muted/20 p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <span className="text-xs font-semibold">{title}</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">{text}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed mt-3">
+                  A scan usually takes under a minute. Re-scan whenever you add products or change a policy —
+                  the assistant answers from the last scan.
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+        </div>
 
         {/* Scanning progress */}
         <AnimatePresence>
@@ -268,238 +308,247 @@ export default function Scanner() {
                 </Card>
               </div>
 
-              {/* Summary */}
-              <Card className="glass-card border-border/40">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-primary" />Site summary
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{result.summary}</p>
-                </CardContent>
-              </Card>
-
-              {/* SEO breakdown — GTmetrix-style graded categories + checks */}
-              {result.seoBreakdown && (
+              {/* Two columns on wide screens: what was learned on the left,
+                  how the site scores on the right. Single column below xl. */}
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+                <div className="space-y-4 min-w-0">
+                {/* Summary */}
                 <Card className="glass-card border-border/40">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-primary" />Desglose del puntaje SEO
-                      <span className="ml-auto text-lg font-bold">{result.seoBreakdown.score}<span className="text-xs text-muted-foreground font-normal">/100</span></span>
-                    </CardTitle>
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                      {result.seoBreakdown.source === "lighthouse"
-                        ? `Performance medido con Google Lighthouse ${result.seoBreakdown.webVitals?.lighthouseVersion ?? ""} (el mismo motor de GTmetrix/PageSpeed)`
-                        : "Performance estimado por mediciones HTTP (Lighthouse no disponible para esta URL)"}
-                    </p>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {result.seoBreakdown.webVitals && (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {[
-                          { label: "LCP", value: result.seoBreakdown.webVitals.lcpMs != null ? `${(result.seoBreakdown.webVitals.lcpMs / 1000).toFixed(1)}s` : "—", ok: (result.seoBreakdown.webVitals.lcpMs ?? 0) <= 2500, mid: (result.seoBreakdown.webVitals.lcpMs ?? 0) <= 4000 },
-                          { label: "TBT", value: result.seoBreakdown.webVitals.tbtMs != null ? `${Math.round(result.seoBreakdown.webVitals.tbtMs)}ms` : "—", ok: (result.seoBreakdown.webVitals.tbtMs ?? 0) <= 200, mid: (result.seoBreakdown.webVitals.tbtMs ?? 0) <= 600 },
-                          { label: "CLS", value: result.seoBreakdown.webVitals.cls != null ? result.seoBreakdown.webVitals.cls.toFixed(2) : "—", ok: (result.seoBreakdown.webVitals.cls ?? 0) <= 0.1, mid: (result.seoBreakdown.webVitals.cls ?? 0) <= 0.25 },
-                          { label: "FCP", value: result.seoBreakdown.webVitals.fcpMs != null ? `${(result.seoBreakdown.webVitals.fcpMs / 1000).toFixed(1)}s` : "—", ok: (result.seoBreakdown.webVitals.fcpMs ?? 0) <= 1800, mid: (result.seoBreakdown.webVitals.fcpMs ?? 0) <= 3000 },
-                        ].map((v) => (
-                          <div key={v.label} className="rounded-xl border border-border/40 bg-muted/20 p-2.5 text-center">
-                            <div className={`text-base font-bold ${v.ok ? "text-emerald-400" : v.mid ? "text-amber-400" : "text-red-400"}`}>{v.value}</div>
-                            <div className="text-[10px] text-muted-foreground font-medium">{v.label}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                      {result.seoBreakdown.categories.map((cat) => {
-                        const grade = cat.score >= 90 ? "A" : cat.score >= 80 ? "B" : cat.score >= 70 ? "C" : cat.score >= 60 ? "D" : "F";
-                        const color = cat.score >= 80 ? "text-emerald-400" : cat.score >= 60 ? "text-amber-400" : "text-red-400";
-                        return (
-                          <div key={cat.key} className="rounded-xl border border-border/40 bg-muted/20 p-2.5 text-center">
-                            <div className={`text-xl font-bold ${color}`}>{grade}</div>
-                            <div className="text-[11px] font-medium mt-0.5">{cat.label}</div>
-                            <div className="text-[10px] text-muted-foreground">{cat.score}/100 · {cat.weight}%</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="space-y-1.5">
-                      {result.seoBreakdown.checks.map((c) => (
-                        <div key={c.id} className="flex items-start gap-2 text-xs rounded-lg border border-border/30 bg-muted/10 px-2.5 py-1.5">
-                          <span className={`flex-shrink-0 mt-0.5 font-bold ${c.status === "pass" ? "text-emerald-400" : c.status === "warn" ? "text-amber-400" : "text-red-400"}`}>
-                            {c.status === "pass" ? "✓" : c.status === "warn" ? "⚠" : "✕"}
-                          </span>
-                          <span className="font-medium">{c.label}</span>
-                          <span className="text-muted-foreground ml-auto text-right">{c.detail}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Read report — honest account of what was scanned */}
-              {result.scanReport && (
-                <Card className="glass-card border-border/40">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-primary" />Reporte de lectura
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex flex-wrap gap-2">
-                      <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.homeReadable ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-red-400/40 bg-red-400/10 text-red-400"}`}>
-                        {result.scanReport.homeReadable ? "✓ Home page read" : "✕ Home page unreadable"}
-                      </span>
-                      <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.sitemapFound ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-amber-400/40 bg-amber-400/10 text-amber-400"}`}>
-                        {result.scanReport.sitemapFound ? `✓ Sitemap encontrado (${result.scanReport.sitemapUrlCount} URLs)` : "⚠ Sin sitemap"}
-                      </span>
-                      <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.storeCatalogFound ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-border/40 bg-muted/20 text-muted-foreground"}`}>
-                        {result.scanReport.storeCatalogFound ? "✓ Store catalog detected" : "No catalog auto-detected"}
-                      </span>
-                      <span className="text-xs px-2 py-1 rounded-lg border border-blue-400/40 bg-blue-400/10 text-blue-400">
-                        {result.scanReport.pagesReadCount} page(s) read
-                      </span>
-                      {/* Where the products came from — makes a thin catalog diagnosable */}
-                      {typeof result.scanReport.productsWithImage === "number" && (result.productsFound ?? 0) > 0 && (
-                        <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.productsWithImage > 0 ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-amber-400/40 bg-amber-400/10 text-amber-400"}`}>
-                          {result.scanReport.productsWithImage}/{result.productsFound} products with photo
-                        </span>
-                      )}
-                      {(result.scanReport.productsFromStoreApi ?? 0) > 0 && (
-                        <span className="text-xs px-2 py-1 rounded-lg border border-emerald-400/40 bg-emerald-400/10 text-emerald-400">
-                          {result.scanReport.productsFromStoreApi} from store API
-                        </span>
-                      )}
-                    </div>
-
-                    {result.scanReport.pagesRead.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-foreground mb-1">Pages read:</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {result.scanReport.pagesRead.map((p, i) => (
-                            <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-muted/40 text-muted-foreground font-mono">{p}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {result.scanReport.warnings.length > 0 && (
-                      <div className="space-y-1.5 pt-1">
-                        {result.scanReport.warnings.map((w, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs text-amber-300/90 bg-amber-400/5 border border-amber-400/20 rounded-lg p-2">
-                            <span className="flex-shrink-0 mt-0.5">⚠</span>
-                            <span>{w}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Topics learned */}
-              <Card className="glass-card border-border/40">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-primary" />Topics Lynx now knows
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {result.topics.map((topic) => (
-                      <span key={topic} className="px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20">{topic}</span>
-                    ))}
-                  </div>
-                  <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />Just scanned</div>
-                    <div className="flex items-center gap-1.5"><Globe className="w-3.5 h-3.5" />Languages: {result.languages.join(", ")}</div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Product catalog */}
-              {result.products && result.products.length > 0 && (
-                <Card className="glass-card border-border/40">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <ShoppingBag className="w-4 h-4 text-violet-400" />
-                      Products detected ({result.productsFound ?? result.products.length})
-                      <span className="ml-auto text-xs font-normal text-emerald-400 flex items-center gap-1">
-                        <CheckCircle className="w-3.5 h-3.5" />Chatbot trained
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    {result.products.slice(0, 8).map((p, i) => (
-                      <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-muted/20 border border-border/30">
-                        <div className="w-7 h-7 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                          <ShoppingBag className="w-3.5 h-3.5 text-violet-400" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium text-foreground truncate">{p.name}</p>
-                          {p.price && <p className="text-xs text-emerald-400 mt-0.5">{p.price}</p>}
-                          {p.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{p.description}</p>}
-                        </div>
-                        {p.url && (
-                          <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline shrink-0 mt-0.5">View</a>
-                        )}
-                      </div>
-                    ))}
-                    {(result.productsFound ?? 0) > 8 && (
-                      <p className="text-xs text-muted-foreground text-center pt-1">+{(result.productsFound ?? 0) - 8} more products saved to chatbot context</p>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* SEO Suggestions */}
-              {result.suggestions.length > 0 && (
-                <Card className="glass-card border-border/40">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 text-yellow-400" />SEO suggestions ({result.suggestions.length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {result.suggestions.map((s, i) => (
-                      <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-muted/20 border border-border/30">
-                        <Badge className={`text-xs shrink-0 mt-0.5 border ${priorityColor(s.priority)}`}>{s.priority}</Badge>
-                        <div>
-                          <p className="text-xs text-foreground">{s.message}</p>
-                          {s.page && <p className="text-xs text-muted-foreground mt-0.5">{s.page}</p>}
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Top keywords */}
-              {result.keywords.length > 0 && (
-                <Card className="glass-card border-border/40">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <Search className="w-4 h-4 text-primary" />Top keywords detected
+                      <FileText className="w-4 h-4 text-primary" />Site summary
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-2">
-                      {result.keywords.slice(0, 8).map((kw) => (
-                        <div key={kw.keyword} className="flex items-center justify-between">
-                          <span className="text-xs text-foreground">{kw.keyword}</span>
-                          <div className="flex items-center gap-2">
-                            <div className="w-24 h-1.5 bg-muted/40 rounded-full overflow-hidden">
-                              <div className="h-full rounded-full lynx-gradient" style={{ width: `${Math.min(100, kw.density * 20)}%` }} />
-                            </div>
-                            <span className="text-xs text-muted-foreground w-12 text-right">{kw.count}x</span>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{result.summary}</p>
+                  </CardContent>
+                </Card>
+  
+                {/* Read report — honest account of what was scanned */}
+                {result.scanReport && (
+                  <Card className="glass-card border-border/40">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-primary" />Reporte de lectura
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.homeReadable ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-red-400/40 bg-red-400/10 text-red-400"}`}>
+                          {result.scanReport.homeReadable ? "✓ Home page read" : "✕ Home page unreadable"}
+                        </span>
+                        <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.sitemapFound ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-amber-400/40 bg-amber-400/10 text-amber-400"}`}>
+                          {result.scanReport.sitemapFound ? `✓ Sitemap encontrado (${result.scanReport.sitemapUrlCount} URLs)` : "⚠ Sin sitemap"}
+                        </span>
+                        <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.storeCatalogFound ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-border/40 bg-muted/20 text-muted-foreground"}`}>
+                          {result.scanReport.storeCatalogFound ? "✓ Store catalog detected" : "No catalog auto-detected"}
+                        </span>
+                        <span className="text-xs px-2 py-1 rounded-lg border border-blue-400/40 bg-blue-400/10 text-blue-400">
+                          {result.scanReport.pagesReadCount} page(s) read
+                        </span>
+                        {/* Where the products came from — makes a thin catalog diagnosable */}
+                        {typeof result.scanReport.productsWithImage === "number" && (result.productsFound ?? 0) > 0 && (
+                          <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.productsWithImage > 0 ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-amber-400/40 bg-amber-400/10 text-amber-400"}`}>
+                            {result.scanReport.productsWithImage}/{result.productsFound} products with photo
+                          </span>
+                        )}
+                        {(result.scanReport.productsFromStoreApi ?? 0) > 0 && (
+                          <span className="text-xs px-2 py-1 rounded-lg border border-emerald-400/40 bg-emerald-400/10 text-emerald-400">
+                            {result.scanReport.productsFromStoreApi} from store API
+                          </span>
+                        )}
+                      </div>
+  
+                      {result.scanReport.pagesRead.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium text-foreground mb-1">Pages read:</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {result.scanReport.pagesRead.map((p, i) => (
+                              <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-muted/40 text-muted-foreground font-mono">{p}</span>
+                            ))}
                           </div>
                         </div>
+                      )}
+  
+                      {result.scanReport.warnings.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          {result.scanReport.warnings.map((w, i) => (
+                            <div key={i} className="flex items-start gap-2 text-xs text-amber-300/90 bg-amber-400/5 border border-amber-400/20 rounded-lg p-2">
+                              <span className="flex-shrink-0 mt-0.5">⚠</span>
+                              <span>{w}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+  
+                {/* Product catalog */}
+                {result.products && result.products.length > 0 && (
+                  <Card className="glass-card border-border/40">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <ShoppingBag className="w-4 h-4 text-violet-400" />
+                        Products detected ({result.productsFound ?? result.products.length})
+                        <span className="ml-auto text-xs font-normal text-emerald-400 flex items-center gap-1">
+                          <CheckCircle className="w-3.5 h-3.5" />Chatbot trained
+                        </span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {result.products.slice(0, 8).map((p, i) => (
+                        <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-muted/20 border border-border/30">
+                          <div className="w-7 h-7 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                            <ShoppingBag className="w-3.5 h-3.5 text-violet-400" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium text-foreground truncate">{p.name}</p>
+                            {p.price && <p className="text-xs text-emerald-400 mt-0.5">{p.price}</p>}
+                            {p.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{p.description}</p>}
+                          </div>
+                          {p.url && (
+                            <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline shrink-0 mt-0.5">View</a>
+                          )}
+                        </div>
                       ))}
+                      {(result.productsFound ?? 0) > 8 && (
+                        <p className="text-xs text-muted-foreground text-center pt-1">+{(result.productsFound ?? 0) - 8} more products saved to chatbot context</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+  
+                {/* Topics learned */}
+                <Card className="glass-card border-border/40">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-primary" />Topics Lynx now knows
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {result.topics.map((topic) => (
+                        <span key={topic} className="px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20">{topic}</span>
+                      ))}
+                    </div>
+                    <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />Just scanned</div>
+                      <div className="flex items-center gap-1.5"><Globe className="w-3.5 h-3.5" />Languages: {result.languages.join(", ")}</div>
                     </div>
                   </CardContent>
                 </Card>
-              )}
+  
+                </div>
+                <div className="space-y-4 min-w-0">
+                {/* SEO breakdown — GTmetrix-style graded categories + checks */}
+                {result.seoBreakdown && (
+                  <Card className="glass-card border-border/40">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-primary" />Desglose del puntaje SEO
+                        <span className="ml-auto text-lg font-bold">{result.seoBreakdown.score}<span className="text-xs text-muted-foreground font-normal">/100</span></span>
+                      </CardTitle>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {result.seoBreakdown.source === "lighthouse"
+                          ? `Performance medido con Google Lighthouse ${result.seoBreakdown.webVitals?.lighthouseVersion ?? ""} (el mismo motor de GTmetrix/PageSpeed)`
+                          : "Performance estimado por mediciones HTTP (Lighthouse no disponible para esta URL)"}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {result.seoBreakdown.webVitals && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {[
+                            { label: "LCP", value: result.seoBreakdown.webVitals.lcpMs != null ? `${(result.seoBreakdown.webVitals.lcpMs / 1000).toFixed(1)}s` : "—", ok: (result.seoBreakdown.webVitals.lcpMs ?? 0) <= 2500, mid: (result.seoBreakdown.webVitals.lcpMs ?? 0) <= 4000 },
+                            { label: "TBT", value: result.seoBreakdown.webVitals.tbtMs != null ? `${Math.round(result.seoBreakdown.webVitals.tbtMs)}ms` : "—", ok: (result.seoBreakdown.webVitals.tbtMs ?? 0) <= 200, mid: (result.seoBreakdown.webVitals.tbtMs ?? 0) <= 600 },
+                            { label: "CLS", value: result.seoBreakdown.webVitals.cls != null ? result.seoBreakdown.webVitals.cls.toFixed(2) : "—", ok: (result.seoBreakdown.webVitals.cls ?? 0) <= 0.1, mid: (result.seoBreakdown.webVitals.cls ?? 0) <= 0.25 },
+                            { label: "FCP", value: result.seoBreakdown.webVitals.fcpMs != null ? `${(result.seoBreakdown.webVitals.fcpMs / 1000).toFixed(1)}s` : "—", ok: (result.seoBreakdown.webVitals.fcpMs ?? 0) <= 1800, mid: (result.seoBreakdown.webVitals.fcpMs ?? 0) <= 3000 },
+                          ].map((v) => (
+                            <div key={v.label} className="rounded-xl border border-border/40 bg-muted/20 p-2.5 text-center">
+                              <div className={`text-base font-bold ${v.ok ? "text-emerald-400" : v.mid ? "text-amber-400" : "text-red-400"}`}>{v.value}</div>
+                              <div className="text-[10px] text-muted-foreground font-medium">{v.label}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                        {result.seoBreakdown.categories.map((cat) => {
+                          const grade = cat.score >= 90 ? "A" : cat.score >= 80 ? "B" : cat.score >= 70 ? "C" : cat.score >= 60 ? "D" : "F";
+                          const color = cat.score >= 80 ? "text-emerald-400" : cat.score >= 60 ? "text-amber-400" : "text-red-400";
+                          return (
+                            <div key={cat.key} className="rounded-xl border border-border/40 bg-muted/20 p-2.5 text-center">
+                              <div className={`text-xl font-bold ${color}`}>{grade}</div>
+                              <div className="text-[11px] font-medium mt-0.5">{cat.label}</div>
+                              <div className="text-[10px] text-muted-foreground">{cat.score}/100 · {cat.weight}%</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="space-y-1.5">
+                        {result.seoBreakdown.checks.map((c) => (
+                          <div key={c.id} className="flex items-start gap-2 text-xs rounded-lg border border-border/30 bg-muted/10 px-2.5 py-1.5">
+                            <span className={`flex-shrink-0 mt-0.5 font-bold ${c.status === "pass" ? "text-emerald-400" : c.status === "warn" ? "text-amber-400" : "text-red-400"}`}>
+                              {c.status === "pass" ? "✓" : c.status === "warn" ? "⚠" : "✕"}
+                            </span>
+                            <span className="font-medium">{c.label}</span>
+                            <span className="text-muted-foreground ml-auto text-right">{c.detail}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+  
+                {/* SEO Suggestions */}
+                {result.suggestions.length > 0 && (
+                  <Card className="glass-card border-border/40">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-yellow-400" />SEO suggestions ({result.suggestions.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {result.suggestions.map((s, i) => (
+                        <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-muted/20 border border-border/30">
+                          <Badge className={`text-xs shrink-0 mt-0.5 border ${priorityColor(s.priority)}`}>{s.priority}</Badge>
+                          <div>
+                            <p className="text-xs text-foreground">{s.message}</p>
+                            {s.page && <p className="text-xs text-muted-foreground mt-0.5">{s.page}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+  
+                {/* Top keywords */}
+                {result.keywords.length > 0 && (
+                  <Card className="glass-card border-border/40">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Search className="w-4 h-4 text-primary" />Top keywords detected
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {result.keywords.slice(0, 8).map((kw) => (
+                          <div key={kw.keyword} className="flex items-center justify-between">
+                            <span className="text-xs text-foreground">{kw.keyword}</span>
+                            <div className="flex items-center gap-2">
+                              <div className="w-24 h-1.5 bg-muted/40 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full lynx-gradient" style={{ width: `${Math.min(100, kw.density * 20)}%` }} />
+                              </div>
+                              <span className="text-xs text-muted-foreground w-12 text-right">{kw.count}x</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+  
+                </div>
+              </div>
 
               <Button variant="outline" className="border-border/40" onClick={() => { setStatus("idle"); setUrl(""); setProgress(0); setCompletedSteps([]); setResult(null); }}>
                 <RefreshCw className="w-4 h-4 mr-2" />Scan another site
