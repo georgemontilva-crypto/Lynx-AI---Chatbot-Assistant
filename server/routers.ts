@@ -463,6 +463,56 @@ function extractPageImage(html: string, baseUrl: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Product data from a page that has NO JSON-LD.
+ *
+ * WHY: extraction only understood JSON-LD (plus a Shopify-specific regex).
+ * Custom-built stores — the exact case this scanner is meant to serve — often
+ * publish none, so a scan could read all 15 product pages and still report
+ * "0 products detected". Almost every product page still exposes the same facts
+ * through Open Graph / meta tags, because that is what social previews use.
+ *
+ * Deliberately conservative: a name AND (a price OR a photo) are required, and
+ * pages that read as policy/FAQ/contact are skipped, so a shipping page that
+ * happens to mention "$50" is never filed as a product.
+ */
+function extractProductFallback(html: string, baseUrl: string): ProductEntry | undefined {
+  const meta = (re: RegExp) => html.match(re)?.[1]?.trim();
+  const ogType = meta(/<meta[^>]+property=["']og:type["'][^>]*content=["']([^"']+)["']/i) ?? "";
+  const isInfoPage = classifyInfoPage(new URL(baseUrl).pathname, meta(/<title[^>]*>([^<]+)<\/title>/i) ?? "") !== "PAGE";
+  if (isInfoPage && !/product/i.test(ogType)) return undefined;
+
+  const name = (
+    meta(/<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
+    ?? meta(/<h1[^>]*>([\s\S]{1,120}?)<\/h1>/i)?.replace(/<[^>]+>/g, " ").trim()
+    ?? meta(/<title[^>]*>([^<]+)<\/title>/i)
+  )?.replace(/\s*[|\u2013\u2014-]\s*[^|\u2013\u2014-]{0,40}$/, "").trim();
+  if (!name || name.length < 2) return undefined;
+
+  // Price: meta tags first (reliable), then a currency amount in the markup.
+  const price =
+    meta(/<meta[^>]+property=["']product:price:amount["'][^>]*content=["']([^"']+)["']/i)
+    ?? meta(/<meta[^>]+itemprop=["']price["'][^>]*content=["']([^"']+)["']/i)
+    ?? meta(/["']price["']\s*:\s*["']?([\d.,]+)["']?/i)
+    ?? html.replace(/<script[\s\S]*?<\/script>/gi, "").match(/([$€£]\s?\d[\d.,]{0,9})/)?.[1];
+
+  const image = extractPageImage(html, baseUrl);
+  // Without a price or a photo there is nothing worth showing on a card, and
+  // the risk of filing a non-product page rises sharply.
+  if (!price && !image) return undefined;
+
+  const description = meta(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']+)["']/i)
+    ?? meta(/<meta[^>]+property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+
+  return {
+    name: name.slice(0, 120),
+    price: price ? String(price).trim().slice(0, 24) : undefined,
+    description: description?.trim().slice(0, 200) || undefined,
+    url: baseUrl,
+    image,
+  };
+}
+
 function extractProductsFromHtml(html: string, baseUrl: string): ProductEntry[] {
   const products: ProductEntry[] = [];
   // 1. JSON-LD Product schema (most reliable — Shopify, WooCommerce, etc.)
@@ -530,6 +580,11 @@ function extractProductsFromHtml(html: string, baseUrl: string): ProductEntry[] 
       }
     }
   }
+  // Nothing structured on this page — try the meta-tag fallback before giving up
+  if (products.length === 0) {
+    const fallback = extractProductFallback(html, baseUrl);
+    if (fallback) products.push(fallback);
+  }
   return products.slice(0, 200); // max 200 products
 }
 
@@ -561,6 +616,30 @@ function findProductPageLinks(html: string, baseUrl: string): string[] {
     } catch { /* invalid URL */ }
   }
   return links;
+}
+
+/**
+ * Merge link lists, treating URLs that differ only by trailing slash, query or
+ * scheme-case as the same page. A plain Set kept "/compounds" and "/compounds/"
+ * as two entries, so the same page was fetched several times — wasting crawl
+ * budget and filling the read report with duplicates.
+ */
+function dedupeLinks(...lists: string[][]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const list of lists) {
+    for (const raw of list) {
+      let key: string;
+      try {
+        const u = new URL(raw);
+        key = (u.hostname + u.pathname.replace(/\/+$/, "")).toLowerCase();
+      } catch { continue; }
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(raw);
+    }
+  }
+  return out;
 }
 
 /**
@@ -810,11 +889,11 @@ export async function buildSiteKnowledge(
   }
 
   const allInternal = findAllInternalLinks(rawHome, siteUrl);
-  const productLinks = Array.from(new Set([
-    ...sitemapUrls.filter(u => { try { return productRe.test(new URL(u).pathname); } catch { return false; } }),
-    ...findProductPageLinks(rawHome, siteUrl),
-    ...allInternal,
-  ]));
+  const productLinks = dedupeLinks(
+    sitemapUrls.filter(u => { try { return productRe.test(new URL(u).pathname); } catch { return false; } }),
+    findProductPageLinks(rawHome, siteUrl),
+    allInternal,
+  );
   await crawlPages(productLinks.slice(0, budgetPages), (link, html) => {
     if (products.length >= 200) return;
     const found = extractProductsFromHtml(html, link);
@@ -838,12 +917,18 @@ export async function buildSiteKnowledge(
     pagesRead.push(path);
   }, { deadline });
 
-  const readPaths = new Set(pagesRead);
-  const infoLinks = Array.from(new Set([
-    ...sitemapUrls.filter(u => { try { return infoRe.test(new URL(u).pathname); } catch { return false; } }),
-    ...findInfoPageLinks(rawHome, siteUrl),
-    ...allInternal.filter(u => { try { return !readPaths.has(new URL(u).pathname); } catch { return false; } }),
-  ]));
+  // Skip anything the catalog pass already fetched — the filter must apply to
+  // EVERY source, not just the internal-link list, or known info pages get
+  // fetched twice (wasted budget, duplicated entries in the read report).
+  const readPaths = new Set(pagesRead.map(p => p.replace(/\/+$/, "") || "/"));
+  const notYetRead = (u: string) => {
+    try { return !readPaths.has(new URL(u).pathname.replace(/\/+$/, "") || "/"); } catch { return false; }
+  };
+  const infoLinks = dedupeLinks(
+    sitemapUrls.filter(u => { try { return infoRe.test(new URL(u).pathname); } catch { return false; } }),
+    findInfoPageLinks(rawHome, siteUrl),
+    allInternal,
+  ).filter(notYetRead);
   await crawlPages(infoLinks.slice(0, budgetPages), (link, html) => {
     const text = htmlToText(html, 2500);
     if (text.length <= 100) return;
@@ -1194,7 +1279,7 @@ export const appRouter = router({
             // Known catalog-looking URLs first, then EVERY other internal link:
             // discovery no longer depends on the site using words we recognize.
             const allInternal = findAllInternalLinks(raw, input.url);
-            const productPageLinks = Array.from(new Set([...sitemapProductPages, ...homeLinks, ...allInternal]));
+            const productPageLinks = dedupeLinks(sitemapProductPages, homeLinks, allInternal);
             const catalogBudget =
               ctx.user.plan === "whitelabel" ? 100 :
               ctx.user.plan === "embedded" ? 50 :
@@ -1231,10 +1316,12 @@ export const appRouter = router({
           const homeInfoLinks = findInfoPageLinks(raw, input.url);
           // Same idea: recognized info pages first, then anything else internal
           // that the catalog pass did not already read.
-          const alreadyRead = new Set(scanReport.pagesRead);
-          const otherInternal = findAllInternalLinks(raw, input.url)
-            .filter(u => { try { return !alreadyRead.has(new URL(u).pathname); } catch { return false; } });
-          const infoLinks = Array.from(new Set([...sitemapInfoPages, ...homeInfoLinks, ...otherInternal]));
+          const alreadyRead = new Set(scanReport.pagesRead.map(p => p.replace(/\/+$/, "") || "/"));
+          const notYetRead = (u: string) => {
+            try { return !alreadyRead.has(new URL(u).pathname.replace(/\/+$/, "") || "/"); } catch { return false; }
+          };
+          const infoLinks = dedupeLinks(sitemapInfoPages, homeInfoLinks, findAllInternalLinks(raw, input.url))
+            .filter(notYetRead);
           const remainingBudget = Math.max(0, crawlBudget - 1); // home already fetched
           await crawlPages(infoLinks.slice(0, remainingBudget), (link, pageHtml) => {
             const text = htmlToText(pageHtml, 2500);
