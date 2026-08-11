@@ -1297,6 +1297,12 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
     setCorsHeaders(res);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=120");
+    // Allow embedding from ANY domain: clients host a branded page on their
+    // own site with this chat inside an iframe (masked link). The global
+    // middleware sets X-Frame-Options: SAMEORIGIN — remove it here, same as
+    // the widget frame endpoint does.
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Content-Security-Policy", "frame-ancestors *");
     const apiKey = String(req.params.apiKey || "").trim();
     return res.send(buildFullChatHtml(apiKey, req));
   };

@@ -65,6 +65,47 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
     toast.success("Chat link copied");
   };
 
+  // Branded chat page: a standalone HTML file the client hosts on their own
+  // domain (e.g. as /chat). It embeds the full-screen chat in an iframe, so
+  // the visitor's address bar shows the CLIENT's domain — the masked link.
+  const downloadChatPage = () => {
+    const brand = (client.brandName ?? "Chat").replace(/</g, "");
+    const color = client.brandColor ?? "#3b82f6";
+    const html = [
+      "<!DOCTYPE html>",
+      '<html lang="en">',
+      "<head>",
+      '<meta charset="utf-8">',
+      '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">',
+      `<title>${brand} — Chat</title>`,
+      `<meta name="theme-color" content="${color}">`,
+      "<style>",
+      "html,body{margin:0;padding:0;height:100%;background:#f5f6f8;}",
+      ".w{position:fixed;inset:0;}",
+      "iframe{width:100%;height:100%;border:0;display:block;}",
+      ".ld{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#f5f6f8;transition:opacity .3s;pointer-events:none;}",
+      `.sp{width:36px;height:36px;border:3px solid rgba(0,0,0,.08);border-top-color:${color};border-radius:50%;animation:r 1s linear infinite;}`,
+      "@keyframes r{to{transform:rotate(360deg)}}",
+      "</style>",
+      "</head>",
+      "<body>",
+      '<div class="w">',
+      '<div class="ld" id="ld"><div class="sp"></div></div>',
+      `<iframe src="${chatLink}" allow="clipboard-write" title="${brand} chat" onload="var l=document.getElementById(&quot;ld&quot;);l.style.opacity=&quot;0&quot;;setTimeout(function(){l.remove()},350)"></iframe>`,
+      "</div>",
+      "</body>",
+      "</html>",
+    ].join("\n");
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "chat.html";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Branded chat page downloaded");
+  };
+
   const copySnippet = () => {
     navigator.clipboard.writeText(snippet);
     toast.success("Snippet copied to clipboard");
@@ -147,6 +188,19 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
                   <ExternalLink className="w-3 h-3" />Open
                 </Button>
               </div>
+            </div>
+
+            {/* Branded (masked) chat page */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">Branded chat page (masked link)</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Download a ready-made HTML page with the chat embedded. Upload it to the client\u2019s
+                own website (e.g. as <span className="font-mono">/chat</span>) \u2014 visitors will see the
+                client\u2019s domain in the address bar, with their brand name and colors.
+              </p>
+              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={downloadChatPage}>
+                <FileText className="w-3 h-3" />Download chat page (HTML)
+              </Button>
             </div>
           </div>
         </div>
