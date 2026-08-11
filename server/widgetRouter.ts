@@ -2389,7 +2389,6 @@ const LOADER_SCRIPT = `
     '#lynx-loader-btn>div{width:100%!important;height:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;border-radius:50%!important;box-sizing:border-box!important;margin:0!important;padding:0!important;}',
     '#lynx-loader-btn svg{display:inline-block!important;width:28px!important;height:28px!important;margin:0!important;flex-shrink:0!important;}',
     '#lynx-loader-btn img{width:100%!important;height:100%!important;max-width:100%!important;object-fit:cover!important;border-radius:50%!important;margin:0!important;}',
-    '#lynx-loader-btn img#lynx-loader-avatar{display:none;}',
     '#lynx-loader-frame{position:fixed!important;bottom:92px!important;top:auto!important;' + (isLeft?'left:20px!important;right:auto!important;':'right:20px!important;left:auto!important;') + 'z-index:2147483646!important;width:380px!important;height:600px!important;max-width:calc(100vw - 40px)!important;max-height:calc(100vh - 120px)!important;border:none!important;border-radius:16px!important;box-shadow:0 8px 48px rgba(0,0,0,0.22)!important;background:transparent!important;display:none;opacity:0;transform:translateY(12px) scale(0.98);transition:opacity 0.22s cubic-bezier(0.23,1,0.32,1),transform 0.22s cubic-bezier(0.23,1,0.32,1)!important;margin:0!important;padding:0!important;}',
     '#lynx-loader-frame.open{display:block!important;opacity:1!important;transform:translateY(0) scale(1)!important;}',
     '@media (max-width:480px){#lynx-loader-frame{bottom:0!important;left:0!important;right:0!important;top:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-width:100vw!important;max-height:100dvh!important;border-radius:0!important;}#lynx-loader-btn.hidden-mobile{display:none!important;}}'
@@ -2402,7 +2401,7 @@ const LOADER_SCRIPT = `
   btn.setAttribute('aria-label', 'Open chat');
   btn.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:50%;">' +
     '<svg id="lynx-loader-deficon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1f2937" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
-    '<img id="lynx-loader-avatar" src="" alt="Chat" />' +
+
   '</div>';
   document.body.appendChild(btn);
 
@@ -2497,34 +2496,57 @@ const LOADER_SCRIPT = `
 
   // ── Prefetch config so the button shows the brand instantly (no flash), and
   // warm up the iframe in the background so the chat opens instantly. ──
+  // Apply brand to the button from STATE, never by poking at child elements:
+  // setBtnIcon() rebuilds innerHTML, so any <img> reference taken before it is
+  // dead. Order matters — set the state first, then render once.
   function applyBrandToButton(cfg) {
     if (!cfg) return;
     if (cfg.buttonColor) {
       _brandBtnColor = cfg.buttonColor;
       // The shielded stylesheet uses !important, so inline must too
       btn.style.setProperty('background', cfg.buttonColor, 'important');
-      if (!isOpen) setBtnIcon(false);
-    }
-    if (cfg.primaryColor) {
-      var inner = btn.querySelector('div');
-      if (inner && !isOpen) inner.style.background = '#fff';
     }
     if (cfg.buttonIconUrl) {
-      _brandAvatar = cfg.buttonIconUrl;
-      var img = document.getElementById('lynx-loader-avatar');
-      var di = document.getElementById('lynx-loader-deficon');
-      if (img) {
-        var pre = new Image();
-        pre.onload = function() { img.src = cfg.buttonIconUrl; img.style.display = 'block'; if (di) di.style.display = 'none'; };
-        pre.src = cfg.buttonIconUrl;
-      }
+      // Reveal the avatar only once the image is actually decoded, so the
+      // button never shows an empty circle waiting for the download.
+      var url = cfg.buttonIconUrl;
+      var pre = new Image();
+      pre.onload = function() { _brandAvatar = url; if (!isOpen) setBtnIcon(false); };
+      pre.onerror = function() { if (!isOpen) setBtnIcon(false); };
+      pre.src = url;
+      // Already cached by the browser → paint it on this frame, no flash
+      if (pre.complete && pre.naturalWidth) { _brandAvatar = url; }
     }
+    if (!isOpen) setBtnIcon(false);
   }
+
+  // ── Config cache (first-party localStorage: the loader runs on the client's
+  // own domain, so this is stable) — repeat visits paint the real brand on the
+  // first frame instead of a blank circle waiting for the network. ──
+  var _cfgKey = '_lynx_cfg_' + API_KEY;
+  try {
+    var _cached = window.localStorage.getItem(_cfgKey);
+    if (_cached) applyBrandToButton(JSON.parse(_cached));
+  } catch (e) {}
+
   var _prefetchedCfg = null;
   try {
     fetch(BASE_URL + '/api/widget/config?apiKey=' + encodeURIComponent(API_KEY))
       .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(cfg){ _prefetchedCfg = cfg; applyBrandToButton(cfg); ensureFrame(); })
+      .then(function(cfg){
+        _prefetchedCfg = cfg;
+        applyBrandToButton(cfg);
+        if (cfg) {
+          try {
+            window.localStorage.setItem(_cfgKey, JSON.stringify({
+              buttonColor: cfg.buttonColor || null,
+              buttonIconUrl: cfg.buttonIconUrl || null,
+              primaryColor: cfg.primaryColor || null,
+            }));
+          } catch (e) {}
+        }
+        ensureFrame();
+      })
       .catch(function(){ ensureFrame(); });
   } catch(e){ ensureFrame(); }
 
@@ -2571,9 +2593,7 @@ const LOADER_SCRIPT = `
     if (d.type === 'close') closeChat();
     if (d.type === 'avatar' && d.url) {
       _brandAvatar = d.url;
-      var img = document.getElementById('lynx-loader-avatar');
-      var di = document.getElementById('lynx-loader-deficon');
-      if (img && d.url) { img.src = d.url; img.style.display = 'block'; if (di) di.style.display = 'none'; }
+      if (!isOpen) setBtnIcon(false);
     }
   });
 
