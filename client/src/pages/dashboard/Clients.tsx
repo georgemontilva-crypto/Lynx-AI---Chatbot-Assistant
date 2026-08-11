@@ -26,6 +26,8 @@ interface ClientFormData {
   brandColor: string;
   welcomeMessage: string;
   logoUrl?: string | null;
+  poweredByText?: string | null;
+  poweredByUrl?: string | null;
 }
 
 const defaultForm: ClientFormData = {
@@ -35,6 +37,8 @@ const defaultForm: ClientFormData = {
   brandColor: "#3b82f6",
   welcomeMessage: "Hi! How can I help you?",
   logoUrl: null,
+  poweredByText: null,
+  poweredByUrl: null,
 };
 
 // ─── Snippet modal ────────────────────────────────────────────────────────────
@@ -342,6 +346,22 @@ function ClientFormModal({
                   )}
                   <p className="basis-full text-[11px] text-muted-foreground">Shown in the chat header and on the floating button of this client's widget.</p>
                 </div>
+                <Label className="text-xs">"Powered by" badge</Label>
+                <Input
+                  className="mt-1 mb-1"
+                  value={form.poweredByText ?? "Lynx AI"}
+                  maxLength={64}
+                  placeholder="Leave empty to remove the badge"
+                  onChange={(e) => setForm((f) => ({ ...f, poweredByText: e.target.value }))}
+                />
+                <Input
+                  className="mb-3"
+                  value={form.poweredByUrl ?? ""}
+                  maxLength={255}
+                  placeholder="Link (optional) — https://clientbrand.com"
+                  disabled={!(form.poweredByText ?? "Lynx AI").trim()}
+                  onChange={(e) => setForm((f) => ({ ...f, poweredByUrl: e.target.value }))}
+                />
                 <Label htmlFor="brandColor" className="text-xs">Brand color</Label>
                 <Input id="brandColor" value={form.brandColor} onChange={set("brandColor")} placeholder="#3b82f6" className="mt-1 font-mono text-xs" />
               </div>
@@ -643,6 +663,8 @@ function ClientsContent() {
                               brandColor: client.brandColor ?? "#3b82f6",
                               welcomeMessage: client.welcomeMessage ?? "Hi! How can I help you?",
                               logoUrl: (client as { logoUrl?: string | null }).logoUrl ?? null,
+                              poweredByText: (client as { poweredByText?: string | null }).poweredByText ?? null,
+                              poweredByUrl: (client as { poweredByUrl?: string | null }).poweredByUrl ?? null,
                             })}
                           >
                             <Pencil className="w-3.5 h-3.5" />
@@ -689,6 +711,8 @@ function ClientsContent() {
                               brandColor: client.brandColor ?? "#3b82f6",
                               welcomeMessage: client.welcomeMessage ?? "Hi! How can I help you?",
                               logoUrl: (client as { logoUrl?: string | null }).logoUrl ?? null,
+                              poweredByText: (client as { poweredByText?: string | null }).poweredByText ?? null,
+                              poweredByUrl: (client as { poweredByUrl?: string | null }).poweredByUrl ?? null,
                             })}>
                             <Pencil className="w-3.5 h-3.5" />Edit
                           </Button>

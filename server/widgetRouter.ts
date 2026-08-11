@@ -34,6 +34,26 @@ function setCorsHeaders(res: Response) {
 
 // ─── Get chatbot by API key ───────────────────────────────────────────────────
 
+/**
+ * Resolve the chat footer badge. Only owners on the White-Label plan may
+ * customize or remove it; every other plan always shows the Lynx badge.
+ * text === "" means "hide the badge".
+ */
+async function resolvePoweredBy(chatbot: { userId: number; poweredByText?: string | null; poweredByUrl?: string | null }): Promise<{ text: string; url: string | null }> {
+  const DEFAULT = { text: "Lynx AI", url: "https://www.lynxaiassistant.com" };
+  const custom = (chatbot as { poweredByText?: string | null }).poweredByText;
+  if (custom === null || custom === undefined) return DEFAULT;
+  const db = await getDb();
+  if (!db) return DEFAULT;
+  try {
+    const rows = await db.select({ plan: users.plan }).from(users).where(eq(users.id, chatbot.userId)).limit(1);
+    if ((rows[0]?.plan ?? "cloud") !== "whitelabel") return DEFAULT;
+  } catch {
+    return DEFAULT;
+  }
+  return { text: custom, url: (chatbot as { poweredByUrl?: string | null }).poweredByUrl || null };
+}
+
 async function getChatbotByApiKey(apiKey: string) {
   const db = await getDb();
   if (!db) return null;
@@ -70,6 +90,12 @@ function normalizeHost(input: string | undefined | null): string {
  * restricted here. The request origin is taken from the Origin/Referer header
  * the browser sends automatically — it cannot be forged from client JS.
  */
+function ownHost(req: Request): string {
+  const canonical = normalizeHost(process.env.CANONICAL_ORIGIN);
+  if (canonical) return canonical;
+  return normalizeHost((req.headers["x-forwarded-host"] as string) ?? req.headers.host);
+}
+
 function isDomainAllowed(chatbot: { isClientChatbot?: boolean | null; siteUrl?: string | null }, req: Request): boolean {
   // Only client chatbots are domain-locked
   if (!chatbot.isClientChatbot) return true;
@@ -79,9 +105,37 @@ function isDomainAllowed(chatbot: { isClientChatbot?: boolean | null; siteUrl?: 
   const origin = req.headers.origin as string | undefined;
   const referer = req.headers.referer as string | undefined;
   const reqHost = normalizeHost(origin || referer);
-  if (!reqHost) return false; // client chatbot but no origin → block
+
+  // CRITICAL (iframe architecture): every config/chat/stream call is made from
+  // INSIDE our own iframe (/api/widget/frame), so its Origin/Referer is always
+  // OUR host — never the client's site. Blocking that would break 100% of
+  // client widgets. The real domain check happens once, at the frame entry
+  // point (isFrameDomainAllowed), where the Referer IS the embedding page.
+  const own = ownHost(req);
+  if (own && (reqHost === own || reqHost.endsWith("." + own))) return true;
+
+  // Direct navigation (shareable /chat/<key> link, no-referrer policies) has no
+  // Origin/Referer at all — that link is meant to be shared, so allow it.
+  if (!reqHost) return true;
 
   // Allow exact match or subdomain of the registered domain
+  return reqHost === registered || reqHost.endsWith("." + registered);
+}
+
+/**
+ * Domain lock enforced where it actually works: the iframe/loader entry point,
+ * whose Referer is the page embedding the widget (the client's own site).
+ * A missing Referer is allowed — direct visits to the shareable chat link and
+ * privacy settings that strip it must keep working.
+ */
+function isFrameDomainAllowed(chatbot: { isClientChatbot?: boolean | null; siteUrl?: string | null }, req: Request): boolean {
+  if (!chatbot.isClientChatbot) return true;
+  const registered = normalizeHost(chatbot.siteUrl);
+  if (!registered) return true;
+  const reqHost = normalizeHost((req.headers.referer as string | undefined) || (req.headers.origin as string | undefined));
+  if (!reqHost) return true;
+  const own = ownHost(req);
+  if (own && (reqHost === own || reqHost.endsWith("." + own))) return true;
   return reqHost === registered || reqHost.endsWith("." + registered);
 }
 
@@ -367,6 +421,7 @@ export function registerWidgetRoutes(app: Express) {
         const protocol = (req.headers['x-forwarded-proto'] as string) ?? (req.secure ? 'https' : 'http');
         return `${protocol}://${host}${raw.startsWith('/') ? '' : '/'}${raw}`;
       };
+      const poweredBy = await resolvePoweredBy(chatbot);
       const avatarUrl = toAbsolute(chatbot.avatarUrl ?? null);
       const buttonIconUrl = toAbsolute((chatbot as { buttonIconUrl?: string | null }).buttonIconUrl ?? null);
 
@@ -388,6 +443,7 @@ export function registerWidgetRoutes(app: Express) {
         avatarUrl,
         buttonIconUrl,
         buttonColor: (chatbot as { buttonColor?: string | null }).buttonColor ?? null,
+        poweredBy,
       });
     } catch (err) {
       console.error("[Widget] Config error:", err);
@@ -1279,13 +1335,29 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
 
   // GET /api/widget/frame?apiKey=xxx — the chat UI served as a standalone page,
   // embedded in an iframe by the loader. Scroll is isolated by the browser.
-  const serveFrame = (req: Request, res: Response) => {
+  const serveFrame = async (req: Request, res: Response) => {
     setCorsHeaders(res);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=120");
     // Allow embedding from any site (this is a public embeddable widget)
     res.removeHeader("X-Frame-Options");
     res.setHeader("Content-Security-Policy", "frame-ancestors *");
+    // Domain lock for White-Label client chatbots is enforced HERE: this is the
+    // only request whose Referer is the page embedding the widget.
+    const frameKey = String(req.query.apiKey || "").trim();
+    if (frameKey) {
+      try {
+        const bot = await getChatbotByApiKey(frameKey);
+        if (bot && !isFrameDomainAllowed(bot, req)) {
+          res.setHeader("Cache-Control", "no-store");
+          return res
+            .status(403)
+            .send('<!DOCTYPE html><meta charset="utf-8"><body style="font:14px system-ui;padding:24px;color:#555">This chat is not authorized for this domain.</body>');
+        }
+      } catch {
+        // Never let the lookup break the widget — fall through and serve it.
+      }
+    }
     return res.send(buildFrameHtml());
   };
   app.get("/widget/frame", serveFrame);
@@ -1587,7 +1659,7 @@ function buildFrameApp(): string {
       '</button>',
     '</div>',
     '<div id="lynx-widget-disclaimer" style="display:none;"></div>',
-    '<div id="lynx-widget-branding">Powered by <a href="https://lynxaiassistant.com" target="_blank" rel="noopener">Lynx AI</a></div>',
+    '<div id="lynx-widget-branding" style="display:none;"></div>',
   ].join('');
 
   document.body.appendChild(btn);
@@ -1650,6 +1722,32 @@ function buildFrameApp(): string {
       if (sendBtnEl) sendBtnEl.style.background = cfg.primaryColor;
       // Update user message bubble color
       updateUserBubbleColor(cfg.primaryColor);
+    }
+    // Footer badge: White-Label owners can rename it or remove it entirely
+    // (empty text). Built with DOM nodes, never innerHTML, so custom text
+    // can't inject markup.
+    if (cfg.poweredBy !== undefined && cfg.poweredBy !== null) {
+      var brandEl = document.getElementById('lynx-widget-branding');
+      if (brandEl) {
+        var pbText = (cfg.poweredBy.text || '').trim();
+        brandEl.textContent = '';
+        if (pbText) {
+          brandEl.appendChild(document.createTextNode('Powered by '));
+          if (cfg.poweredBy.url) {
+            var pbLink = document.createElement('a');
+            pbLink.href = cfg.poweredBy.url;
+            pbLink.target = '_blank';
+            pbLink.rel = 'noopener';
+            pbLink.textContent = pbText;
+            brandEl.appendChild(pbLink);
+          } else {
+            brandEl.appendChild(document.createTextNode(pbText));
+          }
+          brandEl.style.display = '';
+        } else {
+          brandEl.style.display = 'none';
+        }
+      }
     }
     if (cfg.disclaimer) {
       var discEl = document.getElementById('lynx-widget-disclaimer');

@@ -49,6 +49,10 @@ export const chatbots = mysqlTable("chatbots", {
   buttonIconUrl: text("buttonIconUrl"),
   buttonColor: varchar("buttonColor", { length: 32 }),
   disclaimer: varchar("disclaimer", { length: 300 }),
+  // White-Label branding of the chat footer. null = default "Powered by Lynx AI".
+  // Empty string = hide the badge entirely. Any text = show that text.
+  poweredByText: varchar("poweredByText", { length: 64 }),
+  poweredByUrl: varchar("poweredByUrl", { length: 255 }),
   primaryColor: varchar("primaryColor", { length: 16 }).default("#3b82f6"),
   secondaryColor: varchar("secondaryColor", { length: 16 }).default("#1e40af"),
   welcomeMessage: text("welcomeMessage").default("Hi! How can I help you today?"),

@@ -434,12 +434,23 @@ export const appRouter = router({
         buttonColor: z.string().max(32).nullable().optional(),
         // Small legal/branding text shown under the chat input (e.g. "For educational purposes only")
         disclaimer: z.string().max(300).nullable().optional(),
+        // White-Label only: rename or remove the "Powered by" badge.
+        // NOTE: no .min(1) — an empty string is the legitimate way to hide it.
+        poweredByText: z.string().max(64).nullable().optional(),
+        poweredByUrl: z.string().max(255).nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         // Only default the name when it wasn't provided at all. An explicit empty
         // string is a valid choice (show the full logo) and must be preserved.
         const nameValue = input.name === undefined ? "Lynx AI" : input.name;
-        const chatbot = await upsertChatbot({ userId: ctx.user.id, ...input, name: nameValue });
+        // The badge is a White-Label feature: silently drop it on other plans so
+        // a crafted request can't strip the branding.
+        const data = { ...input };
+        if ((ctx.user.plan ?? "cloud") !== "whitelabel") {
+          delete data.poweredByText;
+          delete data.poweredByUrl;
+        }
+        const chatbot = await upsertChatbot({ userId: ctx.user.id, ...data, name: nameValue });
         return chatbot;
       }),
     usage: protectedProcedure.query(async ({ ctx }) => {
@@ -1807,7 +1818,15 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
       // show/change the chat branding per client.
       const bots = await db.select().from(chatbots).where(eqOp(chatbots.userId, ctx.user.id));
       const logoByKey = new Map(bots.map((b) => [b.apiKey, (b as { avatarUrl?: string | null }).avatarUrl ?? null]));
-      return rows.map((r) => ({ ...r, logoUrl: logoByKey.get(r.apiKey) ?? null }));
+      const badgeByKey = new Map(bots.map((b) => [b.apiKey, {
+        poweredByText: (b as { poweredByText?: string | null }).poweredByText ?? null,
+        poweredByUrl: (b as { poweredByUrl?: string | null }).poweredByUrl ?? null,
+      }]));
+      return rows.map((r) => ({
+        ...r,
+        logoUrl: logoByKey.get(r.apiKey) ?? null,
+        ...(badgeByKey.get(r.apiKey) ?? { poweredByText: null, poweredByUrl: null }),
+      }));
     }),
     create: protectedProcedure
       .input(z.object({
@@ -1817,6 +1836,8 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         brandColor: z.string().max(16).optional(),
         welcomeMessage: z.string().max(512).optional(),
         logoUrl: z.string().nullable().optional(),
+        poweredByText: z.string().max(64).nullable().optional(),
+        poweredByUrl: z.string().max(255).nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
@@ -1852,6 +1873,8 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
           isClientChatbot: true,
           primaryColor: input.brandColor ?? "#3b82f6",
           avatarUrl: input.logoUrl ?? null,
+          poweredByText: input.poweredByText ?? null,
+          poweredByUrl: input.poweredByUrl ?? null,
           welcomeMessage: input.welcomeMessage ?? "Hi! How can I help you?",
           siteUrl: input.siteUrl,
           isActive: true,
@@ -1869,12 +1892,14 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         brandColor: z.string().max(16).optional(),
         welcomeMessage: z.string().max(512).optional(),
         logoUrl: z.string().nullable().optional(),
+        poweredByText: z.string().max(64).nullable().optional(),
+        poweredByUrl: z.string().max(255).nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
         const { eq: eqOp } = await import("drizzle-orm");
-        const { id, logoUrl, ...data } = input;
+        const { id, logoUrl, poweredByText, poweredByUrl, ...data } = input;
         const [existing] = await db.select().from(clients).where(eqOp(clients.id, id)).limit(1);
         if (!existing || existing.userId !== ctx.user.id) {
           throw new TRPCError({ code: "NOT_FOUND" });
@@ -1890,6 +1915,8 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         if (input.brandColor !== undefined) botSync.primaryColor = input.brandColor;
         if (input.welcomeMessage !== undefined) botSync.welcomeMessage = input.welcomeMessage;
         if (logoUrl !== undefined) botSync.avatarUrl = logoUrl;
+        if (poweredByText !== undefined) botSync.poweredByText = poweredByText;
+        if (poweredByUrl !== undefined) botSync.poweredByUrl = poweredByUrl;
         if (Object.keys(botSync).length) {
           await db.update(chatbots).set(botSync).where(eqOp(chatbots.apiKey, existing.apiKey));
         }

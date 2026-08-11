@@ -21,6 +21,8 @@ const DEFAULT_CONFIG = {
   welcomeMessage: "Hi! How can I help you today?",
   placeholder: "Ask me anything...",
   disclaimer: "",
+  poweredByText: null as string | null,
+  poweredByUrl: "",
   primaryColor: "#3b82f6",
   secondaryColor: "#1e40af",
   position: "bottom-right" as "bottom-right" | "bottom-left",
@@ -65,6 +67,8 @@ export default function ChatbotConfig() {
         welcomeMessage: existing.welcomeMessage ?? DEFAULT_CONFIG.welcomeMessage,
         placeholder: existing.placeholder ?? DEFAULT_CONFIG.placeholder,
         disclaimer: existing.disclaimer ?? "",
+        poweredByText: (existing as { poweredByText?: string | null }).poweredByText ?? null,
+        poweredByUrl: (existing as { poweredByUrl?: string | null }).poweredByUrl ?? "",
         primaryColor: existing.primaryColor ?? DEFAULT_CONFIG.primaryColor,
         secondaryColor: existing.secondaryColor ?? DEFAULT_CONFIG.secondaryColor,
         position: (existing.position as "bottom-right" | "bottom-left") ?? DEFAULT_CONFIG.position,
@@ -90,6 +94,9 @@ export default function ChatbotConfig() {
       welcomeMessage: config.welcomeMessage,
       placeholder: config.placeholder,
       disclaimer: config.disclaimer || null,
+      // null = keep the default Lynx badge; "" = hide it; text = custom.
+      poweredByText: config.poweredByText,
+      poweredByUrl: config.poweredByUrl || null,
       primaryColor: config.primaryColor,
       secondaryColor: config.secondaryColor,
       position: config.position,
@@ -222,7 +229,35 @@ export default function ChatbotConfig() {
                     maxLength={300}
                     placeholder="Ej: For educational purposes only — not medical advice."
                   />
-                  <p className="text-[11px] text-muted-foreground">Se muestra en letra pequeña debajo de la caja de mensajes del widget. Déjalo vacío para no mostrar nada.</p>
+                  <p className="text-[11px] text-muted-foreground">Shown in small print under the widget's message box. Leave it empty to show nothing.</p>
+                </div>
+                {/* "Powered by" badge — White-Label only */}
+                <div className="space-y-2 pt-2 border-t border-border/40">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Label className="text-xs">"Powered by" badge</Label>
+                    {!customBranding && <Badge variant="outline" className="text-[10px] gap-1"><Crown className="w-3 h-3" />White-Label</Badge>}
+                  </div>
+                  <Input
+                    value={config.poweredByText ?? "Lynx AI"}
+                    disabled={!customBranding}
+                    onChange={(e) => update("poweredByText", e.target.value)}
+                    className="bg-muted/30 border-border/40 text-sm"
+                    maxLength={64}
+                    placeholder="Leave empty to remove the badge"
+                  />
+                  <Input
+                    value={config.poweredByUrl}
+                    disabled={!customBranding || !(config.poweredByText ?? "Lynx AI").trim()}
+                    onChange={(e) => update("poweredByUrl", e.target.value)}
+                    className="bg-muted/30 border-border/40 text-sm"
+                    maxLength={255}
+                    placeholder="Link (optional) — https://yourbrand.com"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    {customBranding
+                      ? "Shown at the bottom of the chat. Clear the field to remove it completely."
+                      : "Upgrade to White-Label to rename or remove this badge."}
+                  </p>
                 </div>
               </CardContent>
             </Card>
