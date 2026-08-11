@@ -108,8 +108,8 @@ export default function Login() {
         const onWrongHost = window.location.hostname === "lynxaiassistant.com";
         setError(
           onWrongHost
-            ? "Tu sesión no se pudo guardar porque estás en lynxaiassistant.com (versión vieja). Entra por https://www.lynxaiassistant.com/login"
-            : "No se pudo guardar tu sesión. Revisa que tu navegador permita cookies para este sitio e inténtalo de nuevo."
+            ? "Your session could not be saved because you are on lynxaiassistant.com (legacy domain). Sign in at https://www.lynxaiassistant.com/login"
+            : "Your session could not be saved. Make sure your browser allows cookies for this site and try again."
         );
         return;
       }

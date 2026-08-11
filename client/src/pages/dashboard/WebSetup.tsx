@@ -328,7 +328,7 @@ export default function DashboardWebSetup() {
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Business name <span className="text-red-500">*</span></label>
-              <Input value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="e.g. Martínez Dental Clinic" className="h-12 text-base" autoFocus />
+              <Input value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="e.g. Riverside Dental Clinic" className="h-12 text-base" autoFocus />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Type of business</label>

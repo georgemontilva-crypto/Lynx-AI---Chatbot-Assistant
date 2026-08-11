@@ -145,7 +145,7 @@ function SessionRescue() {
     return (
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[calc(100%-2rem)] rounded-xl border border-amber-400/30 bg-amber-400/10 backdrop-blur-xl p-3 text-left">
         <p className="text-xs text-amber-500 font-medium">
-          Tu sesión está activa, pero la app no pudo cargarla.
+          Your session is active, but the app could not load it.
         </p>
         <button
           onClick={() => { sessionStorage.removeItem("lynx_sess_rescue"); window.location.href = "/dashboard"; }}
@@ -255,7 +255,7 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
           {onLegacyHost && (
             <div className="mb-6 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-left">
               <p className="text-xs text-amber-500">
-                Estás en <span className="font-mono">lynxaiassistant.com</span> (versión antigua) — aquí la sesión no se guarda.
+                You are on <span className="font-mono">lynxaiassistant.com</span> (legacy domain) — sessions are not saved here.
               </p>
               <a
                 href={`https://www.lynxaiassistant.com${typeof window !== "undefined" ? window.location.pathname : "/dashboard"}`}
@@ -335,7 +335,7 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
         {user?.role === "admin" && (
           <>
             <p className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              Administración
+              Administration
             </p>
             <Link href="/dashboard/admin">
               <motion.div

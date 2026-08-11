@@ -158,7 +158,7 @@ function ConversationsContent() {
                         <div className="text-xs text-emerald-400 mt-0.5 truncate">{selected.leadEmail}{selected.leadName ? ` — ${selected.leadName}` : ""}{(selected as ConvRow).leadCompany ? ` · ${(selected as ConvRow).leadCompany}` : ""}</div>
                       )}
                       <div className="text-xs text-muted-foreground mt-1 truncate" title={selected.pageUrl ?? "/"}>
-                        Página: {(() => { try { return new URL(selected.pageUrl ?? "/", "https://x").pathname; } catch { return selected.pageUrl ?? "/"; } })()}
+                        Page: {(() => { try { return new URL(selected.pageUrl ?? "/", "https://x").pathname; } catch { return selected.pageUrl ?? "/"; } })()}
                       </div>
                     </div>
                     <div className="text-right shrink-0">

@@ -22,7 +22,7 @@ export type HeadMeta = {
   modifiedTime?: string;
   /** path only (e.g. "/blog/foo"); composeHtml prepends the canonical origin */
   canonicalPath?: string;
-  /** og-style locale (e.g. "es_ES") */
+  /** og-style locale (e.g. "en_US") */
   locale?: string;
   /** 200 but not indexable: auth-gated shells, internal pages */
   noindex?: boolean;
@@ -49,10 +49,10 @@ const OG_IMAGE = "/brand/og-image.png";
 const OG_IMAGE_WIDTH = 1200;
 const OG_IMAGE_HEIGHT = 630;
 const OG_IMAGE_ALT = "Lynx AI — Chatbot inteligente para sitios web";
-const OG_LOCALE = "es_ES";
+const OG_LOCALE = "en_US";
 
 const DEFAULT_DESC =
-  "Lynx AI escanea tu sitio web, aprende tu contenido y atiende a tus visitantes 24/7 con respuestas precisas. Aumenta conversiones, captura leads y mejora tu SEO automáticamente.";
+  "Lynx AI scans your website, learns your content and answers your visitors 24/7 with accurate replies. Increase conversions, capture leads and improve your SEO automatically.";
 
 export async function prefetchForPath(
   url: string,
@@ -108,9 +108,9 @@ export async function prefetchForPath(
       posts
     );
     return {
-      title: `Blog de ${SITE} — Recursos, Guías y Casos de Uso de Chatbots con IA`,
+      title: `${SITE} Blog — AI Chatbot Resources, Guides and Use Cases`,
       description:
-        "Aprende cómo usar chatbots de IA para aumentar conversiones, capturar leads y mejorar la atención al cliente. Guías prácticas, casos de estudio y novedades de Lynx AI.",
+        "Learn how to use AI chatbots to increase conversions, capture leads and improve customer support. Practical guides, case studies and Lynx AI news.",
       ogType: "website",
       ogImage: OG_IMAGE,
       ogImageWidth: OG_IMAGE_WIDTH,
@@ -163,7 +163,7 @@ export async function prefetchForPath(
     return {
       title: `Contacto — ${SITE} | Habla con nuestro equipo`,
       description:
-        "¿Tienes preguntas sobre Lynx AI? Contáctanos para una demo personalizada, soporte técnico o información sobre planes White-Label para tu agencia.",
+        "Questions about Lynx AI? Get in touch for a personalized demo, technical support or details on White-Label plans for your agency.",
       ogType: "website",
       locale: OG_LOCALE,
       canonicalPath: "/contact",
@@ -173,30 +173,30 @@ export async function prefetchForPath(
   // ── Legal pages ───────────────────────────────────────────────────────────
   if (clean === "/legal/terms") {
     return {
-      title: `Términos de Servicio — ${SITE}`,
-      description: `Lee los términos y condiciones de uso de la plataforma ${SITE}.`,
+      title: `Terms of Service — ${SITE}`,
+      description: `Read the terms and conditions for using the ${SITE} platform.`,
       canonicalPath: "/legal/terms",
     };
   }
   if (clean === "/legal/privacy") {
     return {
-      title: `Política de Privacidad — ${SITE}`,
+      title: `Privacy Policy — ${SITE}`,
       description:
-        `Conoce cómo ${SITE} recopila, usa y protege tus datos personales de acuerdo con el RGPD y las leyes de privacidad aplicables.`,
+        `Learn how ${SITE} collects, uses and protects your personal data in line with GDPR and applicable privacy laws.`,
       canonicalPath: "/legal/privacy",
     };
   }
   if (clean === "/legal/cookies") {
     return {
-      title: `Política de Cookies — ${SITE}`,
-      description: `Información sobre el uso de cookies en la plataforma ${SITE}.`,
+      title: `Cookie Policy — ${SITE}`,
+      description: `How cookies are used on the ${SITE} platform.`,
       canonicalPath: "/legal/cookies",
     };
   }
   if (clean === "/legal/refunds") {
     return {
-      title: `Política de Reembolsos — ${SITE}`,
-      description: `Conoce nuestra política de reembolsos y cancelaciones en ${SITE}.`,
+      title: `Refund Policy — ${SITE}`,
+      description: `Our refund and cancellation policy at ${SITE}.`,
       canonicalPath: "/legal/refunds",
     };
   }
@@ -223,7 +223,7 @@ export async function prefetchForPath(
 
   // ── Explicit 404 page ─────────────────────────────────────────────────────
   if (clean === "/404") {
-    return { title: `Página no encontrada — ${SITE}`, description: DEFAULT_DESC, notFound: true };
+    return { title: `Page not found — ${SITE}`, description: DEFAULT_DESC, notFound: true };
   }
 
   // ── Unknown routes → real 404 ─────────────────────────────────────────────

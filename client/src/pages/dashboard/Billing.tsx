@@ -231,7 +231,7 @@ export default function Billing() {
   const isPending = billingStatus?.subscriptionStatus === "pending";
   const isCancelled = billingStatus?.subscriptionStatus === "cancelled";
   const hasSubscription = !!billingStatus?.subscriptionId;
-  // Plan asignado manualmente por admin (sin suscripción PayPal)
+  // Plan assigned manually by an admin (no PayPal subscription)
   const isManualPlan = billingStatus !== null && !billingStatus.subscriptionStatus && currentPlan !== "cloud";
 
   return (

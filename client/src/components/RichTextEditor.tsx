@@ -64,10 +64,10 @@ export default function RichTextEditor({ value, onChange, placeholder }: Props) 
         <ToolbarButton onClick={() => exec("bold")} icon={Bold} title="Negrita" />
         <ToolbarButton onClick={() => exec("italic")} icon={Italic} title="Cursiva" />
         <Divider />
-        <ToolbarButton onClick={() => format("h2")} icon={Heading2} title="Título" />
-        <ToolbarButton onClick={() => format("h3")} icon={Heading3} title="Subtítulo" />
+        <ToolbarButton onClick={() => format("h2")} icon={Heading2} title="Heading" />
+        <ToolbarButton onClick={() => format("h3")} icon={Heading3} title="Subheading" />
         <Divider />
-        <ToolbarButton onClick={() => exec("insertUnorderedList")} icon={List} title="Lista con viñetas" />
+        <ToolbarButton onClick={() => exec("insertUnorderedList")} icon={List} title="Bulleted list" />
         <ToolbarButton onClick={() => exec("insertOrderedList")} icon={ListOrdered} title="Lista numerada" />
         <ToolbarButton onClick={() => format("blockquote")} icon={Quote} title="Cita" />
         <ToolbarButton onClick={addLink} icon={Link2} title="Enlace" />

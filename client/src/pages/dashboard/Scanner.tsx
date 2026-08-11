@@ -345,22 +345,22 @@ export default function Scanner() {
                   <CardContent className="space-y-3">
                     <div className="flex flex-wrap gap-2">
                       <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.homeReadable ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-red-400/40 bg-red-400/10 text-red-400"}`}>
-                        {result.scanReport.homeReadable ? "✓ Página principal leída" : "✕ Página principal no legible"}
+                        {result.scanReport.homeReadable ? "✓ Home page read" : "✕ Home page unreadable"}
                       </span>
                       <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.sitemapFound ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-amber-400/40 bg-amber-400/10 text-amber-400"}`}>
                         {result.scanReport.sitemapFound ? `✓ Sitemap encontrado (${result.scanReport.sitemapUrlCount} URLs)` : "⚠ Sin sitemap"}
                       </span>
                       <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.storeCatalogFound ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-border/40 bg-muted/20 text-muted-foreground"}`}>
-                        {result.scanReport.storeCatalogFound ? "✓ Catálogo de tienda detectado" : "Sin catálogo automático"}
+                        {result.scanReport.storeCatalogFound ? "✓ Store catalog detected" : "No catalog auto-detected"}
                       </span>
                       <span className="text-xs px-2 py-1 rounded-lg border border-blue-400/40 bg-blue-400/10 text-blue-400">
-                        {result.scanReport.pagesReadCount} página(s) leída(s)
+                        {result.scanReport.pagesReadCount} page(s) read
                       </span>
                     </div>
 
                     {result.scanReport.pagesRead.length > 0 && (
                       <div>
-                        <p className="text-xs font-medium text-foreground mb-1">Páginas leídas:</p>
+                        <p className="text-xs font-medium text-foreground mb-1">Pages read:</p>
                         <div className="flex flex-wrap gap-1.5">
                           {result.scanReport.pagesRead.map((p, i) => (
                             <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-muted/40 text-muted-foreground font-mono">{p}</span>

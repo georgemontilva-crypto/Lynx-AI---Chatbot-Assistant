@@ -161,7 +161,7 @@ function LeadsContent() {
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Nombre</th>
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Email</th>
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden lg:table-cell">Empresa</th>
-                      <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden md:table-cell">Página</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden md:table-cell">Page</th>
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden sm:table-cell">Rating</th>
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Fecha</th>
                       <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Chat</th>

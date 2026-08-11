@@ -120,40 +120,40 @@ const comparisonFeatures = [
 
 const faqs = [
   {
-    q: "¿Puedo cambiar de plan en cualquier momento?",
-    a: "Sí, puedes hacer upgrade o downgrade de tu plan en cualquier momento desde tu dashboard. Los cambios se aplican al siguiente ciclo de facturación.",
+    q: "Can I change plans at any time?",
+    a: "Yes — upgrade or downgrade any time from your dashboard. Changes take effect on your next billing cycle.",
   },
   {
-    q: "¿Hay un período de prueba gratuito?",
-    a: "Todos los planes incluyen 14 días de prueba gratuita. No se requiere tarjeta de crédito para comenzar.",
+    q: "Is there a free trial?",
+    a: "Every plan includes a 14-day free trial. No credit card required to start.",
   },
   {
-    q: "¿Qué pasa si supero el límite de mensajes?",
-    a: "Recibirás una alerta cuando alcances el 80% de tu límite mensual. Si llegas al 100%, el chatbot mostrará un mensaje amigable a los visitantes hasta que se reinicie el contador el próximo mes.",
+    q: "What happens if I go over the message limit?",
+    a: "You get an alert when you reach 80% of your monthly limit. At 100%, the chatbot shows visitors a friendly message until the counter resets next month.",
   },
   {
-    q: "¿Cómo funciona el modelo White-Label?",
-    a: "Tú configuras un único chatbot con tu marca, colores y personalidad. Luego lo instalas en los sitios web de tus clientes (hasta 15 sitios). Cada cliente recibe el mismo bot, pero con el contexto de su propio sitio escaneado. Tú eres el único que accede al dashboard — tus clientes no necesitan crear cuentas.",
+    q: "How does the White-Label model work?",
+    a: "You set up one chatbot with your brand, colors and personality, then install it on your clients’ websites (up to 15 sites). Each client gets the same bot, but with the context of their own scanned site. You are the only one with dashboard access — your clients never need an account.",
   },
   {
-    q: "¿Cómo comparto las métricas con mis clientes?",
-    a: "Desde tu dashboard, en la sección de clientes, puedes generar y descargar un reporte PDF profesional por cada cliente. El reporte incluye gráficos de visitas, chats iniciados, leads capturados y tasa de conversión del período que elijas.",
+    q: "How do I share metrics with my clients?",
+    a: "From the Clients section of your dashboard you can generate and download a professional PDF report for each client, with charts for visits, chats started, leads captured and conversion rate over the period you choose.",
   },
   {
-    q: "¿Puedo agregar más sitios al plan White-Label?",
-    a: "Sí. El plan base incluye 15 sitios de clientes. Puedes expandir con packs adicionales: +15 sitios ($99/mo), +30 sitios ($179/mo), +60 sitios ($299/mo), o +100 sitios ($449/mo).",
+    q: "Can I add more sites to the White-Label plan?",
+    a: "Yes. The base plan includes 15 client sites, and you can expand with add-on packs: +15 sites ($99/mo), +30 sites ($179/mo), +60 sites ($299/mo) or +100 sites ($449/mo).",
   },
   {
-    q: "¿Cómo funciona el escaneo del sitio?",
-    a: "Lynx AI escanea automáticamente todas las páginas de tu sitio web y construye una base de conocimiento. El chatbot usa esta información para responder preguntas precisas sobre tus productos, servicios y políticas.",
+    q: "How does site scanning work?",
+    a: "Lynx AI automatically scans every page of your website and builds a knowledge base. The chatbot uses it to answer precise questions about your products, services and policies.",
   },
   {
-    q: "¿En qué idiomas funciona el chatbot?",
-    a: "Lynx AI soporta múltiples idiomas. El chatbot detecta automáticamente el idioma del visitante y responde en el mismo idioma.",
+    q: "What languages does the chatbot work in?",
+    a: "Lynx AI supports many languages. The chatbot detects the language the visitor writes in and replies in it.",
   },
   {
-    q: "¿Puedo cancelar en cualquier momento?",
-    a: "Sí, puedes cancelar tu suscripción en cualquier momento sin penalizaciones. Tu acceso continúa hasta el final del período de facturación actual.",
+    q: "Can I cancel any time?",
+    a: "Yes, you can cancel any time with no penalty. Your access continues until the end of the current billing period.",
   },
 ];
 
@@ -214,11 +214,11 @@ export default function PricingPage() {
             </span>
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-            Todos los planes incluyen el mismo motor de IA. La diferencia está en cómo se instala, con qué frecuencia aprende y cómo se presenta.
+            Every plan runs the same AI engine. What changes is how it is installed, how often it learns and how it is branded.
           </p>
           <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
-            <span className="flex items-center gap-2"><Shield className="w-4 h-4 text-green-500" /> 14 días gratis</span>
-            <span className="flex items-center gap-2"><CreditCard className="w-4 h-4 text-blue-500" /> Sin tarjeta de crédito</span>
+            <span className="flex items-center gap-2"><Shield className="w-4 h-4 text-green-500" /> 14 days free</span>
+            <span className="flex items-center gap-2"><CreditCard className="w-4 h-4 text-blue-500" /> No credit card</span>
             <span className="flex items-center gap-2"><HeadphonesIcon className="w-4 h-4 text-violet-500" /> Soporte 24/7</span>
           </div>
         </motion.div>
@@ -244,7 +244,7 @@ export default function PricingPage() {
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2">
                     <div className="lynx-gradient text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5">
                       <Zap className="w-3 h-3" />
-                      MÁS POPULAR
+                      MOST POPULAR
                     </div>
                   </div>
                 )}
@@ -297,7 +297,7 @@ export default function PricingPage() {
             transition={{ delay: 0.6 }}
             className="text-center text-sm text-muted-foreground mt-8"
           >
-            Todos los planes incluyen 14 días de prueba gratuita. Sin tarjeta de crédito requerida.
+            Every plan includes a 14-day free trial. No credit card required.
           </motion.p>
         </div>
       </section>
@@ -312,8 +312,8 @@ export default function PricingPage() {
             transition={{ duration: 0.6 }}
             className="text-center mb-12"
           >
-            <h2 className="text-3xl font-bold mb-4">Comparación completa de planes</h2>
-            <p className="text-muted-foreground">Todo lo que incluye cada plan, sin letra pequeña.</p>
+            <h2 className="text-3xl font-bold mb-4">Full plan comparison</h2>
+            <p className="text-muted-foreground">Everything each plan includes — no fine print.</p>
           </motion.div>
 
           <motion.div
@@ -328,7 +328,7 @@ export default function PricingPage() {
             <div className="min-w-[560px]">
             {/* Table header */}
             <div className="grid grid-cols-4 bg-muted/50 border-b border-border/50">
-              <div className="p-4 font-semibold text-sm">Característica</div>
+              <div className="p-4 font-semibold text-sm">Feature</div>
               <div className="p-4 text-center">
                 <div className="font-bold text-sm">Cloud</div>
                 <div className="text-xs text-muted-foreground">$199/mo</div>
@@ -408,15 +408,15 @@ export default function PricingPage() {
         >
           <div className="rounded-3xl border border-primary/20 bg-primary/5 p-12">
             <h2 className="text-3xl font-bold mb-4">
-              ¿Listo para transformar tu sitio web?
+              Ready to transform your website?
             </h2>
             <p className="text-muted-foreground mb-8 text-lg">
-              Únete a cientos de empresas que ya usan Lynx AI para capturar más leads y dar soporte 24/7 a sus visitantes.
+              Join hundreds of businesses already using Lynx AI to capture more leads and support their visitors 24/7.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/register">
                 <Button size="lg" className="lynx-gradient text-white border-0 shadow-lg hover:opacity-90 px-8 font-semibold">
-                  Empezar gratis — 14 días
+                  Start free — 14 days
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </Link>
@@ -426,7 +426,7 @@ export default function PricingPage() {
                 </Button>
               </Link>
             </div>
-            <p className="text-xs text-muted-foreground mt-6">Sin tarjeta de crédito · Cancela cuando quieras</p>
+            <p className="text-xs text-muted-foreground mt-6">No credit card · Cancel any time</p>
           </div>
         </motion.div>
       </section>

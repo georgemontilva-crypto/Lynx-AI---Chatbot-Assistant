@@ -332,8 +332,8 @@ export default function Snippet() {
               <div className="mt-4 flex items-start gap-2 bg-blue-500/5 border border-blue-500/15 rounded-xl px-4 py-3">
                 <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Pega este código justo antes de la etiqueta <code className="text-primary font-mono">&lt;/body&gt;</code> de tu sitio.
-                  El widget carga tu chatbot con su nombre, colores, entrenamiento y mensaje de bienvenida automáticamente.
+                  Paste this code just before the closing <code className="text-primary font-mono">&lt;/body&gt;</code> tag of your site.
+                  The widget loads your chatbot with its name, colors, training and welcome message automatically.
                 </p>
               </div>
             </CardContent>

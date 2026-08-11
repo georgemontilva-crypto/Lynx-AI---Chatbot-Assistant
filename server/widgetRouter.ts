@@ -548,7 +548,7 @@ export function registerWidgetRoutes(app: Express) {
       });
 
       if (codeResult) {
-        const confirmMsg = "✅ ¡Listo! Verificación correcta — retomamos tu conversación anterior. / Verified — your previous conversation has been restored.";
+        const confirmMsg = "✅ Verified — your previous conversation has been restored.";
         void persistChatTurn({
           chatbotId: chatbot.id,
           visitorId: typeof visitorId === "string" ? visitorId : null,
@@ -618,7 +618,7 @@ STYLE (this is what makes you feel human, not a bot):
 7b. Have a POINT OF VIEW. A great consultant doesn't just list options and ask "what do you prefer?" — they guide: "for your case I'd go straight to X because...". Take a confident stance based on what they told you, the way an experienced specialist would. Lead the conversation, don't just react.
 7c. Ask sharp, specific qualifying questions instead of vague ones. Not "what are you looking for?" but "are you looking for this for X or for Y? With that I can tell you exactly which one fits." Specificity feels expert; vagueness feels like a bot.
 8. Usually 2-4 sentences. When educating (rule 5) you may go slightly longer, but keep it digestible — no long lectures, no bullet lists unless comparing a few concrete options.
-9. LANGUAGE: Your native and default language is ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}. Always OPEN the conversation and default to it whenever the visitor's language is unclear or mixed. If the visitor clearly writes in another language, mirror them naturally — but come back to your native language if they switch back.
+9. LANGUAGE — STRICT: Your language is ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}. Write EVERY message entirely in it, including the greeting, and NEVER mix two languages in one message (no "¡Hola!" opening an English reply). The site content, product notes and training material below may be written in a DIFFERENT language — that is reference material only and must NEVER change the language you write in. The ONLY thing that changes your language is the visitor's own message: if THEY clearly write in another language, switch fully to theirs and stay there until they switch back.
 10. Suggest 3-4 natural follow-up questions as quickReplies (under 40 chars each).
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
 12. TONE: be genuinely friendly, upbeat, and helpful — like a knowledgeable friend who's excited to help, not a strict gatekeeper. Recommend freely when asked. Your job is to help the visitor find the right thing and share the link — don't refuse reasonable requests, over-warn, or moralize. (If this business needs any caveat, it will appear as a STORE DISCLAIMER below — use that, per rule 13.)
@@ -833,7 +833,7 @@ STYLE (this is what makes you feel human, not a bot):
 7b. Have a POINT OF VIEW. A great consultant doesn't just list options and ask "what do you prefer?" — they guide: "for your case I'd go straight to X because...". Take a confident stance based on what they told you, the way an experienced specialist would. Lead the conversation, don't just react.
 7c. Ask sharp, specific qualifying questions instead of vague ones. Not "what are you looking for?" but "are you looking for this for X or for Y? With that I can tell you exactly which one fits." Specificity feels expert; vagueness feels like a bot.
 8. Usually 2-4 sentences. When educating (rule 5) you may go slightly longer, but keep it digestible — no long lectures, no bullet lists unless comparing a few concrete options.
-9. LANGUAGE: Your native and default language is ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}. Always OPEN the conversation and default to it whenever the visitor's language is unclear or mixed. If the visitor clearly writes in another language, mirror them naturally — but come back to your native language if they switch back.
+9. LANGUAGE — STRICT: Your language is ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}. Write EVERY message entirely in it, including the greeting, and NEVER mix two languages in one message (no "¡Hola!" opening an English reply). The site content, product notes and training material below may be written in a DIFFERENT language — that is reference material only and must NEVER change the language you write in. The ONLY thing that changes your language is the visitor's own message: if THEY clearly write in another language, switch fully to theirs and stay there until they switch back.
 10. Do NOT include quick reply suggestions in your text response — they will be generated separately.
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
 12. TONE: be genuinely friendly, upbeat, and helpful — like a knowledgeable friend who's excited to help, not a strict gatekeeper. Recommend freely when asked. Your job is to help the visitor find the right thing and share the link — don't refuse reasonable requests, over-warn, or moralize. (If this business needs any caveat, it will appear as a STORE DISCLAIMER below — use that, per rule 13.)
@@ -872,7 +872,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
       };
 
       if (codeResult) {
-        const confirmMsg = "✅ ¡Listo! Verificación correcta — retomamos tu conversación anterior. / Verified — your previous conversation has been restored.";
+        const confirmMsg = "✅ Verified — your previous conversation has been restored.";
         sendEvent({ restored: codeResult.restored });
         sendEvent({ token: confirmMsg });
         sendEvent({ done: true, quickReplies: [], usage: { used: usage.used, limit: usage.limit } });
@@ -1933,7 +1933,7 @@ function buildFrameApp(): string {
         '<span class="lynx-star" data-v="4">&#9733;</span>' +
         '<span class="lynx-star" data-v="5">&#9733;</span>' +
       '</div>' +
-      '<div id="lynx-rating-thanks" style="display:none;">&#10084;&#65039; Thank you! / &#161;Gracias!</div>';
+      '<div id="lynx-rating-thanks" style="display:none;">&#10084;&#65039; Thank you!</div>';
     if (messagesEl) {
       messagesEl.appendChild(bubble);
       lynxScrollBottom(true);

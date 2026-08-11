@@ -12,7 +12,7 @@ import type { HeadMeta } from "../../client/src/ssr/prefetch";
 // ── Canonical origin & site name (set via env vars in production) ──────────
 const CANONICAL_ORIGIN = process.env.CANONICAL_ORIGIN ?? "https://lynxaiassistant.com";
 const SITE_NAME = process.env.SITE_NAME ?? "Lynx AI";
-const OG_LOCALE = process.env.OG_LOCALE ?? "es_ES";
+const OG_LOCALE = process.env.OG_LOCALE ?? "en_US";
 
 if (process.env.NODE_ENV === "production" && (!CANONICAL_ORIGIN || !SITE_NAME)) {
   if (!CANONICAL_ORIGIN)
@@ -283,7 +283,7 @@ export function serveStatic(app: Express) {
         const fallbackHead = buildHeadTags({
           title: SITE_NAME,
           description:
-            "Lynx AI escanea tu sitio web, aprende tu contenido y atiende a tus visitantes 24/7.",
+            "Lynx AI scans your website, learns your content and answers your visitors 24/7.",
         });
         res
           .status(200)

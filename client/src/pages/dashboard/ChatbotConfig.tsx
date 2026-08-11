@@ -187,7 +187,7 @@ export default function ChatbotConfig() {
                       <SelectTrigger className="bg-muted/30 border-border/40 text-sm"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="en">English</SelectItem>
-                        <SelectItem value="es">Español</SelectItem>
+                        <SelectItem value="es">Spanish</SelectItem>
                         <SelectItem value="pt">Português</SelectItem>
                         <SelectItem value="fr">Français</SelectItem>
                         <SelectItem value="de">Deutsch</SelectItem>

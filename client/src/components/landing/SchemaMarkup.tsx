@@ -68,14 +68,14 @@ export default function SchemaMarkup() {
       }
     ],
     "featureList": [
-      "Escaneo automático del sitio web",
+      "Automatic website scanning",
       "Respuestas 24/7 basadas en tu contenido",
       "Captura de leads integrada",
-      "Análisis SEO automático",
+      "Automatic SEO analysis",
       "Soporte multilingüe (50+ idiomas)",
-      "Personalización completa del chatbot",
+      "Full chatbot customization",
       "Panel de analytics en tiempo real",
-      "Opción White-Label para agencias"
+      "White-Label option for agencies"
     ]
   };
 
@@ -85,42 +85,42 @@ export default function SchemaMarkup() {
     "mainEntity": [
       {
         "@type": "Question",
-        "name": "¿Necesito conocimientos técnicos para instalar Lynx AI?",
+        "name": "Do I need technical skills to install Lynx AI?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "No. Para el plan Cloud solo pegas una línea de código en tu sitio. Para el plan Embedded, usamos una API de instalación simple que lo hace todo automáticamente."
+          "text": "No. On the Cloud plan you just paste one line of code into your site. On the Embedded plan, a simple install API handles everything automatically."
         }
       },
       {
         "@type": "Question",
-        "name": "¿Qué pasa si el contenido de mi sitio cambia?",
+        "name": "What happens when my site content changes?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Lynx re-escanea tu sitio automáticamente. En el plan Cloud, semanalmente. En Embedded y White-Label, cada 24 horas. También puedes forzar un re-escaneo manual desde el dashboard."
+          "text": "Lynx re-scans your site automatically — weekly on Cloud, every 24 hours on Embedded and White-Label. You can also trigger a manual re-scan from the dashboard."
         }
       },
       {
         "@type": "Question",
-        "name": "¿El chatbot mezcla mi contenido con el de otros clientes?",
+        "name": "Does the chatbot mix my content with other customers’ content?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Nunca. Cada instalación tiene su propia base de conocimiento completamente aislada. Tu contenido es solo tuyo."
+          "text": "Never. Each installation has its own fully isolated knowledge base. Your content stays yours alone."
         }
       },
       {
         "@type": "Question",
-        "name": "¿Qué idiomas soporta Lynx AI?",
+        "name": "What languages does Lynx AI support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Lynx responde en el idioma en que escribe el visitante, sin configuración adicional. Soporta más de 50 idiomas."
+          "text": "Lynx replies in the language the visitor writes in, with no extra setup. It supports over 50 languages."
         }
       },
       {
         "@type": "Question",
-        "name": "¿Puedo personalizar la apariencia del chatbot?",
+        "name": "Can I customize how the chatbot looks?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Sí. Puedes cambiar el nombre, colores, avatar, mensaje de bienvenida y comportamiento desde el dashboard. En el plan White-Label, la personalización es completa."
+          "text": "Yes. Name, colors, avatar, welcome message and behaviour are all editable from the dashboard. On the White-Label plan, branding is fully yours."
         }
       }
     ]

@@ -92,7 +92,7 @@ export default function DashboardBlog() {
 
   const createMutation = trpc.blog.create.useMutation({
     onSuccess: () => {
-      toast.success("Artículo creado");
+      toast.success("Post created");
       utils.blog.adminList.invalidate(); utils.blog.list.invalidate();
       backToList();
     },
@@ -101,7 +101,7 @@ export default function DashboardBlog() {
 
   const updateMutation = trpc.blog.update.useMutation({
     onSuccess: () => {
-      toast.success("Artículo actualizado");
+      toast.success("Post updated");
       utils.blog.adminList.invalidate(); utils.blog.list.invalidate();
       backToList();
     },
@@ -110,7 +110,7 @@ export default function DashboardBlog() {
 
   const publishMutation = trpc.blog.publish.useMutation({
     onSuccess: () => {
-      toast.success("Artículo publicado");
+      toast.success("Post published");
       utils.blog.adminList.invalidate(); utils.blog.list.invalidate();
     },
     onError: (e) => toast.error(e.message),
@@ -118,7 +118,7 @@ export default function DashboardBlog() {
 
   const deleteMutation = trpc.blog.delete.useMutation({
     onSuccess: () => {
-      toast.success("Artículo eliminado");
+      toast.success("Post deleted");
       utils.blog.adminList.invalidate(); utils.blog.list.invalidate();
       setDeletePost(null);
     },
@@ -138,7 +138,7 @@ export default function DashboardBlog() {
       setGenTopic("");
       setEditingPost(null);
       setView("editor");
-      toast.success("Artículo generado — revísalo y publícalo cuando quieras");
+      toast.success("Draft generated — review it and publish when ready");
     },
     onError: (e) => toast.error(e.message),
   });
@@ -193,7 +193,7 @@ export default function DashboardBlog() {
 
   function handleSubmit(publishNow?: boolean) {
     if (!form.title.trim() || !form.content.trim()) {
-      toast.error("El título y el contenido son obligatorios");
+      toast.error("Title and content are required");
       return;
     }
     const tags = form.tags.split(",").map((t) => t.trim()).filter(Boolean);
@@ -229,7 +229,7 @@ export default function DashboardBlog() {
             </button>
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => handleSubmit(false)} disabled={isSaving}>
-                {isSaving ? "Guardando..." : "Guardar borrador"}
+                {isSaving ? "Saving..." : "Save draft"}
               </Button>
               <Button onClick={() => handleSubmit(true)} disabled={isSaving} className="lynx-gradient text-white border-0 gap-1.5">
                 <Globe className="w-4 h-4" /> Publicar
@@ -240,7 +240,7 @@ export default function DashboardBlog() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
               <Input
-                placeholder="Título del artículo"
+                placeholder="Post title"
                 value={form.title}
                 onChange={(e) => handleTitleChange(e.target.value)}
                 className="text-lg font-semibold h-12"
@@ -248,7 +248,7 @@ export default function DashboardBlog() {
               <RichTextEditor
                 value={form.content}
                 onChange={(html) => setForm((f) => ({ ...f, content: html }))}
-                placeholder="Escribe tu artículo aquí… Usa la barra de arriba para dar formato."
+                placeholder="Write your post here… Use the toolbar above to format it."
               />
             </div>
 
@@ -257,7 +257,7 @@ export default function DashboardBlog() {
                 <div>
                   <Label className="text-xs">Extracto (resumen SEO)</Label>
                   <Textarea
-                    placeholder="1-2 frases que resumen el artículo"
+                    placeholder="1-2 sentences summarizing the post"
                     value={form.excerpt}
                     onChange={(e) => setForm((f) => ({ ...f, excerpt: e.target.value }))}
                     className="mt-1 resize-none text-sm" rows={3} maxLength={500}
@@ -317,7 +317,7 @@ export default function DashboardBlog() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Categoría</Label>
+                    <Label className="text-xs">Category</Label>
                     <Input placeholder="ej: Ventas" value={form.category}
                       onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
                       className="mt-1 text-sm" />
@@ -344,7 +344,7 @@ export default function DashboardBlog() {
               </div>
 
               <p className="text-xs text-muted-foreground px-1">
-                Guarda como borrador para seguir editando, o publica para que aparezca en el blog público.
+                Save as a draft to keep editing, or publish it to the public blog.
               </p>
             </div>
           </div>
@@ -368,7 +368,7 @@ export default function DashboardBlog() {
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <BookOpen className="w-6 h-6 text-primary" /> Blog
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">Gestiona los artículos del blog de Lynx AI</p>
+            <p className="text-sm text-muted-foreground mt-1">Manage the Lynx AI blog posts</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" asChild>
@@ -405,7 +405,7 @@ export default function DashboardBlog() {
           ))}
           <div className="relative ml-auto">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Buscar artículo..." value={search}
+            <Input placeholder="Search posts..." value={search}
               onChange={(e) => setSearch(e.target.value)} className="pl-9 w-56 h-9 text-sm" />
           </div>
         </div>
@@ -423,10 +423,10 @@ export default function DashboardBlog() {
           <div className="text-center py-16 rounded-xl border border-border/50 bg-card">
             <BookOpen className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
             <h3 className="font-semibold mb-1">
-              {posts && posts.length > 0 ? "Sin resultados" : "No hay artículos todavía"}
+              {posts && posts.length > 0 ? "No results" : "No posts yet"}
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              {posts && posts.length > 0 ? "Prueba con otro filtro o búsqueda." : "Crea tu primer artículo o deja que la IA lo genere por ti."}
+              {posts && posts.length > 0 ? "Try another filter or search." : "Create your first post, or let the AI draft it for you."}
             </p>
             {(!posts || posts.length === 0) && (
               <div className="flex items-center justify-center gap-2">
@@ -508,7 +508,7 @@ export default function DashboardBlog() {
           <div className="bg-background border border-border/60 rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
               <p className="font-semibold flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-primary" /> Generar artículo con IA
+                <Sparkles className="w-4 h-4 text-primary" /> Generate post with AI
               </p>
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowGen(false)}>
                 <X className="w-4 h-4" />
@@ -516,9 +516,9 @@ export default function DashboardBlog() {
             </div>
             <div className="p-4 space-y-4">
               <div>
-                <Label className="text-xs">¿Sobre qué tema?</Label>
+                <Label className="text-xs">What topic?</Label>
                 <Input
-                  autoFocus placeholder="ej: Cómo un chatbot aumenta las ventas en Navidad"
+                  autoFocus placeholder="e.g. How a chatbot boosts holiday sales"
                   value={genTopic} onChange={(e) => setGenTopic(e.target.value)}
                   className="mt-1" onKeyDown={(e) => { if (e.key === "Enter" && genTopic.trim()) generateMutation.mutate({ topic: genTopic, tone: genTone, language: genLang }); }}
                 />
@@ -544,7 +544,7 @@ export default function DashboardBlog() {
                 <Label className="text-xs">Idioma</Label>
                 <div className="grid grid-cols-3 gap-2 mt-1">
                   {([
-                    { key: "es" as const, label: "Español" },
+                    { key: "es" as const, label: "Spanish" },
                     { key: "en" as const, label: "English" },
                     { key: "pt" as const, label: "Português" },
                     { key: "fr" as const, label: "Français" },
@@ -565,13 +565,13 @@ export default function DashboardBlog() {
                 disabled={!genTopic.trim() || generateMutation.isPending}
                 onClick={() => generateMutation.mutate({ topic: genTopic, tone: genTone, language: genLang })}>
                 {generateMutation.isPending ? (
-                  <>Generando artículo…</>
+                  <>Generating post…</>
                 ) : (
                   <><Sparkles className="w-4 h-4" /> Generar</>
                 )}
               </Button>
               <p className="text-[11px] text-muted-foreground text-center">
-                La IA creará un borrador completo. Podrás revisarlo y editarlo antes de publicar.
+                The AI writes a full draft. You can review and edit it before publishing.
               </p>
             </div>
           </div>
@@ -581,9 +581,9 @@ export default function DashboardBlog() {
       <AlertDialog open={!!deletePost} onOpenChange={(v) => { if (!v) setDeletePost(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar artículo?</AlertDialogTitle>
+            <AlertDialogTitle>Delete this post?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. El artículo "{deletePost?.title}" será eliminado permanentemente.
+              This cannot be undone. The post "{deletePost?.title}" will be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
