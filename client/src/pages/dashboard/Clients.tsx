@@ -203,15 +203,15 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               Direct link to this client's chat in full screen — great for support links, social bios or a "Talk to us" button.
             </p>
-            <div className="font-mono text-[11px] bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate max-w-full" title={chatLink}>
-              {chatLink}
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={copyChatLink}>
-                <Copy className="w-3 h-3" />Copy link
+            <div className="flex items-center gap-2 w-full max-w-full overflow-hidden">
+              <div className="flex-1 min-w-0 font-mono text-[11px] bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate" title={chatLink}>
+                {chatLink}
+              </div>
+              <Button size="icon" variant="outline" className="w-9 h-9 shrink-0" onClick={copyChatLink} title="Copy link">
+                <Copy className="w-3.5 h-3.5" />
               </Button>
-              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => window.open(chatLink, "_blank")}>
-                <ExternalLink className="w-3 h-3" />Open
+              <Button size="icon" variant="outline" className="w-9 h-9 shrink-0" onClick={() => window.open(chatLink, "_blank")} title="Open">
+                <ExternalLink className="w-3.5 h-3.5" />
               </Button>
             </div>
           </div>
