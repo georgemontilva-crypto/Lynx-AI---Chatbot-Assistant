@@ -66,9 +66,13 @@ function ConversationsContent() {
 
   return (
     <DashboardShell title="Conversation history">
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+      {/* Each column scrolls on its own inside the viewport height, so a long
+          conversation list no longer scrolls the whole page and leaves the
+          transcript stranded next to empty space. Below lg it falls back to
+          normal page flow (stacked columns). */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 lg:h-[calc(100vh-8rem)] lg:supports-[height:100dvh]:h-[calc(100dvh-8rem)]">
         {/* List */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4 lg:min-h-0 lg:flex lg:flex-col">
           {/* Filters */}
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -106,7 +110,7 @@ function ConversationsContent() {
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 lg:flex-1 lg:min-h-0 lg:overflow-y-auto scrollbar-hide lg:pr-1">
               {filtered.map((conv, i) => {
                 const visitorLabel = getVisitorLabel(conv);
                 const rating = conv.satisfactionRating ?? 0;
@@ -145,7 +149,7 @@ function ConversationsContent() {
         </div>
 
         {/* Detail */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 lg:min-h-0 lg:overflow-y-auto scrollbar-hide lg:pr-1">
           {selected ? (
             <motion.div key={selected.id} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
               {/* Header */}
@@ -189,7 +193,7 @@ function ConversationsContent() {
                   {selectedMessages.length === 0 ? (
                     <p className="text-xs text-muted-foreground">No messages recorded for this conversation.</p>
                   ) : (
-                    <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                    <div className="space-y-3 max-h-[60vh] overflow-y-auto scrollbar-hide pr-1">
                       {selectedMessages.map((msg, i) => (
                         <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                           <div className={`max-w-[80%] px-3 py-2 rounded-xl text-xs leading-relaxed ${msg.role === "user" ? "lynx-gradient text-white rounded-tr-sm" : "bg-muted/50 text-foreground rounded-tl-sm"}`}>
