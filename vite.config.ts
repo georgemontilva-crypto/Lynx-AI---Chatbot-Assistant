@@ -18,23 +18,22 @@ const plugins = [
     manifest: false, // Use existing client/public/manifest.json
     includeAssets: ["favicon.ico", "robots.txt", "icon-192x192.png", "icon-512x512.png"],
     workbox: {
-      globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
+      // Only hashed build assets are precached. HTML is NOT: this app is
+      // server-rendered, so a cached shell would serve a stale page (and stale
+      // asset hashes) that a hard reload can't clear.
+      globPatterns: ["**/*.{js,css,ico,png,svg,woff,woff2}"],
       importScripts: ["/sw-push.js"],
-      runtimeCaching: [
-        {
-          urlPattern: /^\/api\/trpc\//,
-          handler: "NetworkFirst",
-          options: {
-            cacheName: "api-cache",
-            expiration: {
-              maxEntries: 50,
-              maxAgeSeconds: 60 * 5, // 5 minutes
-            },
-          },
-        },
-      ],
-      navigateFallback: "/index.html",
-      navigateFallbackDenylist: [/^\/api\//],
+      // Take over immediately instead of waiting for every tab to close —
+      // without these, a deploy only lands on the *next* visit after closing
+      // the browser, which is why Ctrl+Shift+R appeared to do nothing.
+      skipWaiting: true,
+      clientsClaim: true,
+      cleanupOutdatedCaches: true,
+      // No runtimeCaching for /api/trpc: it used to serve dashboard data from
+      // cache for 5 minutes, so saved changes seemed not to apply.
+      // navigateFallback must be null explicitly: the plugin defaults it to
+      // index.html, which would serve a stale cached shell on every navigation.
+      navigateFallback: null,
     },
     devOptions: {
       enabled: false, // Disable in dev to avoid conflicts

@@ -1383,7 +1383,10 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
   const serveWidget = (req: Request, res: Response) => {
     setCorsHeaders(res);
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=120");
+    // no-cache = revalidate on every load, but Express answers with a 304 when
+    // the ETag matches, so it stays cheap. max-age would leave client sites
+    // running an old widget for minutes after a deploy.
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
     return res.send(buildLoaderScript());
   };
   app.get("/widget.js", serveWidget);
@@ -1397,7 +1400,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
   const servePageEmbed = (req: Request, res: Response) => {
     setCorsHeaders(res);
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=120");
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
     return res.send(buildPageEmbedScript());
   };
   app.get("/api/widget/page.js", servePageEmbed);
@@ -1407,7 +1410,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
   const serveFrame = async (req: Request, res: Response) => {
     setCorsHeaders(res);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=120");
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
     // Allow embedding from any site (this is a public embeddable widget)
     res.removeHeader("X-Frame-Options");
     res.setHeader("Content-Security-Policy", "frame-ancestors *");
@@ -1437,7 +1440,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
   const serveFullChat = (req: Request, res: Response) => {
     setCorsHeaders(res);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=120");
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
     // Allow embedding from ANY domain: clients host a branded page on their
     // own site with this chat inside an iframe (masked link). The global
     // middleware sets X-Frame-Options: SAMEORIGIN — remove it here, same as
