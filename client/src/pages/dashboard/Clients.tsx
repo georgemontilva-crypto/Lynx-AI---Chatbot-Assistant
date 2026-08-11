@@ -40,6 +40,7 @@ const defaultForm: ClientFormData = {
 // ─── Snippet modal ────────────────────────────────────────────────────────────
 function SnippetModal({ client, onClose }: { client: { id: number; name: string; apiKey: string; brandColor: string | null; brandName: string | null; welcomeMessage: string | null }; onClose: () => void }) {
   const [showKey, setShowKey] = useState(false);
+  const [tab, setTab] = useState<"install" | "link" | "page">("install");
   const utils = trpc.useUtils();
   const regenerate = trpc.clients.regenerateKey.useMutation({
     onSuccess: (data) => {
@@ -128,84 +129,106 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* API Key */}
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">API Key</Label>
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex-1 min-w-0 max-w-full basis-full sm:basis-auto font-mono text-xs bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate">
-                {showKey ? client.apiKey : "lx_" + "•".repeat(24)}
+        {/* Tabs — one purpose per tab so nothing hides under the scroll */}
+        <div className="flex gap-1 rounded-xl bg-muted/40 p-1">
+          {([
+            { id: "install" as const, label: "Install", Icon: Code2 },
+            { id: "link" as const, label: "Chat link", Icon: ExternalLink },
+            { id: "page" as const, label: "Branded page", Icon: FileText },
+          ]).map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={`flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg text-xs font-medium transition-colors ${
+                tab === id ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {tab === "install" && (
+          <div className="space-y-4">
+            {/* API Key */}
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">API Key</Label>
+              <div className="font-mono text-xs bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate max-w-full">
+                {showKey ? client.apiKey : "lx_" + "\u2022".repeat(24)}
               </div>
-              <Button variant="ghost" size="icon" className="w-8 h-8 shrink-0" onClick={() => setShowKey(v => !v)}>
-                {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </Button>
-              <Button variant="ghost" size="icon" className="w-8 h-8 shrink-0" onClick={copyKey}>
-                <Copy className="w-3.5 h-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="w-8 h-8 shrink-0 text-amber-500 hover:text-amber-400"
-                onClick={() => {
-                  if (confirm("Regenerate API key? The old key will stop working immediately.")) {
-                    regenerate.mutate({ id: client.id });
-                  }
-                }}
-                disabled={regenerate.isPending}
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${regenerate.isPending ? "animate-spin" : ""}`} />
-              </Button>
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => setShowKey(v => !v)}>
+                  {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {showKey ? "Hide" : "Show"}
+                </Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={copyKey}>
+                  <Copy className="w-3.5 h-3.5" />Copy key
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5 text-amber-500 hover:text-amber-400"
+                  onClick={() => {
+                    if (confirm("Regenerate API key? The old key will stop working immediately.")) {
+                      regenerate.mutate({ id: client.id });
+                    }
+                  }}
+                  disabled={regenerate.isPending}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${regenerate.isPending ? "animate-spin" : ""}`} />
+                  Regenerate
+                </Button>
+              </div>
             </div>
-          </div>
 
-          <Separator />
+            <Separator />
 
-          {/* Snippet */}
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Paste before &lt;/body&gt; on every page</Label>
-            <div className="space-y-2">
-              <pre className="text-xs bg-muted/50 rounded-lg p-3 border border-border/40 whitespace-pre-wrap break-all [overflow-wrap:anywhere] w-full max-w-full leading-relaxed max-h-48 overflow-y-auto">
+            {/* Snippet */}
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">Paste before &lt;/body&gt; on every page</Label>
+              <pre className="text-xs bg-muted/50 rounded-lg p-3 border border-border/40 whitespace-pre-wrap break-all [overflow-wrap:anywhere] w-full max-w-full leading-relaxed max-h-40 overflow-y-auto">
                 {snippet}
               </pre>
-              <Button
-                size="sm"
-                className="h-8 text-xs gap-1.5 w-full sm:w-auto"
-                onClick={copySnippet}
-              >
+              <Button size="sm" className="h-8 text-xs gap-1.5 w-full sm:w-auto mt-2" onClick={copySnippet}>
                 <Copy className="w-3 h-3" />Copy snippet
               </Button>
             </div>
+          </div>
+        )}
 
-            {/* Shareable full-screen chat link */}
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">Shareable chat link (full screen)</p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex-1 min-w-0 max-w-full basis-full sm:basis-auto font-mono text-[11px] bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate" title={chatLink}>
-                  {chatLink}
-                </div>
-                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={copyChatLink}>
-                  <Copy className="w-3 h-3" />Copy
-                </Button>
-                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => window.open(chatLink, "_blank")}>
-                  <ExternalLink className="w-3 h-3" />Open
-                </Button>
-              </div>
+        {tab === "link" && (
+          <div className="space-y-2">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Direct link to this client's chat in full screen — great for support links, social bios or a "Talk to us" button.
+            </p>
+            <div className="font-mono text-[11px] bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate max-w-full" title={chatLink}>
+              {chatLink}
             </div>
-
-            {/* Branded (masked) chat page */}
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">Branded chat page (masked link)</p>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Download a ready-made HTML page with the chat embedded. Upload it to the client's
-                own website (e.g. as <span className="font-mono">/chat</span>) — visitors will see the
-                client's domain in the address bar, with their brand name and colors.
-              </p>
-              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={downloadChatPage}>
-                <FileText className="w-3 h-3" />Download chat page (HTML)
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={copyChatLink}>
+                <Copy className="w-3 h-3" />Copy link
+              </Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => window.open(chatLink, "_blank")}>
+                <ExternalLink className="w-3 h-3" />Open
               </Button>
             </div>
           </div>
-        </div>
+        )}
+
+        {tab === "page" && (
+          <div className="space-y-2">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Download a ready-made HTML page with the chat embedded. Upload it to the client's
+              own website (e.g. as <span className="font-mono">/chat</span>) — visitors will see the
+              client's domain in the address bar, with their brand name and colors. No mention of Lynx.
+            </p>
+            <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={downloadChatPage}>
+              <FileText className="w-3 h-3" />Download chat page (HTML)
+            </Button>
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Close</Button>
