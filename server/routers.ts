@@ -621,7 +621,7 @@ async function fetchStoreCatalog(siteUrl: string): Promise<ProductEntry[]> {
  */
 export async function buildSiteKnowledge(
   siteUrl: string,
-  budgetPages = 20,
+  budgetPages = 80,
   crawlMs = 45000
 ): Promise<{ context: string; products: number; pagesRead: string[]; indexed: number }> {
   const deadline = Date.now() + crawlMs;
@@ -883,10 +883,15 @@ export const appRouter = router({
         const CRAWL_MS = 45000;
         const crawlDeadline = Date.now() + CRAWL_MS;
 
+        // Page budgets. These were sized for the old one-page-at-a-time crawler;
+        // with 6 parallel fetches inside a 45s window there is room for ~135-270
+        // pages, so the budget — not the clock — was the limit on how much of a
+        // site got learned. Raised accordingly; the deadline still protects the
+        // request, so a slow site simply reads fewer pages instead of timing out.
         const crawlBudget =
-          ctx.user.plan === "whitelabel" ? 40 :
-          ctx.user.plan === "embedded" ? 20 :
-          ctx.user.plan === "cloud" ? 10 : 4;
+          ctx.user.plan === "whitelabel" ? 120 :
+          ctx.user.plan === "embedded" ? 60 :
+          ctx.user.plan === "cloud" ? 25 : 6;
 
         // 1. Fetch HTML from the target URL via server-side request
         let htmlContent = "";
@@ -1010,9 +1015,9 @@ export const appRouter = router({
             const homeLinks = findProductPageLinks(raw, input.url);
             const productPageLinks = Array.from(new Set([...sitemapProductPages, ...homeLinks]));
             const catalogBudget =
-              ctx.user.plan === "whitelabel" ? 20 :
-              ctx.user.plan === "embedded" ? 10 :
-              ctx.user.plan === "cloud" ? 6 : 3;
+              ctx.user.plan === "whitelabel" ? 100 :
+              ctx.user.plan === "embedded" ? 50 :
+              ctx.user.plan === "cloud" ? 20 : 4;
             await crawlPages(productPageLinks.slice(0, catalogBudget), (link, pageHtml) => {
               if (allProducts.length >= 200) return;
               for (const p of extractProductsFromHtml(pageHtml, link)) {
@@ -2140,7 +2145,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         // Learn the client's site right away, in the background: crawling takes
         // 20-40s and the reseller shouldn't wait on the "Add client" button.
         // Until it finishes, the bot answers from general knowledge only.
-        void buildSiteKnowledge(input.siteUrl, 20)
+        void buildSiteKnowledge(input.siteUrl, 80)
           .then((k) => db.update(chatbots)
             .set({ siteContext: k.context, siteUrl: input.siteUrl, lastScannedAt: new Date(), updatedAt: new Date() })
             .where(eqOp(chatbots.apiKey, apiKey)))
@@ -2166,7 +2171,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
           .where(andOp(eqOp(clients.id, input.id), eqOp(clients.userId, ctx.user.id))).limit(1);
         if (!client) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found." });
 
-        const knowledge = await buildSiteKnowledge(client.siteUrl, 20);
+        const knowledge = await buildSiteKnowledge(client.siteUrl, 80);
         await db.update(chatbots)
           .set({ siteContext: knowledge.context, siteUrl: client.siteUrl, lastScannedAt: new Date(), updatedAt: new Date() })
           .where(eqOp(chatbots.apiKey, client.apiKey));
@@ -2209,7 +2214,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         // A changed website means the old knowledge is stale — re-learn it.
         if (data.siteUrl) {
           const newUrl = data.siteUrl;
-          void buildSiteKnowledge(newUrl, 20)
+          void buildSiteKnowledge(newUrl, 80)
             .then((k) => db.update(chatbots)
               .set({ siteContext: k.context, siteUrl: newUrl, lastScannedAt: new Date(), updatedAt: new Date() })
               .where(eqOp(chatbots.apiKey, existing.apiKey)))
