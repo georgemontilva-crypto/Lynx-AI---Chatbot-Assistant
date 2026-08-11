@@ -154,16 +154,21 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[85dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 rounded-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-sm sm:text-base pr-6">
+      {/* DialogContent is a CSS grid, and grid children default to
+          min-width:auto — one long code sample or URL therefore stretched the
+          whole dialog past its max width and the overflow got clipped (tabs and
+          buttons vanished off the right edge). [&>*]:min-w-0 lets children
+          shrink so text wraps instead of pushing the box wider. */}
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-xl max-h-[85dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 rounded-2xl [&>*]:min-w-0 break-words">
+        <DialogHeader className="min-w-0">
+          <DialogTitle className="flex items-center gap-2 text-sm sm:text-base pr-6 min-w-0">
             <Code2 className="w-4 h-4 text-primary shrink-0" />
             <span className="truncate">Install snippet — {client.name}</span>
           </DialogTitle>
         </DialogHeader>
 
         {/* Tabs — one purpose per tab so nothing hides under the scroll */}
-        <div className="flex gap-1 rounded-xl bg-muted/40 p-1">
+        <div className="flex gap-1 rounded-xl bg-muted/40 p-1 min-w-0">
           {([
             { id: "install" as const, label: "Install", Icon: Code2 },
             { id: "link" as const, label: "Chat link", Icon: ExternalLink },
@@ -248,7 +253,7 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
             </p>
             <div className="space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
               <div className="font-medium text-foreground/80">Ways to use it</div>
-              <p><strong className="text-foreground/70">As a button on the site:</strong> link any button or menu item to this URL — <span className="font-mono">&lt;a href="…" target="_blank"&gt;Talk to us&lt;/a&gt;</span>.</p>
+              <p><strong className="text-foreground/70">As a button on the site:</strong> link any button or menu item to this URL — <span className="font-mono break-all">&lt;a href="…" target="_blank"&gt;Talk to us&lt;/a&gt;</span>.</p>
               <p><strong className="text-foreground/70">In a social bio or QR code:</strong> paste it as-is; it opens straight into the chat on any device.</p>
               <p><strong className="text-foreground/70">In an email signature or support reply:</strong> send it to a customer to continue the conversation.</p>
               <p className="text-amber-400/80">This link shows our domain and the API key. To show the client's own domain instead, use the Branded page tab.</p>
@@ -285,7 +290,7 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
                 and pastes this in. Nothing to upload — works on Shopify, Wix, Squarespace, WordPress and
                 anything else that lets you paste code.
               </p>
-              <pre className="text-[10px] bg-muted/50 rounded-md p-2 overflow-x-auto border border-border/40"><code>{pageSnippet}</code></pre>
+              <pre className="text-[10px] bg-muted/50 rounded-md p-2 border border-border/40 whitespace-pre-wrap break-all [overflow-wrap:anywhere] max-w-full"><code>{pageSnippet}</code></pre>
               <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full sm:w-auto" onClick={copyPageSnippet}>
                 <Copy className="w-3 h-3" />Copy snippet
               </Button>
@@ -407,7 +412,7 @@ function ClientFormModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[88dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 rounded-2xl">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[88dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 rounded-2xl [&>*]:min-w-0 break-words">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Client" : "Add New Client"}</DialogTitle>
         </DialogHeader>
