@@ -34,6 +34,58 @@ export type ProductCard = { name: string; url: string; imageUrl: string; price: 
  * paths). A card with no name is dropped; a bad URL or image is blanked rather
  * than dropping the card, so a good product still shows.
  */
+/**
+ * Fill in each card's url / image / price straight from the scanned PRODUCT
+ * CATALOG, matching by name.
+ *
+ * WHY: asking the model to copy long image URLs verbatim is unreliable — it
+ * drops or mangles them, which is why cards rendered with no photo. The catalog
+ * in the chatbot's context is the authoritative source, so the server fills the
+ * gaps itself and the model only has to name the product correctly.
+ */
+export function enrichProductsFromCatalog(cards: ProductCard[], siteContext: string | null | undefined): ProductCard[] {
+  if (!cards.length || !siteContext) return cards;
+  const norm = (n: string) => n.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  // Catalog lines look like: "1. Name | Price: $x | desc | URL: https://… | IMG: https://…"
+  const entries: { name: string; price?: string; url?: string; image?: string }[] = [];
+  for (const line of siteContext.split("\n")) {
+    const m = line.match(/^\s*\d+\.\s+(.+)$/);
+    if (!m) continue;
+    const parts = m[1].split("|").map(x => x.trim());
+    const entry: { name: string; price?: string; url?: string; image?: string } = { name: parts[0] };
+    for (const part of parts.slice(1)) {
+      if (/^Price:/i.test(part)) entry.price = part.replace(/^Price:\s*/i, "");
+      else if (/^URL:/i.test(part)) entry.url = part.replace(/^URL:\s*/i, "");
+      else if (/^IMG:/i.test(part)) entry.image = part.replace(/^IMG:\s*/i, "");
+    }
+    if (entry.name) entries.push(entry);
+  }
+  if (!entries.length) return cards;
+
+  const safeUrl = (v?: string) => {
+    if (!v) return "";
+    try {
+      const u = new URL(v.trim());
+      return u.protocol === "https:" || u.protocol === "http:" ? u.href : "";
+    } catch { return ""; }
+  };
+  return cards.map((card) => {
+    const target = norm(card.name);
+    // Exact normalized match first, then a contains-match so "BPC-157" still
+    // finds "BPC-157 10mg" in the catalog.
+    const hit = entries.find(e => norm(e.name) === target)
+      ?? entries.find(e => norm(e.name).includes(target) || target.includes(norm(e.name)));
+    if (!hit) return card;
+    return {
+      ...card,
+      name: card.name || hit.name,
+      url: card.url || safeUrl(hit.url),
+      imageUrl: card.imageUrl || safeUrl(hit.image),
+      price: card.price || (hit.price ?? ""),
+    };
+  });
+}
+
 export function sanitizeProducts(raw: unknown): ProductCard[] {
   if (!Array.isArray(raw)) return [];
   const safeUrl = (v: unknown): string => {
@@ -664,6 +716,12 @@ STYLE (this is what makes you feel human, not a bot):
 9. LANGUAGE — STRICT: Your language is ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}. Write EVERY message entirely in it, including the greeting, and NEVER mix two languages in one message (no "¡Hola!" opening an English reply). The site content, product notes and training material below may be written in a DIFFERENT language — that is reference material only and must NEVER change the language you write in. The ONLY thing that changes your language is the visitor's own message: if THEY clearly write in another language, switch fully to theirs and stay there until they switch back.
 10. Suggest 3-4 natural follow-up questions as quickReplies (under 40 chars each).
 10b. PRODUCT CARDS: when you point the visitor to specific products, visual cards with the photo, price and a button are rendered automatically right under your message. So NEVER paste a wall of raw URLs or markdown image syntax into your text — it renders as unreadable clutter. Instead write 2-4 warm sentences (what you picked and why, grouped by need if it helps) and let the cards carry the links. Mention at most 6 products at a time; if the catalog is bigger, ask what they're after and show the best matches for that.
+10c. FORMATTING — GLOBAL RULES, every website, every reply:
+   - The chat renders markdown. Use **bold** for names, a new line per item, and "- " for bullets. NEVER run a list together inside one paragraph separated by dashes — it comes out as an unreadable block.
+   - When you list products, ONE PER LINE, always in the shape: "- **Name** — what it's for". Say what each one DOES in a few words; a bare list of names and prices is useless to someone who doesn't know the field yet.
+   - Do NOT repeat prices in your text when cards are shown — the card already carries the price. Only state a price when the visitor explicitly asks (rule 4b).
+   - Group by purpose with a short heading line when you list more than 4 items (e.g. "**Recovery & repair**"), so the visitor can scan it.
+   - Never emit stray or unmatched asterisks, markdown tables, or raw image syntax.
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
 12. TONE: be genuinely friendly, upbeat, and helpful — like a knowledgeable friend who's excited to help, not a strict gatekeeper. Recommend freely when asked. Your job is to help the visitor find the right thing and share the link — don't refuse reasonable requests, over-warn, or moralize. (If this business needs any caveat, it will appear as a STORE DISCLAIMER below — use that, per rule 13.)
 13. DISCLAIMER (only if provided below): If a "STORE DISCLAIMER" is given in the context, weave it in naturally as ONE short, friendly line at the end when you recommend a specific product — phrase it warmly in the visitor's language, never as a legal wall of text, and only once per recommendation (not in every message). If no disclaimer is provided, skip this entirely.
@@ -750,7 +808,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
         quickReplies = Array.isArray(parsed.quickReplies)
           ? parsed.quickReplies.slice(0, 4).map((q: unknown) => String(q).slice(0, 60))
           : [];
-        products = sanitizeProducts(parsed.products);
+        products = enrichProductsFromCatalog(sanitizeProducts(parsed.products), chatbot.siteContext);
       } catch {
         reply = typeof response.choices[0]?.message?.content === "string"
           ? response.choices[0].message.content
@@ -901,6 +959,12 @@ STYLE (this is what makes you feel human, not a bot):
 9. LANGUAGE — STRICT: Your language is ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}. Write EVERY message entirely in it, including the greeting, and NEVER mix two languages in one message (no "¡Hola!" opening an English reply). The site content, product notes and training material below may be written in a DIFFERENT language — that is reference material only and must NEVER change the language you write in. The ONLY thing that changes your language is the visitor's own message: if THEY clearly write in another language, switch fully to theirs and stay there until they switch back.
 10. Do NOT include quick reply suggestions in your text response — they will be generated separately.
 10b. PRODUCT CARDS: when you point the visitor to specific products, visual cards with the photo, price and a button are rendered automatically right under your message. So NEVER paste a wall of raw URLs or markdown image syntax into your text — it renders as unreadable clutter. Instead write 2-4 warm sentences (what you picked and why, grouped by need if it helps) and let the cards carry the links. Mention at most 6 products at a time; if the catalog is bigger, ask what they're after and show the best matches for that.
+10c. FORMATTING — GLOBAL RULES, every website, every reply:
+   - The chat renders markdown. Use **bold** for names, a new line per item, and "- " for bullets. NEVER run a list together inside one paragraph separated by dashes — it comes out as an unreadable block.
+   - When you list products, ONE PER LINE, always in the shape: "- **Name** — what it's for". Say what each one DOES in a few words; a bare list of names and prices is useless to someone who doesn't know the field yet.
+   - Do NOT repeat prices in your text when cards are shown — the card already carries the price. Only state a price when the visitor explicitly asks (rule 4b).
+   - Group by purpose with a short heading line when you list more than 4 items (e.g. "**Recovery & repair**"), so the visitor can scan it.
+   - Never emit stray or unmatched asterisks, markdown tables, or raw image syntax.
 11. If you truly don't know something, say so briefly and pivot to what you DO know that helps them.
 12. TONE: be genuinely friendly, upbeat, and helpful — like a knowledgeable friend who's excited to help, not a strict gatekeeper. Recommend freely when asked. Your job is to help the visitor find the right thing and share the link — don't refuse reasonable requests, over-warn, or moralize. (If this business needs any caveat, it will appear as a STORE DISCLAIMER below — use that, per rule 13.)
 13. DISCLAIMER (only if provided below): If a "STORE DISCLAIMER" is given in the context, weave it in naturally as ONE short, friendly line at the end when you recommend a specific product — phrase it warmly in the visitor's language, never as a legal wall of text, and only once per recommendation (not in every message). If no disclaimer is provided, skip this entirely.
@@ -1063,7 +1127,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
         quickReplies = Array.isArray(parsed.quickReplies)
           ? parsed.quickReplies.slice(0, 4).map((q: unknown) => String(q).slice(0, 60))
           : [];
-        products = sanitizeProducts(parsed.products);
+        products = enrichProductsFromCatalog(sanitizeProducts(parsed.products), chatbot.siteContext);
       } catch { /* extras are optional — never break the reply over them */ }
 
       // ── Fire-and-forget 80% usage alert ──────────────────────────────────────
@@ -1736,15 +1800,27 @@ function buildFrameApp(): string {
     '#lynx-widget-disclaimer{font-size:10.5px;color:#9ca3af;text-align:center;padding:4px 14px 2px;line-height:1.35;background:#fff;flex-shrink:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}',
     '.lynx-msg a{color:inherit;text-decoration:underline;word-break:break-all;}',
     '.lynx-msg img.lynx-product-img{display:block;max-width:100%;border-radius:10px;margin-top:6px;}',
+    // Markdown blocks inside a bot message
+    '.lynx-msg .lynx-md-p{margin:0 0 7px;line-height:1.5;}',
+    '.lynx-msg .lynx-md-p:last-child{margin-bottom:0;}',
+    '.lynx-msg .lynx-md-h{font-weight:700;margin:9px 0 4px;font-size:13.5px;letter-spacing:-0.01em;}',
+    '.lynx-msg .lynx-md-h:first-child{margin-top:0;}',
+    '.lynx-msg .lynx-md-list{margin:0 0 7px;padding-left:17px;}',
+    '.lynx-msg .lynx-md-list li{margin:0 0 3px;line-height:1.45;}',
+    '.lynx-msg .lynx-md-list li:last-child{margin-bottom:0;}',
+    '.lynx-msg strong{font-weight:650;}',
+    '.lynx-msg code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.92em;background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:4px;}',
     '.lynx-cards{display:flex;flex-direction:column;gap:8px;margin:8px 0 2px;}',
-    '.lynx-card{display:flex;gap:10px;align-items:center;padding:8px;border:1px solid rgba(0,0,0,0.08);border-radius:14px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.05);text-decoration:none;color:inherit;transition:transform .15s,box-shadow .15s;}',
+    '.lynx-card{display:flex;gap:11px;align-items:center;padding:9px;border:1px solid rgba(0,0,0,0.08);border-radius:14px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.05);text-decoration:none;color:inherit;transition:transform .15s,box-shadow .15s;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}',
     'a.lynx-card:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,0.10);}',
     '.lynx-card-img{width:56px;height:56px;border-radius:10px;object-fit:cover;background:#f3f4f6;flex-shrink:0;}',
     '.lynx-card-body{min-width:0;flex:1;}',
-    '.lynx-card-name{font-size:13px;font-weight:700;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-    '.lynx-card-note{font-size:11px;color:#6b7280;line-height:1.3;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-    '.lynx-card-price{font-size:12px;font-weight:600;margin-top:3px;}',
-    '.lynx-card-go{font-size:11px;font-weight:600;padding:5px 10px;border-radius:999px;color:#fff;white-space:nowrap;flex-shrink:0;}',
+    '.lynx-card-name{font-size:13.5px;font-weight:650;line-height:1.25;letter-spacing:-0.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+    '.lynx-card-note{font-size:11.5px;color:#6b7280;line-height:1.35;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+    '.lynx-card-price{font-size:12.5px;font-weight:700;margin-top:3px;letter-spacing:-0.01em;}',
+    '.lynx-card-go{font-size:11px;font-weight:650;padding:6px 11px;border-radius:999px;color:#fff;white-space:nowrap;flex-shrink:0;letter-spacing:0.01em;}',
+    // Placeholder when the catalog has no photo — keeps every card the same shape
+    '.lynx-card-ph{width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,#f3f4f6,#e5e7eb);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;color:#9ca3af;flex-shrink:0;}',
     '@media (max-width:480px){#lynx-widget-panel{bottom:0 !important;left:0 !important;right:0 !important;width:100vw !important;max-width:100vw !important;height:100% !important;height:100dvh !important;max-height:100% !important;max-height:100dvh !important;border-radius:0 !important;}#lynx-widget-messages{padding:12px 12px !important;}.lynx-msg{font-size:14px !important;max-width:86% !important;}#lynx-widget-input-row{padding:10px 10px calc(10px + env(safe-area-inset-bottom));}#lynx-widget-input-row textarea{font-size:16px !important;}}',
     // Full-page mode (shared link): header + input span the full width; the
     // message thread is centered with a comfortable reading width (like Violet).
@@ -2120,15 +2196,57 @@ function buildFrameApp(): string {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
   // Convert URLs into clickable links; image URLs render inline as product photos.
+  // Render the assistant's markdown. The model writes **bold**, bullet lines and
+  // paragraphs; without this the raw asterisks showed up in the chat and every
+  // list collapsed into one unreadable block.
+  // SAFETY: the text is HTML-escaped FIRST, so the only tags in the output are
+  // the ones added below — model or catalog text can never inject markup.
   function renderRichText(el, text) {
     var urlRe = /(https?:\\/\\/[^\\s<>"')]+)/g;
-    var html = escapeHtml(text).replace(urlRe, function(u) {
+    var out = escapeHtml(String(text == null ? '' : text));
+
+    // Links and bare image URLs
+    out = out.replace(urlRe, function(u) {
       if (/\\.(png|jpe?g|webp|gif)(\\?|$)/i.test(u)) {
         return '<img class="lynx-product-img" src="' + u + '" alt="" loading="lazy" />';
       }
       return '<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>';
     });
-    el.innerHTML = html;
+
+    // Inline markdown: bold, italic, code
+    out = out.replace(/\\*\\*([^*\\n]+)\\*\\*/g, '<strong>$1</strong>');
+    out = out.replace(/(^|[\\s(])\\*([^*\\n]+)\\*(?=[\\s.,;:!?)]|$)/g, '$1<em>$2</em>');
+    out = out.replace(/\`([^\`\\n]+)\`/g, '<code>$1</code>');
+    // Leftover stray asterisks (unmatched markdown) should never reach the user
+    out = out.replace(/\\*\\*/g, '');
+
+    // Block structure: bullets, numbered items, headings, paragraphs
+    var lines = out.split(/\\n/);
+    var html = '', inList = false, listTag = '';
+    function closeList() { if (inList) { html += '</' + listTag + '>'; inList = false; } }
+    for (var i = 0; i < lines.length; i++) {
+      var raw = lines[i];
+      var line = raw.replace(/^\\s+/, '');
+      if (!line) { closeList(); continue; }
+      var bullet = line.match(/^(?:[-*\\u2022\\u2013]\\s+)(.*)$/);
+      var numbered = line.match(/^(?:\\d{1,2}[.)]\\s+)(.*)$/);
+      var heading = line.match(/^#{1,4}\\s+(.*)$/);
+      if (bullet) {
+        if (!inList || listTag !== 'ul') { closeList(); listTag = 'ul'; html += '<ul class="lynx-md-list">'; inList = true; }
+        html += '<li>' + bullet[1] + '</li>';
+      } else if (numbered) {
+        if (!inList || listTag !== 'ol') { closeList(); listTag = 'ol'; html += '<ol class="lynx-md-list">'; inList = true; }
+        html += '<li>' + numbered[1] + '</li>';
+      } else if (heading) {
+        closeList();
+        html += '<div class="lynx-md-h">' + heading[1] + '</div>';
+      } else {
+        closeList();
+        html += '<p class="lynx-md-p">' + line + '</p>';
+      }
+    }
+    closeList();
+    el.innerHTML = html || out;
   }
 
   // Insert restored messages ABOVE the current thread (cross-device continuity)
@@ -2220,15 +2338,24 @@ function buildFrameApp(): string {
       card.className = 'lynx-card';
       if (p.url) { card.href = p.url; card.target = '_blank'; card.rel = 'noopener noreferrer'; }
 
+      function addPlaceholder() {
+        var ph = document.createElement('div');
+        ph.className = 'lynx-card-ph';
+        ph.textContent = (p.name || '?').trim().charAt(0).toUpperCase();
+        card.insertBefore(ph, card.firstChild);
+      }
       if (p.imageUrl) {
         var img = document.createElement('img');
         img.className = 'lynx-card-img';
         img.src = p.imageUrl;
         img.alt = '';
         img.loading = 'lazy';
-        // A broken catalog image must not leave a grey hole in the card
-        img.onerror = function() { if (img.parentNode) img.parentNode.removeChild(img); };
+        // A broken catalog image becomes the initial placeholder, so cards keep
+        // a consistent shape instead of collapsing into a text-only row.
+        img.onerror = function() { if (img.parentNode) img.parentNode.removeChild(img); addPlaceholder(); };
         card.appendChild(img);
+      } else {
+        addPlaceholder();
       }
 
       var body = document.createElement('div');
