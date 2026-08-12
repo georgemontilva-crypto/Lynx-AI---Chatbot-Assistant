@@ -1539,10 +1539,18 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
 
   function start() {
     var host = mountSel ? document.querySelector(mountSel) : null;
+    if (mountSel && !host) {
+      // Silent failure here would drop a full-screen chat into the page and
+      // wreck the layout — say so instead of guessing.
+      console.warn('[Lynx] data-mount="' + mountSel + '" matched no element; rendering in place.');
+    }
     var wrap = document.createElement('div');
     // Inside an existing element → fill it. Standalone → own the viewport.
+    // min-height matters in BOTH cases: a percentage height (e.g. 100%) only
+    // resolves if every ancestor has a definite height, otherwise it collapses
+    // to 0 and the chat silently disappears.
     wrap.style.cssText = host
-      ? 'position:relative;width:100%;height:' + (height || '600px') + ';overflow:hidden;'
+      ? 'position:relative;width:100%;height:' + (height || '600px') + ';min-height:420px;overflow:hidden;'
       : 'position:relative;width:100%;height:' + (height || '100dvh') + ';min-height:420px;overflow:hidden;';
 
     var ld = document.createElement('div');
@@ -1567,6 +1575,21 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
     wrap.appendChild(ld);
     wrap.appendChild(f);
     (host || (me.parentNode || document.body)).appendChild(wrap);
+
+    // Safety net, ONLY for relative heights (%, vh/dvh, auto): those resolve
+    // against the ancestors, so a container with no definite height collapses
+    // the chat to 0px and it vanishes with no error. Absolute values (px, rem)
+    // are left untouched — they always resolve, and re-measuring them could
+    // fight a layout that simply had not painted yet.
+    var isRelativeHeight = !height || /%\s*$/.test(height);
+    if (isRelativeHeight) {
+      requestAnimationFrame(function() {
+        if (wrap.offsetHeight < 200) {
+          wrap.style.height = '75dvh';
+          wrap.style.minHeight = '420px';
+        }
+      });
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

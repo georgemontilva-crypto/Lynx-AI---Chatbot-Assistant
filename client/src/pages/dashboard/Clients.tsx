@@ -469,7 +469,7 @@ function ClientFormModal({
                   id="allowedDomains"
                   value={form.allowedDomains ?? ""}
                   onChange={set("allowedDomains")}
-                  placeholder="asksunny.io, staging.acme.com"
+                  placeholder="acme.com, staging.acme.com"
                   className="mt-1"
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
