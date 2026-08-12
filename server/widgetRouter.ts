@@ -219,11 +219,11 @@ function ownHost(req: Request): string {
   return normalizeHost((req.headers["x-forwarded-host"] as string) ?? req.headers.host);
 }
 
-function isDomainAllowed(chatbot: { isClientChatbot?: boolean | null; siteUrl?: string | null }, req: Request): boolean {
+function isDomainAllowed(chatbot: { isClientChatbot?: boolean | null; siteUrl?: string | null; allowedDomains?: string | null }, req: Request): boolean {
   // Only client chatbots are domain-locked
   if (!chatbot.isClientChatbot) return true;
-  const registered = normalizeHost(chatbot.siteUrl);
-  if (!registered) return true; // no domain on file → don't lock out (safety)
+  const allowed = allowedHostsFor(chatbot);
+  if (allowed.length === 0) return true; // no domain on file → don't lock out (safety)
 
   const origin = req.headers.origin as string | undefined;
   const referer = req.headers.referer as string | undefined;
@@ -241,8 +241,8 @@ function isDomainAllowed(chatbot: { isClientChatbot?: boolean | null; siteUrl?: 
   // Origin/Referer at all — that link is meant to be shared, so allow it.
   if (!reqHost) return true;
 
-  // Allow exact match or subdomain of the registered domain
-  return reqHost === registered || reqHost.endsWith("." + registered);
+  // Allow exact match or subdomain of any registered domain
+  return hostMatches(reqHost, allowed);
 }
 
 /**
@@ -251,15 +251,36 @@ function isDomainAllowed(chatbot: { isClientChatbot?: boolean | null; siteUrl?: 
  * A missing Referer is allowed — direct visits to the shareable chat link and
  * privacy settings that strip it must keep working.
  */
-function isFrameDomainAllowed(chatbot: { isClientChatbot?: boolean | null; siteUrl?: string | null }, req: Request): boolean {
+/**
+ * Every host allowed to use this chatbot's key: the site it learned from, plus
+ * any extra domains the owner listed. These are two different things — a bot
+ * can learn from a supplier's catalog and be installed on the reseller's own
+ * site — and conflating them returned 403 for a perfectly legitimate install.
+ */
+function allowedHostsFor(chatbot: { siteUrl?: string | null; allowedDomains?: string | null }): string[] {
+  const hosts = new Set<string>();
+  const primary = normalizeHost(chatbot.siteUrl);
+  if (primary) hosts.add(primary);
+  for (const entry of String(chatbot.allowedDomains ?? "").split(/[,\s]+/)) {
+    const host = normalizeHost(entry.trim());
+    if (host) hosts.add(host);
+  }
+  return Array.from(hosts);
+}
+
+function hostMatches(reqHost: string, allowed: string[]): boolean {
+  return allowed.some(a => reqHost === a || reqHost.endsWith("." + a));
+}
+
+function isFrameDomainAllowed(chatbot: { isClientChatbot?: boolean | null; siteUrl?: string | null; allowedDomains?: string | null }, req: Request): boolean {
   if (!chatbot.isClientChatbot) return true;
-  const registered = normalizeHost(chatbot.siteUrl);
-  if (!registered) return true;
+  const allowed = allowedHostsFor(chatbot);
+  if (allowed.length === 0) return true;
   const reqHost = normalizeHost((req.headers.referer as string | undefined) || (req.headers.origin as string | undefined));
   if (!reqHost) return true;
   const own = ownHost(req);
   if (own && (reqHost === own || reqHost.endsWith("." + own))) return true;
-  return reqHost === registered || reqHost.endsWith("." + registered);
+  return hostMatches(reqHost, allowed);
 }
 
 // ─── Register widget routes ───────────────────────────────────────────────────

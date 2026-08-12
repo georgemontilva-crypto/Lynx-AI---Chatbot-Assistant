@@ -53,6 +53,11 @@ export const chatbots = mysqlTable("chatbots", {
   // Empty string = hide the badge entirely. Any text = show that text.
   poweredByText: varchar("poweredByText", { length: 64 }),
   poweredByUrl: varchar("poweredByUrl", { length: 255 }),
+  // Extra domains allowed to use this API key, comma-separated.
+  // The bot LEARNS from siteUrl, but it may be INSTALLED somewhere else
+  // (a reseller's own site, a staging URL, a second brand domain). Those were
+  // two meanings crammed into one field, so installing elsewhere returned 403.
+  allowedDomains: text("allowedDomains"),
   primaryColor: varchar("primaryColor", { length: 16 }).default("#3b82f6"),
   secondaryColor: varchar("secondaryColor", { length: 16 }).default("#1e40af"),
   welcomeMessage: text("welcomeMessage").default("Hi! How can I help you today?"),

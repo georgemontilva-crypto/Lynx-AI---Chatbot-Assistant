@@ -2405,6 +2405,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
           autoOpen: Boolean(bot.autoOpen),
           autoOpenDelay: (bot.autoOpenDelay as number | null) ?? 5,
           language: (bot.language as string | null) ?? "en",
+          allowedDomains: (bot.allowedDomains as string | null) ?? "",
         }];
       }));
       // Each resold chatbot has its OWN monthly allowance (whitelabel_client),
@@ -2451,6 +2452,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         autoOpen: z.boolean().optional(),
         autoOpenDelay: z.number().int().min(1).max(120).optional(),
         language: z.string().max(8).optional(),
+        allowedDomains: z.string().max(500).nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
@@ -2499,6 +2501,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
           autoOpen: input.autoOpen ?? false,
           autoOpenDelay: input.autoOpenDelay ?? 5,
           language: input.language ?? "en",
+          allowedDomains: input.allowedDomains ?? null,
           welcomeMessage: input.welcomeMessage ?? "Hi! How can I help you?",
           siteUrl: input.siteUrl,
           isActive: true,
@@ -2561,6 +2564,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         autoOpen: z.boolean().optional(),
         autoOpenDelay: z.number().int().min(1).max(120).optional(),
         language: z.string().max(8).optional(),
+        allowedDomains: z.string().max(500).nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
@@ -2569,7 +2573,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         const {
           id, logoUrl, poweredByText, poweredByUrl,
           secondaryColor, buttonColor, buttonIconUrl, placeholder,
-          disclaimer, position, autoOpen, autoOpenDelay, language,
+          disclaimer, position, autoOpen, autoOpenDelay, language, allowedDomains,
           ...data
         } = input;
         const [existing] = await db.select().from(clients).where(eqOp(clients.id, id)).limit(1);
@@ -2600,6 +2604,7 @@ Return ONLY a JSON object (no markdown fences) with this exact shape:
         if (autoOpen !== undefined) botSync.autoOpen = autoOpen;
         if (autoOpenDelay !== undefined) botSync.autoOpenDelay = autoOpenDelay;
         if (language !== undefined) botSync.language = language;
+        if (allowedDomains !== undefined) botSync.allowedDomains = allowedDomains;
         // A changed website means the old knowledge is stale — re-learn it.
         if (data.siteUrl) {
           const newUrl = data.siteUrl;

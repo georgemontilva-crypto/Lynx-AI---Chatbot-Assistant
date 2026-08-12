@@ -40,6 +40,7 @@ interface ClientFormData {
   autoOpen?: boolean;
   autoOpenDelay?: number;
   language?: string;
+  allowedDomains?: string;
 }
 
 const defaultForm: ClientFormData = {
@@ -60,6 +61,7 @@ const defaultForm: ClientFormData = {
   autoOpen: false,
   autoOpenDelay: 5,
   language: "en",
+  allowedDomains: "",
 };
 
 // ─── Snippet modal ────────────────────────────────────────────────────────────
@@ -459,6 +461,21 @@ function ClientFormModal({
                   <Input id="siteUrl" value={form.siteUrl} onChange={set("siteUrl")} placeholder="acme.com" className="mt-1" required />
                   <p className="text-[11px] text-muted-foreground mt-1">The site the bot learns from — products, policies and pages.</p>
                 </div>
+              </div>
+
+              <div>
+                <Label htmlFor="allowedDomains" className="text-xs">Also allow these domains</Label>
+                <Input
+                  id="allowedDomains"
+                  value={form.allowedDomains ?? ""}
+                  onChange={set("allowedDomains")}
+                  placeholder="asksunny.io, staging.acme.com"
+                  className="mt-1"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Where the widget is <strong>installed</strong>, if that's not the site above. Comma-separated;
+                  subdomains are included automatically. Leave empty if both are the same site.
+                </p>
               </div>
 
               <div>
@@ -1075,6 +1092,7 @@ function ClientsContent() {
                                   autoOpen: Boolean(c.autoOpen),
                                   autoOpenDelay: (c.autoOpenDelay as number) ?? 5,
                                   language: (c.language as string) ?? "en",
+                                  allowedDomains: (c.allowedDomains as string) ?? "",
                                 };
                               })(),
                             })}
@@ -1140,6 +1158,7 @@ function ClientsContent() {
                                   autoOpen: Boolean(c.autoOpen),
                                   autoOpenDelay: (c.autoOpenDelay as number) ?? 5,
                                   language: (c.language as string) ?? "en",
+                                  allowedDomains: (c.allowedDomains as string) ?? "",
                                 };
                               })(),
                             })}>
