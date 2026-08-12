@@ -65,7 +65,23 @@ const defaultForm: ClientFormData = {
 };
 
 // ─── Snippet modal ────────────────────────────────────────────────────────────
-function SnippetModal({ client, onClose }: { client: { id: number; name: string; apiKey: string; brandColor: string | null; brandName: string | null; welcomeMessage: string | null }; onClose: () => void }) {
+function SnippetModal({ client, onClose }: { client: { id: number; name: string; apiKey: string; brandColor: string | null; brandName: string | null; welcomeMessage: string | null; siteUrl?: string | null; allowedDomains?: string | null }; onClose: () => void }) {
+  // The client's OWN branded chat URL. Prefer the domain where the widget is
+  // installed (allowedDomains) over the one it learns from, since those can be
+  // different sites — showing the wrong one would send visitors to a page that
+  // doesn't exist.
+  const brandedHost = (() => {
+    const firstAllowed = String(client.allowedDomains ?? "").split(",")[0]?.trim();
+    const source = firstAllowed || client.siteUrl || "";
+    if (!source) return "";
+    try {
+      return new URL(/^https?:\/\//i.test(source) ? source : `https://${source}`).host;
+    } catch {
+      return "";
+    }
+  })();
+  const brandedUrl = brandedHost ? `https://${brandedHost}/chat` : "";
+
   const [showKey, setShowKey] = useState(false);
   const [tab, setTab] = useState<"install" | "link" | "page">("install");
   const utils = trpc.useUtils();
@@ -258,7 +274,17 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
               <p><strong className="text-foreground/70">As a button on the site:</strong> link any button or menu item to this URL — <span className="font-mono break-all">&lt;a href="…" target="_blank"&gt;Talk to us&lt;/a&gt;</span>.</p>
               <p><strong className="text-foreground/70">In a social bio or QR code:</strong> paste it as-is; it opens straight into the chat on any device.</p>
               <p><strong className="text-foreground/70">In an email signature or support reply:</strong> send it to a customer to continue the conversation.</p>
-              <p className="text-amber-400/80">This link shows our domain and the API key. To show the client's own domain instead, use the Branded page tab.</p>
+              <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-2.5 mt-1">
+                <p className="text-amber-400/90">This link shows <strong>our</strong> domain and the API key.</p>
+                {brandedUrl ? (
+                  <p className="text-amber-400/90 mt-1">
+                    To share it under the client's own brand, set up the Branded page tab and share{" "}
+                    <span className="font-mono break-all">{brandedUrl}</span> instead.
+                  </p>
+                ) : (
+                  <p className="text-amber-400/90 mt-1">To show the client's own domain instead, use the Branded page tab.</p>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2 w-full max-w-full overflow-hidden">
               <div className="flex-1 min-w-0 font-mono text-[11px] bg-muted/50 rounded-lg px-3 py-2 border border-border/40 truncate" title={chatLink}>
@@ -280,6 +306,21 @@ function SnippetModal({ client, onClose }: { client: { id: number; name: string;
               A full-screen chat that lives on the client's <strong>own domain</strong> — their address
               bar, their brand, no mention of Lynx and no API key in the URL.
             </p>
+            {/* Spell out the resulting URL: without it, "make a page and paste
+                this" leaves people unsure what they end up sharing. */}
+            {brandedUrl && (
+              <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2.5">
+                <p className="text-[11px] text-emerald-400/90">
+                  Once installed, the link to share everywhere is{" "}
+                  <span className="font-mono font-semibold break-all">{brandedUrl}</span>
+                </p>
+                <p className="text-[10px] text-emerald-400/70 mt-1">
+                  Use any path you like — <span className="font-mono">/chat</span>,{" "}
+                  <span className="font-mono">/support</span>, <span className="font-mono">/ask</span> — the page just
+                  needs this snippet on it.
+                </p>
+              </div>
+            )}
 
             {/* Easiest path: nothing to upload */}
             <div className="rounded-lg border border-border/40 p-2.5 space-y-2">
@@ -734,7 +775,7 @@ function ClientFormModal({
 function ClientsContent() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editClient, setEditClient] = useState<(ClientFormData & { id: number }) | null>(null);
-  const [snippetClient, setSnippetClient] = useState<{ id: number; name: string; apiKey: string; brandColor: string | null; brandName: string | null; welcomeMessage: string | null } | null>(null);
+  const [snippetClient, setSnippetClient] = useState<{ id: number; name: string; apiKey: string; brandColor: string | null; brandName: string | null; welcomeMessage: string | null; siteUrl?: string | null; allowedDomains?: string | null } | null>(null);
   const [, navigate] = useLocation();
 
   const utils = trpc.useUtils();
