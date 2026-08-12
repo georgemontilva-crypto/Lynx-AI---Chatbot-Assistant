@@ -41,6 +41,7 @@ interface ClientFormData {
   autoOpenDelay?: number;
   language?: string;
   allowedDomains?: string;
+  customInstructions?: string;
 }
 
 const defaultForm: ClientFormData = {
@@ -62,6 +63,7 @@ const defaultForm: ClientFormData = {
   autoOpenDelay: 5,
   language: "en",
   allowedDomains: "",
+  customInstructions: "",
 };
 
 // ─── Snippet modal ────────────────────────────────────────────────────────────
@@ -396,7 +398,7 @@ function ClientFormModal({
 }) {
   const [form, setForm] = useState<ClientFormData>(initial ?? defaultForm);
   const isEdit = !!initial?.id;
-  const [tab, setTab] = useState<"brand" | "look" | "behavior">("brand");
+  const [tab, setTab] = useState<"brand" | "look" | "behavior" | "training">("brand");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingIcon, setUploadingIcon] = useState(false);
 
@@ -475,6 +477,7 @@ function ClientFormModal({
               { id: "brand" as const, label: "Brand", icon: Palette },
               { id: "look" as const, label: "Appearance", icon: Sparkles },
               { id: "behavior" as const, label: "Behavior", icon: Settings2 },
+              { id: "training" as const, label: "Training", icon: GraduationCap },
             ]).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
@@ -756,6 +759,48 @@ function ClientFormModal({
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Training: the personality and rules for THIS client's bot ──── */}
+          {tab === "training" && (
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="customInstructions" className="text-xs">Instructions for this chatbot</Label>
+                <textarea
+                  id="customInstructions"
+                  value={form.customInstructions ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, customInstructions: e.target.value }))}
+                  maxLength={4000}
+                  rows={12}
+                  placeholder="Who this assistant is, what it should focus on, and any rules it must follow."
+                  className="mt-1 w-full rounded-lg bg-muted/30 border border-border/40 p-3 text-sm leading-relaxed resize-y focus:outline-none focus:ring-1 focus:ring-primary/40"
+                />
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-[11px] text-muted-foreground">
+                    Layered on top of the site it learned from — these rules win when they conflict.
+                  </p>
+                  <span className="text-[11px] text-muted-foreground shrink-0 ml-2">
+                    {(form.customInstructions ?? "").length}/4000
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-3 space-y-1.5">
+                <p className="text-xs font-medium">What works well here</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  <strong className="text-foreground/70">Identity:</strong> who it is and what it's expert in.
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  <strong className="text-foreground/70">Focus:</strong> what to talk about first, and what to leave for later.
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  <strong className="text-foreground/70">Rules:</strong> anything it must always or never do — including when it may recommend products.
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  No need to repeat products, prices or policies: those come from the scan.
+                </p>
+              </div>
             </div>
           )}
 
@@ -1134,6 +1179,7 @@ function ClientsContent() {
                                   autoOpenDelay: (c.autoOpenDelay as number) ?? 5,
                                   language: (c.language as string) ?? "en",
                                   allowedDomains: (c.allowedDomains as string) ?? "",
+                                  customInstructions: (c.customInstructions as string) ?? "",
                                 };
                               })(),
                             })}
@@ -1200,6 +1246,7 @@ function ClientsContent() {
                                   autoOpenDelay: (c.autoOpenDelay as number) ?? 5,
                                   language: (c.language as string) ?? "en",
                                   allowedDomains: (c.allowedDomains as string) ?? "",
+                                  customInstructions: (c.customInstructions as string) ?? "",
                                 };
                               })(),
                             })}>
