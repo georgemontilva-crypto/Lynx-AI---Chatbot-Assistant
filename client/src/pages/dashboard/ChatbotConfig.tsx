@@ -205,18 +205,35 @@ export default function ChatbotConfig() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs">Bot native language</Label>
-                  <select
-                    value={config.language}
-                    onChange={(e) => update("language", e.target.value)}
-                    className="w-full h-10 rounded-lg bg-muted/30 border border-border/40 text-sm px-3"
-                  >
-                    <option value="en">English (default)</option>
-                    <option value="es">Spanish</option>
-                    <option value="fr">French</option>
-                    <option value="de">German</option>
-                    <option value="pt">Portuguese</option>
-                    <option value="it">Italian</option>
-                  </select>
+                  {/* A native <select> renders with the OS dropdown (white list,
+                      system font) and broke the dark UI. Chips match the rest of
+                      the dashboard and show every option at a glance. */}
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {[
+                      { key: "en", label: "English" },
+                      { key: "es", label: "Spanish" },
+                      { key: "pt", label: "Portuguese" },
+                      { key: "fr", label: "French" },
+                      { key: "de", label: "German" },
+                      { key: "it", label: "Italian" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => update("language", opt.key)}
+                        className={`px-3 py-1.5 rounded-lg border text-xs transition-colors ${
+                          (config.language || "en") === opt.key
+                            ? "border-primary/40 bg-primary/10 text-primary"
+                            : "border-border/40 bg-muted/20 text-muted-foreground hover:border-primary/20"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                    The bot opens in this language and switches only if the visitor writes in another one.
+                  </p>
                   <p className="text-[11px] text-muted-foreground">The bot opens and defaults to this language, and adapts if the visitor writes in another one.</p>
                 </div>
                 <div className="space-y-2">
