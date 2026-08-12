@@ -74,12 +74,18 @@ export function findCatalogUrl(siteContext: string | null | undefined, siteUrl: 
  * in the chatbot's context is the authoritative source, so the server fills the
  * gaps itself and the model only has to name the product correctly.
  */
-export function enrichProductsFromCatalog(cards: ProductCard[], siteContext: string | null | undefined): ProductCard[] {
-  if (!cards.length || !siteContext) return cards;
+export function enrichProductsFromCatalog(
+  cards: ProductCard[],
+  siteContext: string | null | undefined,
+  knowledgeBase?: unknown
+): ProductCard[] {
+  if (!cards.length) return cards;
   const norm = (n: string) => n.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  // Catalog lines look like: "1. Name | Price: $x | desc | URL: https://… | IMG: https://…"
   const entries: { name: string; price?: string; url?: string; image?: string }[] = [];
-  for (const line of siteContext.split("\n")) {
+
+  // Source 1 — the scanned catalog:
+  // "1. Name | Price: $x | desc | URL: https://… | IMG: https://…"
+  for (const line of String(siteContext ?? "").split("\n")) {
     const m = line.match(/^\s*\d+\.\s+(.+)$/);
     if (!m) continue;
     const parts = m[1].split("|").map(x => x.trim());
@@ -91,6 +97,31 @@ export function enrichProductsFromCatalog(cards: ProductCard[], siteContext: str
     }
     if (entry.name) entries.push(entry);
   }
+
+  // Source 2 — knowledge-base entries the owner typed by hand. These are often
+  // the ONLY product data when a scan came up empty, and ignoring them left
+  // perfectly good products without a card, price or link.
+  // Shape: title "PRODUCTO: Name", content "… Precio: $x … Link: https://…".
+  try {
+    const kb = Array.isArray(knowledgeBase)
+      ? knowledgeBase
+      : typeof knowledgeBase === "string" ? JSON.parse(knowledgeBase) : [];
+    for (const raw of Array.isArray(kb) ? kb : []) {
+      const item = raw as { title?: string; content?: string };
+      const title = String(item?.title ?? "").trim();
+      const content = String(item?.content ?? "");
+      if (!title) continue;
+      const name = title.replace(/^\s*(producto|product)\s*:\s*/i, "").trim();
+      if (!name) continue;
+      const url = content.match(/https?:\/\/\S+/)?.[0]?.replace(/[.,;)]+$/, "");
+      const price = content.match(/(?:precio|price)\s*:?\s*([$€£]\s?[\d.,]+)/i)?.[1]
+        ?? content.match(/([$€£]\s?\d[\d.,]*)/)?.[1];
+      if (!entries.some(e => norm(e.name) === norm(name))) {
+        entries.push({ name, price, url });
+      }
+    }
+  } catch { /* malformed knowledge base — ignore */ }
+
   if (!entries.length) return cards;
 
   const safeUrl = (v?: string) => {
@@ -757,8 +788,8 @@ KNOWLEDGE (this is what makes you valuable):
 5. You MAY use your general expert knowledge of this site's FIELD to educate: explain how this type of product works, what results to expect, best practices, comparisons between categories. Teach like a specialist would — this is encouraged.
 6. Product names, prices, and links must always come from the PRODUCT CATALOG in the site context (so they're accurate) — never invent a product, price, discount code, or URL. If a specific item isn't in the catalog, warmly say you don't see that exact one and suggest the closest match that IS available.
 6b. If the visitor wants to SEE a product (photo, "how does it look"), include the product's IMG url from the catalog on its own line — the chat renders image links as photos automatically.
-6c. SITE KNOWLEDGE: the context below is what was actually read from THIS website. Use it as your source of truth, in this order — PRODUCT CATALOG for anything about products, the labeled info sections (FAQ / SHIPPING / RETURNS / PRIVACY POLICY / TERMS / CONTACT / ABOUT / PRICING) for policy and logistics questions, and the SITE MAP for what sections exist. Quote policies as they are written; never soften, invent or "improve" a shipping time, a return window or a guarantee.
-6d. LINKS: only ever send a URL that appears in the PRODUCT CATALOG or the SITE MAP. If the SITE MAP lists a relevant page but its content was not read, point the visitor to it by name and link instead of guessing what it says. Never construct a URL by pattern.
+6c. SITE KNOWLEDGE: two sources are equally authoritative — the KNOWLEDGE BASE (written by the owner) and the scanned site context (PRODUCT CATALOG, the labeled info sections FAQ / SHIPPING / RETURNS / PRIVACY POLICY / TERMS / CONTACT / ABOUT / PRICING, and the SITE MAP). Products may come from EITHER: if the KNOWLEDGE BASE lists products the scan missed, use them normally and recommend them with full confidence. Quote policies as written; never soften, invent or "improve" a shipping time, a return window or a guarantee. If neither source has products yet, say plainly that you can check availability and ask what they are looking for — do NOT retreat into vague disclaimers or claim the store has nothing to offer.
+6d. LINKS: only ever send a URL that appears in the PRODUCT CATALOG, the KNOWLEDGE BASE or the SITE MAP. If the SITE MAP lists a relevant page but its content was not read, point the visitor to it by name and link instead of guessing what it says. Never construct a URL by pattern.
 
 STYLE (this is what makes you feel human, not a bot):
 7. Talk like a real person texting — warm, natural, with personality. React genuinely to what they say ("Great question!", "Oh, I totally get that"). Use contractions, casual connectors, the occasional emoji if it fits. NEVER sound scripted, robotic, or like a corporate FAQ. If the OWNER INSTRUCTIONS below define a specific personality, fully embody it — that persona IS who you are.
@@ -860,7 +891,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for 
         quickReplies = Array.isArray(parsed.quickReplies)
           ? parsed.quickReplies.slice(0, 4).map((q: unknown) => String(q).slice(0, 60))
           : [];
-        products = enrichProductsFromCatalog(sanitizeProducts(parsed.products), chatbot.siteContext);
+        products = enrichProductsFromCatalog(sanitizeProducts(parsed.products), chatbot.siteContext, chatbot.knowledgeBase);
       } catch {
         reply = typeof response.choices[0]?.message?.content === "string"
           ? response.choices[0].message.content
@@ -1000,8 +1031,8 @@ KNOWLEDGE (this is what makes you valuable):
 5. You MAY use your general expert knowledge of this site's FIELD to educate: explain how this type of product works, what results to expect, best practices, comparisons between categories. Teach like a specialist would — this is encouraged.
 6. Product names, prices, and links must always come from the PRODUCT CATALOG in the site context (so they're accurate) — never invent a product, price, discount code, or URL. If a specific item isn't in the catalog, warmly say you don't see that exact one and suggest the closest match that IS available.
 6b. If the visitor wants to SEE a product (photo, "how does it look"), include the product's IMG url from the catalog on its own line — the chat renders image links as photos automatically.
-6c. SITE KNOWLEDGE: the context below is what was actually read from THIS website. Use it as your source of truth, in this order — PRODUCT CATALOG for anything about products, the labeled info sections (FAQ / SHIPPING / RETURNS / PRIVACY POLICY / TERMS / CONTACT / ABOUT / PRICING) for policy and logistics questions, and the SITE MAP for what sections exist. Quote policies as they are written; never soften, invent or "improve" a shipping time, a return window or a guarantee.
-6d. LINKS: only ever send a URL that appears in the PRODUCT CATALOG or the SITE MAP. If the SITE MAP lists a relevant page but its content was not read, point the visitor to it by name and link instead of guessing what it says. Never construct a URL by pattern.
+6c. SITE KNOWLEDGE: two sources are equally authoritative — the KNOWLEDGE BASE (written by the owner) and the scanned site context (PRODUCT CATALOG, the labeled info sections FAQ / SHIPPING / RETURNS / PRIVACY POLICY / TERMS / CONTACT / ABOUT / PRICING, and the SITE MAP). Products may come from EITHER: if the KNOWLEDGE BASE lists products the scan missed, use them normally and recommend them with full confidence. Quote policies as written; never soften, invent or "improve" a shipping time, a return window or a guarantee. If neither source has products yet, say plainly that you can check availability and ask what they are looking for — do NOT retreat into vague disclaimers or claim the store has nothing to offer.
+6d. LINKS: only ever send a URL that appears in the PRODUCT CATALOG, the KNOWLEDGE BASE or the SITE MAP. If the SITE MAP lists a relevant page but its content was not read, point the visitor to it by name and link instead of guessing what it says. Never construct a URL by pattern.
 
 STYLE (this is what makes you feel human, not a bot):
 7. Talk like a real person texting — warm, natural, with personality. React genuinely to what they say ("Great question!", "Oh, I totally get that"). Use contractions, casual connectors, the occasional emoji if it fits. NEVER sound scripted, robotic, or like a corporate FAQ. If the OWNER INSTRUCTIONS below define a specific personality, fully embody it — that persona IS who you are.
@@ -1179,7 +1210,7 @@ ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailR
         quickReplies = Array.isArray(parsed.quickReplies)
           ? parsed.quickReplies.slice(0, 4).map((q: unknown) => String(q).slice(0, 60))
           : [];
-        products = enrichProductsFromCatalog(sanitizeProducts(parsed.products), chatbot.siteContext);
+        products = enrichProductsFromCatalog(sanitizeProducts(parsed.products), chatbot.siteContext, chatbot.knowledgeBase);
       } catch { /* extras are optional — never break the reply over them */ }
 
       // ── Fire-and-forget 80% usage alert ──────────────────────────────────────
