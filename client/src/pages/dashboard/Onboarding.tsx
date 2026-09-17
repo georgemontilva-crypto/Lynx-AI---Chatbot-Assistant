@@ -70,6 +70,7 @@ export default function Onboarding() {
   const utils = trpc.useUtils();
   const { data: progress } = trpc.onboarding.get.useQuery();
   const { data: chatbotData } = trpc.chatbotConfig.get.useQuery();
+  const { data: originData } = trpc.chatbotConfig.widgetOrigin.useQuery();
   const updateMutation = trpc.onboarding.update.useMutation();
   const skipMutation = trpc.onboarding.skip.useMutation({
     onSuccess: () => navigate("/dashboard"),
@@ -104,9 +105,13 @@ export default function Onboarding() {
     if (chatbotData?.apiKey) setApiKey(chatbotData.apiKey);
   }, [chatbotData]);
 
-  const snippetCode = apiKey
-    ? `<script src="https://lynxaiassistant.com/widget.js" data-key="${apiKey}" async></script>`
-    : `<script src="https://lynxaiassistant.com/widget.js" data-key="YOUR_API_KEY" async></script>`;
+  // Must match the snippet on the Install Snippet page exactly. This one was
+  // still the pre-migration format and produced a chat that never loaded:
+  // the apex domain 404s/403s (the live site is www), the script lives at
+  // /api/widget.js, and the loader reads data-api-key — data-key is ignored,
+  // so the widget silently had no chatbot to load.
+  const snippetOrigin = originData?.origin ?? (typeof window !== "undefined" ? window.location.origin : "");
+  const snippetCode = `<script src="${snippetOrigin}/api/widget.js" data-api-key="${apiKey ?? "YOUR_API_KEY"}" defer></script>`;
 
   async function handleScan() {
     if (!siteUrl) return;
