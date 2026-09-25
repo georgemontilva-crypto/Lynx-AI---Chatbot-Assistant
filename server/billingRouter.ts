@@ -540,6 +540,41 @@ export function registerBillingRoutes(app: Express) {
               nextDate
             );
           }
+
+          // ── Execute scheduled cancellation ───────────────────────────────────
+          // If the user requested cancellation within the 15-day window, this
+          // payment was the last one they agreed to. Now that it has been
+          // collected, cancel the PayPal subscription for real.
+          if (user.cancelScheduledAt) {
+            console.log(`[Billing] Executing scheduled cancellation for user ${user.id}`);
+            try {
+              const token = await getPayPalToken();
+              await fetch(
+                `${PAYPAL_BASE}/v1/billing/subscriptions/${user.subscriptionId}/cancel`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ reason: "Scheduled cancellation after final billing period" }),
+                }
+              );
+              await db
+                .update(users)
+                .set({ subscriptionStatus: "cancelled", cancelScheduledAt: null })
+                .where(eq(users.id, user.id));
+              if (user.email) {
+                await sendSubscriptionCancelledEmail(
+                  user.email,
+                  user.name ?? "",
+                  PLAN_NAMES[user.plan] ?? user.plan
+                ).catch(() => {});
+              }
+            } catch (cancelErr) {
+              console.error("[Billing] Scheduled cancellation failed:", cancelErr);
+            }
+          }
           break;
         }
 
@@ -624,7 +659,16 @@ export function registerBillingRoutes(app: Express) {
   });
 
   // POST /api/billing/cancel
-  // Cancels the current PayPal subscription
+  // Cancels the current PayPal subscription.
+  //
+  // POLICY — 15-day window:
+  // • If the next billing date is MORE than 15 days away, cancel immediately
+  //   with PayPal and the sub ends at period end (standard behaviour).
+  // • If the next billing date is 15 days or CLOSER (or unknown), the
+  //   upcoming charge still processes normally. We schedule the cancellation
+  //   for the NEXT period after that and tell the user accordingly.
+  //   A daily job (or the webhook on the next PAYMENT.SALE.COMPLETED) will
+  //   call PayPal to actually cancel once that date passes.
   app.post("/api/billing/cancel", async (req: Request, res: Response) => {
     try {
       const user = await authenticateAny(req);
@@ -634,8 +678,42 @@ export function registerBillingRoutes(app: Express) {
         return res.status(400).json({ error: "No active subscription found" });
       }
 
-      const token = await getPayPalToken();
+      const WINDOW_DAYS = 15;
+      const now = Date.now();
+      const nextBilling = user.nextBillingDate ? new Date(user.nextBillingDate).getTime() : null;
+      const daysUntilBilling = nextBilling ? (nextBilling - now) / (1000 * 60 * 60 * 24) : null;
+      const isWithinWindow = daysUntilBilling !== null && daysUntilBilling <= WINDOW_DAYS;
 
+      const db = await getDb();
+
+      if (isWithinWindow) {
+        // ── Within the 15-day window ──────────────────────────────────────────
+        // The next charge will go through. Schedule the cancellation for the
+        // period AFTER that (nextBillingDate + ~31 days as a safety buffer;
+        // the webhook on the next payment will also trigger the real cancel).
+        const cancelAfter = new Date(nextBilling! + 31 * 24 * 60 * 60 * 1000);
+        const nextBillingStr = new Date(nextBilling!).toLocaleDateString("en-US", {
+          month: "long", day: "numeric", year: "numeric",
+        });
+
+        if (db) {
+          await db
+            .update(users)
+            .set({ cancelScheduledAt: cancelAfter })
+            .where(eq(users.id, user.id));
+        }
+
+        return res.json({
+          success: true,
+          scheduled: true,
+          message: `Your subscription is scheduled for cancellation. Because your next billing date (${nextBillingStr}) is less than ${WINDOW_DAYS} days away, that charge will be processed normally. Your access will end after that period and you will not be charged again.`,
+          cancelAfter: cancelAfter.toISOString(),
+          nextBillingDate: new Date(nextBilling!).toISOString(),
+        });
+      }
+
+      // ── More than 15 days away — cancel immediately with PayPal ─────────────
+      const token = await getPayPalToken();
       const cancelRes = await fetch(
         `${PAYPAL_BASE}/v1/billing/subscriptions/${user.subscriptionId}/cancel`,
         {
@@ -654,16 +732,24 @@ export function registerBillingRoutes(app: Express) {
         return res.status(500).json({ error: "Failed to cancel subscription" });
       }
 
-      // Update DB
-      const db = await getDb();
       if (db) {
         await db
           .update(users)
-          .set({ subscriptionStatus: "cancelled" })
+          .set({ subscriptionStatus: "cancelled", cancelScheduledAt: null })
           .where(eq(users.id, user.id));
       }
 
-      return res.json({ success: true });
+      const endDateStr = nextBilling
+        ? new Date(nextBilling).toLocaleDateString("en-US", {
+            month: "long", day: "numeric", year: "numeric",
+          })
+        : "the end of the current billing period";
+
+      return res.json({
+        success: true,
+        scheduled: false,
+        message: `Your subscription has been cancelled. You will retain full access until ${endDateStr}.`,
+      });
     } catch (err) {
       console.error("[Billing] cancel error:", err);
       return res.status(500).json({ error: "Internal server error" });

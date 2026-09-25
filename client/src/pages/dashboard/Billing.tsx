@@ -202,7 +202,24 @@ export default function Billing() {
   }
 
   async function handleCancel() {
-    if (!confirm("Are you sure you want to cancel your subscription? Your chatbot will continue working until the end of the billing period.")) return;
+    const nextBillingDate = billingStatus?.nextBillingDate
+      ? new Date(billingStatus.nextBillingDate).toLocaleDateString("en-US", {
+          month: "long", day: "numeric", year: "numeric",
+        })
+      : null;
+
+    const now = Date.now();
+    const nextBillingMs = billingStatus?.nextBillingDate
+      ? new Date(billingStatus.nextBillingDate).getTime()
+      : null;
+    const daysLeft = nextBillingMs ? (nextBillingMs - now) / (1000 * 60 * 60 * 24) : null;
+    const withinWindow = daysLeft !== null && daysLeft <= 15;
+
+    const confirmMsg = withinWindow && nextBillingDate
+      ? `Your next billing date (${nextBillingDate}) is less than 15 days away.\n\nThat charge will be processed normally. Your subscription will be cancelled after that period and you will NOT be charged again.\n\nProceed?`
+      : `Are you sure you want to cancel your subscription? Your chatbot will continue working until the end of the billing period.`;
+
+    if (!confirm(confirmMsg)) return;
 
     setCancelling(true);
     try {
@@ -217,7 +234,12 @@ export default function Billing() {
         return;
       }
 
-      toast.success("Subscription cancelled. Your chatbot will remain active until the end of the billing period.");
+      const data = await res.json() as { scheduled?: boolean; message?: string };
+      if (data.scheduled) {
+        toast.info(data.message ?? "Cancellation scheduled after your next billing date.");
+      } else {
+        toast.success(data.message ?? "Subscription cancelled. Your chatbot will remain active until the end of the billing period.");
+      }
       await fetchBillingStatus();
     } catch {
       toast.error("Failed to cancel subscription. Please try again.");

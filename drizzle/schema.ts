@@ -33,6 +33,7 @@ export const users = mysqlTable("users", {
   subscriptionStatus: mysqlEnum("subscriptionStatus", ["active", "cancelled", "suspended", "expired", "pending"]),
   subscriptionPlanId: varchar("subscriptionPlanId", { length: 64 }),
   nextBillingDate: timestamp("nextBillingDate"),
+  cancelScheduledAt: timestamp("cancelScheduledAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
