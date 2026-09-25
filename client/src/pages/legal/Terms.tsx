@@ -63,7 +63,9 @@ export default function Terms() {
 
           <section>
             <h2 className="text-xl font-semibold mb-3">9. Termination</h2>
-            <p>You may cancel your subscription at any time from your dashboard's Billing section. Cancellation takes effect at the end of the current billing period; you will retain access to the Service until that date. We reserve the right to suspend or terminate your account immediately, without notice, if you violate these Terms or engage in conduct that we determine, in our sole discretion, is harmful to the Service or other users.</p>
+            <p>You may cancel your subscription at any time from your dashboard's Billing section.</p>
+            <p className="mt-3"><strong>Cancellation policy — 15-day notice window:</strong> If you request cancellation more than 15 days before your next billing date, your subscription will end at the close of the current billing period and you will not be charged again. If you request cancellation within 15 days of your next billing date, that upcoming charge will be processed normally; your cancellation will take effect at the end of that next billing period and you will not be charged after that. In both cases you retain full access to the Service until the cancellation date.</p>
+            <p className="mt-3">We reserve the right to suspend or terminate your account immediately, without notice, if you violate these Terms or engage in conduct that we determine, in our sole discretion, is harmful to the Service or other users.</p>
           </section>
 
           <section>

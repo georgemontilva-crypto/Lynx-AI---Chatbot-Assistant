@@ -328,7 +328,14 @@ export default function Billing() {
                   </div>
 
                   {isActive && (
-                    <div className="ml-auto">
+                    <div className="ml-auto flex flex-col items-end gap-2">
+                      <p className="text-[11px] text-muted-foreground text-right max-w-xs leading-relaxed">
+                        Cancellations requested within 15 days of the next billing date take effect
+                        after that charge — the upcoming payment will still be processed.{" "}
+                        <a href="/legal/terms#termination" target="_blank" className="underline hover:text-foreground transition-colors">
+                          Cancellation policy
+                        </a>
+                      </p>
                       <Button
                         variant="outline"
                         size="sm"
