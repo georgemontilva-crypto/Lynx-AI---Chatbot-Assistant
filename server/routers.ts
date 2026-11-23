@@ -1951,6 +1951,41 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
       .query(async ({ input }) => {
         return await getAllUsers(input);
       }),
+    /**
+     * Live subscription state from PayPal for one user. Read-only: it answers
+     * "did this actually get charged?" without trusting the local row, which
+     * only updates when a webhook arrives.
+     */
+    subscriptionDetails: adminProcedure
+      .input(z.object({ userId: z.number().int() }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        const { eq: eqOp } = await import("drizzle-orm");
+        const { users } = await import("../drizzle/schema");
+        const [user] = await db.select().from(users).where(eqOp(users.id, input.userId)).limit(1);
+        if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+        if (!user.subscriptionId) {
+          return { hasSubscription: false as const, localStatus: user.subscriptionStatus ?? null };
+        }
+        const { fetchPayPalSubscription } = await import("./billingRouter");
+        try {
+          const live = await fetchPayPalSubscription(user.subscriptionId);
+          return {
+            hasSubscription: true as const,
+            subscriptionId: user.subscriptionId,
+            localStatus: user.subscriptionStatus ?? null,
+            localNextBilling: user.nextBillingDate ?? null,
+            ...live,
+          };
+        } catch (e) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: (e as Error).message || "Could not reach PayPal",
+          });
+        }
+      }),
+
     updatePlan: adminProcedure
       .input(z.object({ userId: z.number().int(), plan: z.enum(["free", "cloud", "embedded", "whitelabel"]) }))
       .mutation(async ({ input }) => {

@@ -141,6 +141,64 @@ const PLAN_AMOUNTS: Record<string, string> = {
 
 // ─── Register billing routes ──────────────────────────────────────────────────
 
+/**
+ * Read a subscription's REAL state straight from PayPal.
+ *
+ * WHY: the local `users.subscriptionStatus` only changes when a webhook
+ * arrives, and the webhook handler ignores payment events entirely — so a
+ * declined charge left Kurt's row saying "active" with no next billing date.
+ * PayPal's own merchant UI hides Subscriptions-API subscriptions (IDs starting
+ * with "I-") from the legacy recurring-payments panel, so this is the only
+ * reliable way to see what actually happened.
+ *
+ * Read-only on purpose: it never charges, cancels or modifies anything.
+ */
+export async function fetchPayPalSubscription(subscriptionId: string): Promise<{
+  status: string;
+  statusChangeNote?: string;
+  nextBillingTime?: string;
+  lastPaymentTime?: string;
+  lastPaymentAmount?: string;
+  outstandingBalance?: string;
+  failedPaymentsCount?: number;
+  lastFailedTime?: string;
+}> {
+  const token = await getPayPalToken();
+  const res = await fetch(`${PAYPAL_BASE}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`PayPal subscription lookup failed (${res.status}): ${err.slice(0, 300)}`);
+  }
+  const d = (await res.json()) as {
+    status: string;
+    status_change_note?: string;
+    billing_info?: {
+      next_billing_time?: string;
+      outstanding_balance?: { value?: string; currency_code?: string };
+      failed_payments_count?: number;
+      last_failed_payment?: { time?: string; reason_code?: string };
+      last_payment?: { time?: string; amount?: { value?: string; currency_code?: string } };
+    };
+  };
+  const b = d.billing_info ?? {};
+  return {
+    status: d.status,
+    statusChangeNote: d.status_change_note,
+    nextBillingTime: b.next_billing_time,
+    lastPaymentTime: b.last_payment?.time,
+    lastPaymentAmount: b.last_payment?.amount
+      ? `${b.last_payment.amount.value} ${b.last_payment.amount.currency_code ?? ""}`.trim()
+      : undefined,
+    outstandingBalance: b.outstanding_balance?.value
+      ? `${b.outstanding_balance.value} ${b.outstanding_balance.currency_code ?? ""}`.trim()
+      : undefined,
+    failedPaymentsCount: b.failed_payments_count,
+    lastFailedTime: b.last_failed_payment?.time,
+  };
+}
+
 export function registerBillingRoutes(app: Express) {
   // POST /api/billing/create-subscription
   // Body: { plan: "cloud" | "embedded" | "whitelabel" }

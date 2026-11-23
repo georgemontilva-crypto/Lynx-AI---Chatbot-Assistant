@@ -26,6 +26,7 @@ import {
   Users, CreditCard, MessageSquare, ShieldAlert,
   Search, Ban, CheckCircle, Crown, RefreshCw,
   Rocket, Globe, Phone, Mail, ExternalLink, DollarSign, Calendar,
+  Receipt, Loader2, AlertTriangle,
 } from "lucide-react";
 
 const PLAN_LABELS: Record<string, { label: string; color: string }> = {
@@ -39,6 +40,15 @@ export default function Admin() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
+  // Live PayPal lookup for one user, on demand. The local row only reflects
+  // what webhooks delivered, so this is how you tell a real charge from a
+  // stale "active".
+  const [payPalUserId, setPayPalUserId] = useState<number | null>(null);
+  const payPalQuery = trpc.admin.subscriptionDetails.useQuery(
+    { userId: payPalUserId ?? 0 },
+    { enabled: payPalUserId !== null, retry: false }
+  );
+
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [newPlan, setNewPlan] = useState<string>("");
@@ -282,6 +292,21 @@ export default function Admin() {
                               <CreditCard className="w-3 h-3 mr-1" />
                               Plan
                             </Button>
+                            {/* Live PayPal status */}
+                            {u.subscriptionId && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs text-blue-400 hover:text-blue-300"
+                                onClick={() => setPayPalUserId(u.id)}
+                                title="Check the real subscription status in PayPal"
+                              >
+                                {payPalUserId === u.id && payPalQuery.isFetching
+                                  ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                  : <Receipt className="w-3 h-3 mr-1" />}
+                                PayPal
+                              </Button>
+                            )}
                             {/* Toggle role */}
                             {u.id !== user?.id && (
                               <Button
@@ -437,6 +462,103 @@ export default function Admin() {
       </Card>
 
       {/* Change Plan Dialog */}
+      {/* Live PayPal subscription state — read-only, never charges anything */}
+      <Dialog open={payPalUserId !== null} onOpenChange={(o) => !o && setPayPalUserId(null)}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-lg [&>*]:min-w-0 break-words">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Receipt className="w-4 h-4 text-blue-400" />
+              Subscription status in PayPal
+            </DialogTitle>
+          </DialogHeader>
+
+          {payPalQuery.isFetching && (
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> Checking with PayPal…
+            </p>
+          )}
+
+          {payPalQuery.error && (
+            <div className="rounded-xl border border-red-400/30 bg-red-400/10 p-3">
+              <p className="text-xs text-red-400">{payPalQuery.error.message}</p>
+            </div>
+          )}
+
+          {payPalQuery.data && !payPalQuery.isFetching && (
+            payPalQuery.data.hasSubscription === false ? (
+              <p className="text-sm text-muted-foreground">
+                This user has no PayPal subscription on file — their plan was set manually, so nothing is charged automatically.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {/* The headline: what PayPal says right now */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-muted-foreground">PayPal says</span>
+                    <span className={`text-sm font-semibold ${
+                      payPalQuery.data.status === "ACTIVE" ? "text-emerald-400"
+                        : payPalQuery.data.status === "SUSPENDED" ? "text-amber-400"
+                        : "text-red-400"
+                    }`}>
+                      {payPalQuery.data.status}
+                    </span>
+                  </div>
+                  {payPalQuery.data.localStatus &&
+                    payPalQuery.data.status.toLowerCase() !== payPalQuery.data.localStatus && (
+                    <p className="text-[11px] text-amber-400 mt-2 flex items-start gap-1.5">
+                      <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                      Your dashboard says "{payPalQuery.data.localStatus}" — the webhook never updated it.
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  {[
+                    ["Last payment", payPalQuery.data.lastPaymentTime
+                      ? `${new Date(payPalQuery.data.lastPaymentTime).toLocaleDateString()}${payPalQuery.data.lastPaymentAmount ? ` · ${payPalQuery.data.lastPaymentAmount}` : ""}`
+                      : "No payment recorded"],
+                    ["Next charge", payPalQuery.data.nextBillingTime
+                      ? new Date(payPalQuery.data.nextBillingTime).toLocaleDateString()
+                      : "Not scheduled"],
+                    ["Outstanding balance", payPalQuery.data.outstandingBalance ?? "—"],
+                    ["Failed payments", payPalQuery.data.failedPaymentsCount != null
+                      ? String(payPalQuery.data.failedPaymentsCount) : "—"],
+                    ["Last failure", payPalQuery.data.lastFailedTime
+                      ? new Date(payPalQuery.data.lastFailedTime).toLocaleDateString() : "—"],
+                    ["Subscription ID", payPalQuery.data.subscriptionId ?? "—"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex items-start justify-between gap-3 py-1 border-b border-border/20 last:border-0">
+                      <span className="text-muted-foreground shrink-0">{label}</span>
+                      <span className="font-mono text-[11px] text-right break-all">{value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {payPalQuery.data.statusChangeNote && (
+                  <p className="text-[11px] text-muted-foreground">
+                    PayPal note: {payPalQuery.data.statusChangeNote}
+                  </p>
+                )}
+
+                {(payPalQuery.data.failedPaymentsCount ?? 0) > 0 && (
+                  <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3">
+                    <p className="text-[11px] text-amber-400 leading-relaxed">
+                      A charge was declined. PayPal cannot retry a declined payment method — the customer has to update
+                      their card in their own PayPal account, and the outstanding balance is collected then. To get paid
+                      for this period now, send them a one-off PayPal invoice.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayPalUserId(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={planDialogOpen} onOpenChange={setPlanDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
