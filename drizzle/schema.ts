@@ -34,6 +34,15 @@ export const users = mysqlTable("users", {
   subscriptionPlanId: varchar("subscriptionPlanId", { length: 64 }),
   nextBillingDate: timestamp("nextBillingDate"),
   cancelScheduledAt: timestamp("cancelScheduledAt"),
+  // ── Overdue payments ────────────────────────────────────────────────────
+  // When the billing date passed without a successful charge. Cleared the
+  // moment a payment comes through. Service keeps running during a short
+  // grace period and is paused after it, so an account can't run unpaid
+  // indefinitely — which is exactly what happened before this existed.
+  pastDueSince: timestamp("pastDueSince"),
+  // 0 = nothing sent, 1 = warning emailed, 2 = suspension emailed.
+  // Stops the hourly job from re-sending the same email every run.
+  pastDueStage: int("pastDueStage").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

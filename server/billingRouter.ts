@@ -23,6 +23,7 @@ import { jwtVerify } from "jose";
 import { parse as parseCookieHeader } from "cookie";
 import { COOKIE_NAME } from "@shared/const";
 import type { User } from "../drizzle/schema";
+import { overdueState, GRACE_DAYS } from "./overdueState";
 
 // Dual-auth helper: tries local JWT first, then Manus OAuth
 async function authenticateAny(req: Request): Promise<User | null> {
@@ -582,6 +583,28 @@ export function registerBillingRoutes(app: Express) {
             ? `$${sale.amount.total} ${sale.amount.currency ?? "USD"}`
             : "N/A";
 
+          // ── Money arrived: clear any overdue flag and restore service ───────
+          // This is the ONLY place a payment can be confirmed in real time, so
+          // it has to undo everything the overdue job may have done. Without
+          // this, a customer who paid would stay paused until the hourly job
+          // happened to run.
+          if (user.pastDueSince || user.pastDueStage !== 0 || user.subscriptionStatus !== "active") {
+            const restored = await fetchPayPalSubscription(sale.billing_agreement_id).catch(() => null);
+            const nextBilling = restored?.nextBillingTime ? new Date(restored.nextBillingTime) : null;
+            await db
+              .update(users)
+              .set({
+                pastDueSince: null,
+                pastDueStage: 0,
+                subscriptionStatus: "active",
+                ...(nextBilling && Number.isFinite(nextBilling.getTime())
+                  ? { nextBillingDate: nextBilling }
+                  : {}),
+              })
+              .where(eq(users.id, user.id));
+            console.log(`[Billing] Payment received — service restored for user ${user.id}`);
+          }
+
           if (user.email) {
             const nextDate = user.nextBillingDate
               ? new Date(user.nextBillingDate).toLocaleDateString("en-US", {
@@ -636,6 +659,37 @@ export function registerBillingRoutes(app: Express) {
           break;
         }
 
+        // ── A scheduled charge was declined ──────────────────────────────────
+        // PayPal keeps retrying on its own schedule, so this is not the end of
+        // the subscription — it starts the grace period. The hourly job takes it
+        // from here (warning email now, pause after the grace period).
+        case "BILLING.SUBSCRIPTION.PAYMENT.FAILED": {
+          const sub = event.resource as { id: string };
+
+          const rows = await db
+            .select()
+            .from(users)
+            .where(eq(users.subscriptionId, sub.id))
+            .limit(1);
+          const user = rows[0];
+          if (!user) break;
+
+          // Don't restart the clock on an account that is already overdue:
+          // PayPal fires this event on every retry, and each one would push the
+          // suspension another 3 days into the future.
+          if (user.pastDueSince) {
+            console.log(`[Billing] Payment failed again for user ${user.id} — already past due`);
+            break;
+          }
+
+          await db
+            .update(users)
+            .set({ pastDueSince: new Date(), pastDueStage: 0 })
+            .where(eq(users.id, user.id));
+          console.log(`[Billing] Payment failed for user ${user.id} — grace period started`);
+          break;
+        }
+
         case "BILLING.SUBSCRIPTION.CANCELLED":
         case "BILLING.SUBSCRIPTION.EXPIRED":
         case "BILLING.SUBSCRIPTION.SUSPENDED": {
@@ -648,6 +702,19 @@ export function registerBillingRoutes(app: Express) {
             .limit(1);
           const user = rows[0];
           if (!user) break;
+
+          // ── Confirm against PayPal before downgrading ──────────────────────
+          // A replayed or out-of-order event used to be enough to flip a paying
+          // account to "suspended" — which is exactly what happened to a
+          // white-label customer whose old subscription fired a stale event.
+          // PayPal's live status is the only thing worth trusting here.
+          const live = await fetchPayPalSubscription(sub.id).catch(() => null);
+          if (live && live.status === "ACTIVE") {
+            console.warn(
+              `[Billing] Ignoring ${event.event_type} for user ${user.id}: PayPal reports ${sub.id} is still ACTIVE`
+            );
+            break;
+          }
 
           const status =
             event.event_type === "BILLING.SUBSCRIPTION.CANCELLED"
@@ -893,6 +960,38 @@ export function registerBillingRoutes(app: Express) {
     }
   });
 
+  // POST /api/billing/recheck
+  // Re-reads this account's subscription from PayPal and applies the result
+  // immediately. Backs the "Already paid? Re-check" button, so a customer who
+  // has just paid doesn't have to wait for the hourly job to notice.
+  app.post("/api/billing/recheck", async (req: Request, res: Response) => {
+    try {
+      const user = await authenticateAny(req);
+      if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+      const { recheckUserBilling } = await import("./overdueBilling");
+      await recheckUserBilling(user.id);
+
+      // Report the state as it stands AFTER the re-check, so the UI updates in
+      // one round trip instead of needing a second request.
+      const db = await getDb();
+      if (!db) return res.json({ ok: true });
+      const rows = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+      const fresh = rows[0] ?? user;
+      const overdue = overdueState(fresh as Parameters<typeof overdueState>[0]);
+
+      return res.json({
+        ok: true,
+        isPastDue: overdue.isPastDue,
+        isSuspended: overdue.isSuspended,
+        daysLeftBeforePause: overdue.daysLeft,
+      });
+    } catch (err) {
+      console.error("[Billing] recheck error:", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // GET /api/billing/status
   // Returns current subscription status for the logged-in user
   app.get("/api/billing/status", async (req: Request, res: Response) => {
@@ -901,6 +1000,11 @@ export function registerBillingRoutes(app: Express) {
       let user = await authenticateAny(req);
       if (!user) return res.status(401).json({ error: "Unauthorized" });
 
+      // Overdue state, derived from the same function the widget and the hourly
+      // job use, so the banner can never disagree with what visitors actually
+      // experience on the client's site.
+      const overdue = overdueState(user as Parameters<typeof overdueState>[0]);
+
       return res.json({
         plan: user.plan,
         subscriptionId: user.subscriptionId ?? null,
@@ -908,6 +1012,11 @@ export function registerBillingRoutes(app: Express) {
         subscriptionPlanId: user.subscriptionPlanId ?? null,
         nextBillingDate: user.nextBillingDate ?? null,
         createdAt: user.createdAt ?? null,
+        pastDueSince: user.pastDueSince ?? null,
+        isPastDue: overdue.isPastDue,
+        isSuspended: overdue.isSuspended,
+        daysLeftBeforePause: overdue.daysLeft,
+        graceDays: GRACE_DAYS,
       });
     } catch (err) {
       console.error("[Billing] status error:", err);

@@ -17,6 +17,7 @@ import {
   XCircle,
   RefreshCw,
   Shield,
+  PauseCircle,
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -28,6 +29,13 @@ interface BillingStatus {
   subscriptionStatus: "active" | "cancelled" | "suspended" | "expired" | "pending" | null;
   subscriptionPlanId: string | null;
   nextBillingDate: string | null;
+  // Overdue-payment state, derived server-side so the banner and the live
+  // widget can never disagree about whether the service is paused.
+  pastDueSince?: string | null;
+  isPastDue?: boolean;
+  isSuspended?: boolean;
+  daysLeftBeforePause?: number;
+  graceDays?: number;
 }
 
 // ─── Plan definitions ─────────────────────────────────────────────────────────
@@ -175,6 +183,33 @@ export default function Billing() {
     }
   }
 
+  /**
+   * Asks the server to re-read this subscription from PayPal, then reloads the
+   * status. A plain refresh wouldn't help: the overdue flag only clears when
+   * something actually checks with PayPal.
+   */
+  async function handleRecheckPayment() {
+    setLoadingStatus(true);
+    try {
+      const res = await fetch("/api/billing/recheck", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("recheck failed");
+      const data = (await res.json()) as { isPastDue?: boolean };
+      if (data.isPastDue === false) {
+        toast.success("Payment confirmed — your service is active again.");
+      } else {
+        toast.info("PayPal still shows the payment as outstanding.");
+      }
+    } catch {
+      toast.error("Couldn't verify the payment with PayPal. Please try again shortly.");
+    } finally {
+      setLoadingStatus(false);
+      await fetchBillingStatus();
+    }
+  }
+
   async function handleSubscribe(planId: string) {
     setSubscribingPlan(planId);
     try {
@@ -255,10 +290,94 @@ export default function Billing() {
   const hasSubscription = !!billingStatus?.subscriptionId;
   // Plan assigned manually by an admin (no PayPal subscription)
   const isManualPlan = billingStatus !== null && !billingStatus.subscriptionStatus && currentPlan !== "cloud";
+  const isPastDue = billingStatus?.isPastDue === true;
+  const isSuspended = billingStatus?.isSuspended === true;
+  const daysLeft = billingStatus?.daysLeftBeforePause ?? 0;
 
   return (
     <DashboardShell title="Billing">
       <div className="max-w-4xl mx-auto space-y-6 pb-10">
+
+        {/* ── Overdue payment ───────────────────────────────────────────────
+            Two states, deliberately different in tone: a warning while the
+            assistant is still answering, and a plain statement of fact once it
+            has stopped. Both lead to the same action, and both say explicitly
+            that nothing was deleted — the most common fear at this point. */}
+        {isPastDue && (
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <Card
+              className={
+                isSuspended
+                  ? "border-red-500/40 bg-red-500/[0.06]"
+                  : "border-amber-500/40 bg-amber-500/[0.06]"
+              }
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                      isSuspended ? "bg-red-500/15" : "bg-amber-500/15"
+                    }`}
+                  >
+                    {isSuspended ? (
+                      <PauseCircle className="w-4.5 h-4.5 text-red-500" />
+                    ) : (
+                      <AlertTriangle className="w-4.5 h-4.5 text-amber-500" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className={`font-semibold text-sm ${isSuspended ? "text-red-600" : "text-amber-600"}`}>
+                      {isSuspended ? "Service paused — payment required" : "Payment didn't go through"}
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                      {isSuspended ? (
+                        <>
+                          Your assistant has stopped answering visitors because the payment is still
+                          outstanding. <strong className="text-foreground">Nothing has been deleted</strong> —
+                          your chatbots, training and conversations are all intact, and the service resumes
+                          automatically once a payment is received. No reinstalling needed.
+                        </>
+                      ) : (
+                        <>
+                          We couldn&apos;t process your last payment. Your assistant is{" "}
+                          <strong className="text-foreground">still running</strong>, but it will be paused in{" "}
+                          <strong className="text-foreground">
+                            {daysLeft} {daysLeft === 1 ? "day" : "days"}
+                          </strong>{" "}
+                          unless a payment comes through. This usually means the card on file expired or was
+                          declined.
+                        </>
+                      )}
+                    </p>
+                    {billingStatus?.pastDueSince && (
+                      <p className="text-[11px] text-muted-foreground mt-2">
+                        Outstanding since{" "}
+                        {new Date(billingStatus.pastDueSince).toLocaleDateString("en-US", {
+                          month: "long",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 mt-3">
+                      <Button
+                        size="sm"
+                        className={isSuspended ? "bg-red-600 hover:bg-red-700" : "bg-amber-600 hover:bg-amber-700"}
+                        onClick={() => window.open("https://www.paypal.com/myaccount/autopay/", "_blank")}
+                      >
+                        Update payment method <ExternalLink className="w-3 h-3 ml-1.5" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleRecheckPayment} disabled={loadingStatus}>
+                        <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loadingStatus ? "animate-spin" : ""}`} />
+                        Already paid? Re-check
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {/* Current plan status */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
@@ -291,9 +410,19 @@ export default function Billing() {
                       <span className="text-xl font-bold capitalize">
                         {currentPlan === "whitelabel" ? "White-Label" : currentPlan === "cloud" ? "Cloud AI" : "Embedded AI"}
                       </span>
-                      {isActive && (
+                      {isActive && !isPastDue && (
                         <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-xs">
                           <CheckCircle className="w-3 h-3 mr-1" /> Active
+                        </Badge>
+                      )}
+                      {isPastDue && !isSuspended && (
+                        <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-xs">
+                          <AlertTriangle className="w-3 h-3 mr-1" /> Past due
+                        </Badge>
+                      )}
+                      {isSuspended && (
+                        <Badge className="bg-red-500/15 text-red-600 border-red-500/30 text-xs">
+                          <PauseCircle className="w-3 h-3 mr-1" /> Paused
                         </Badge>
                       )}
                       {isPending && (
@@ -308,7 +437,7 @@ export default function Billing() {
                       )}
                       {isManualPlan && (
                         <Badge className="bg-blue-500/15 text-blue-600 border-blue-500/30 text-xs">
-                          <Shield className="w-3 h-3 mr-1" /> Plan activo
+                          <Shield className="w-3 h-3 mr-1" /> Active plan
                         </Badge>
                       )}
                       {!hasSubscription && !isManualPlan && (

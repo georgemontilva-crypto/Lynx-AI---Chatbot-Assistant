@@ -217,7 +217,7 @@ export async function sendSubscriptionCancelledEmail(to: string, name: string, p
         </p>
       </div>
       <div style="text-align: center; margin: 0 0 24px;">
-        <a href="https://lynxaiassistant.com/dashboard/billing" style="${BTN_BLUE}">Reactivar plan →</a>
+        <a href="https://lynxaiassistant.com/dashboard/billing" style="${BTN_BLUE}">Reactivate plan →</a>
       </div>
       <p style="color: #9ca3af; font-size: 13px; margin: 0; text-align: center;">Sorry to see you go. <a href="mailto:support@lynxaiassistant.com" style="color: #3b82f6;">Tell us how we can do better.</a></p>
     </div>
@@ -609,5 +609,96 @@ export async function sendChatVerificationCode(to: string, code: string, botName
         <div style="font-size:32px;font-weight:700;letter-spacing:8px;text-align:center;padding:16px;background:#f4f4f5;border-radius:12px;">${code}</div>
         <p style="color:#999;font-size:12px;margin:16px 0 0;">This code expires in 10 minutes. If you didn't request it, you can ignore this email.</p>
       </div>`,
+  });
+}
+
+// ─── Overdue payment: warning ─────────────────────────────────────────────────
+
+/**
+ * Sent once, as soon as a charge is detected as overdue. The tone is a heads-up,
+ * not a threat: the service is still running at this point.
+ */
+export async function sendPaymentOverdueEmail(to: string, name: string, daysLeft: number) {
+  const dayWord = daysLeft === 1 ? "day" : "days";
+  return sendEmail({
+    to,
+    subject: `Action needed: your Lynx AI payment didn't go through`,
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="${BASE_STYLE}">
+  <div style="${CARD_STYLE}">
+    <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 32px 40px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Payment didn't go through</h1>
+    </div>
+    <div style="${BODY_PAD}">
+      <p style="color: #374151; font-size: 16px; margin: 0 0 20px;">Hi ${name || "there"},</p>
+      <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+        We couldn't process the payment for your Lynx AI subscription. This usually means the card on file
+        expired, was replaced, or was declined by the bank.
+      </p>
+      <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 16px 20px; margin: 0 0 24px;">
+        <p style="color: #92400e; font-size: 14px; margin: 0; line-height: 1.6;">
+          <strong>Your assistant is still running.</strong> To keep it that way, please update your payment
+          method within the next <strong>${daysLeft} ${dayWord}</strong>. After that the service is paused
+          until a payment comes through.
+        </p>
+      </div>
+      <div style="text-align: center; margin: 0 0 24px;">
+        <a href="https://lynxaiassistant.com/dashboard/billing" style="${BTN_BLUE}">Update payment method →</a>
+      </div>
+      <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
+        Already paid? Nothing to do — the warning clears itself within the hour.
+      </p>
+      ${FOOTER_TEXT("billing@lynxaiassistant.com")}
+    </div>
+  </div>
+</body>
+</html>`,
+  });
+}
+
+// ─── Overdue payment: service paused ──────────────────────────────────────────
+
+/**
+ * Sent once, when the grace period runs out and the assistant stops answering.
+ * It must be unambiguous about what happened and about the fact that nothing
+ * was deleted — the account is paused, not cancelled.
+ */
+export async function sendServicePausedEmail(to: string, name: string, daysPastDue: number) {
+  return sendEmail({
+    to,
+    subject: "Your Lynx AI service has been paused",
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="${BASE_STYLE}">
+  <div style="${CARD_STYLE}">
+    <div style="background: linear-gradient(135deg, #ef4444, #b91c1c); padding: 32px 40px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Service paused</h1>
+    </div>
+    <div style="${BODY_PAD}">
+      <p style="color: #374151; font-size: 16px; margin: 0 0 20px;">Hi ${name || "there"},</p>
+      <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+        Your payment has been outstanding for ${daysPastDue} days, so your Lynx AI assistant has been paused.
+        It is no longer answering visitors on your site.
+      </p>
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px 20px; margin: 0 0 24px;">
+        <p style="color: #991b1b; font-size: 14px; margin: 0; line-height: 1.6;">
+          <strong>Nothing has been deleted.</strong> Your chatbots, training data, conversations and settings
+          are all intact. The service resumes automatically as soon as a payment is received — you don't need
+          to reinstall anything.
+        </p>
+      </div>
+      <div style="text-align: center; margin: 0 0 24px;">
+        <a href="https://lynxaiassistant.com/dashboard/billing" style="${BTN_BLUE}">Restore my service →</a>
+      </div>
+      ${FOOTER_TEXT("billing@lynxaiassistant.com")}
+    </div>
+  </div>
+</body>
+</html>`,
   });
 }

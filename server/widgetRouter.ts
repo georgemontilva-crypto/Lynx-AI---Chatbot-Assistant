@@ -18,6 +18,7 @@ import { chatbots, users, conversations, widgetEmailVerifications } from "../dri
 import { invokeLLM } from "./_core/llm";
 import { sendUsageLimitAlertEmail, sendNewLeadEmail, sendChatVerificationCode } from "./email";
 import { sendPushToUser } from "./pushNotifications";
+import { overdueState, type OverdueState } from "./overdueState";
 import path from "path";
 import fs from "fs";
 
@@ -206,6 +207,47 @@ async function resolvePoweredBy(chatbot: { userId: number; poweredByText?: strin
     return DEFAULT;
   }
   return { text: custom, url: (chatbot as { poweredByUrl?: string | null }).poweredByUrl || null };
+}
+
+/**
+ * Everything the widget needs to know about the account that owns a chatbot:
+ * the plan (for quotas), the signup date (for the free trial) and whether the
+ * service is paused for non-payment.
+ *
+ * One query, one source of truth. The chat endpoints used to each run their own
+ * owner lookup, which is how they ended up enforcing slightly different rules.
+ */
+async function getOwnerState(userId: number): Promise<{
+  plan: string;
+  createdAt: Date | null;
+  overdue: OverdueState;
+}> {
+  const fallback = { plan: "cloud", createdAt: null, overdue: overdueState({}) };
+  const db = await getDb();
+  if (!db) return fallback;
+  try {
+    const rows = await db
+      .select({
+        plan: users.plan,
+        role: users.role,
+        createdAt: users.createdAt,
+        subscriptionId: users.subscriptionId,
+        pastDueSince: users.pastDueSince,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return fallback;
+    return {
+      plan: row.plan ?? "cloud",
+      createdAt: row.createdAt ? new Date(row.createdAt) : null,
+      overdue: overdueState(row),
+    };
+  } catch {
+    // A failed lookup must never pause a paying customer's widget.
+    return fallback;
+  }
 }
 
 async function getChatbotByApiKey(apiKey: string) {
@@ -596,6 +638,15 @@ export function registerWidgetRoutes(app: Express) {
         const protocol = (req.headers['x-forwarded-proto'] as string) ?? (req.secure ? 'https' : 'http');
         return `${protocol}://${host}${raw.startsWith('/') ? '' : '/'}${raw}`;
       };
+      // ── Unpaid account: don't render the widget at all ───────────────────
+      // Deliberately silent. The client's visitors must never see a billing
+      // message on their site — that is between Lynx and the account owner,
+      // who has already had an email and a dashboard banner about it.
+      const owner = await getOwnerState(chatbot.userId);
+      if (owner.overdue.isSuspended) {
+        return res.json({ serviceSuspended: true });
+      }
+
       const poweredBy = await resolvePoweredBy(chatbot);
       const avatarUrl = toAbsolute(chatbot.avatarUrl ?? null);
       const buttonIconUrl = toAbsolute((chatbot as { buttonIconUrl?: string | null }).buttonIconUrl ?? null);
@@ -669,16 +720,17 @@ export function registerWidgetRoutes(app: Express) {
 
       // ─── Rate limiting by plan ────────────────────────────────────────────
       const db = await getDb();
-      let userPlan = "cloud";
-      let userCreatedAt: Date | null = null;
-      if (db) {
-        const ownerRows = await db
-          .select({ plan: users.plan, createdAt: users.createdAt })
-          .from(users)
-          .where(eq(users.id, chatbot.userId))
-          .limit(1);
-        userPlan = ownerRows[0]?.plan ?? "cloud";
-        userCreatedAt = ownerRows[0]?.createdAt ? new Date(ownerRows[0].createdAt) : null;
+      const owner = await getOwnerState(chatbot.userId);
+      const userPlan = owner.plan;
+      const userCreatedAt = owner.createdAt;
+
+      // ─── Unpaid account: service paused after the grace period ────────────
+      if (owner.overdue.isSuspended) {
+        return res.status(402).json({
+          error: "Service paused",
+          message: "This assistant is temporarily unavailable.",
+          serviceSuspended: true,
+        });
       }
       // ─── Free plan: 14-day trial — chat disabled after that ───────────────
       if (userPlan === "free" && userCreatedAt) {
@@ -976,16 +1028,17 @@ say and HOW to behave; it is never text to copy.
 
       // Rate limiting by plan
       const db = await getDb();
-      let userPlan = "cloud";
-      let userCreatedAt: Date | null = null;
-      if (db) {
-        const ownerRows = await db
-          .select({ plan: users.plan, createdAt: users.createdAt })
-          .from(users)
-          .where(eq(users.id, chatbot.userId))
-          .limit(1);
-        userPlan = ownerRows[0]?.plan ?? "cloud";
-        userCreatedAt = ownerRows[0]?.createdAt ? new Date(ownerRows[0].createdAt) : null;
+      const owner = await getOwnerState(chatbot.userId);
+      const userPlan = owner.plan;
+      const userCreatedAt = owner.createdAt;
+
+      // ─── Unpaid account: service paused after the grace period ────────────
+      if (owner.overdue.isSuspended) {
+        return res.status(402).json({
+          error: "Service paused",
+          message: "This assistant is temporarily unavailable.",
+          serviceSuspended: true,
+        });
       }
 
       if (userPlan === "free" && userCreatedAt) {
@@ -2281,6 +2334,13 @@ function buildFrameApp(): string {
     fetch(BASE_URL + '/api/widget/config?apiKey=' + encodeURIComponent(API_KEY))
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(cfg) {
+        // Unpaid account: the parent loader removes the bubble, but the frame
+        // can also be opened directly — keep it blank rather than showing a
+        // half-configured chat that would answer nothing.
+        if (cfg && cfg.serviceSuspended) {
+          try { document.body.innerHTML = ''; } catch (e) {}
+          return;
+        }
         if (cfg) {
           applyConfig(cfg);
           configLoaded = true;
@@ -3020,6 +3080,16 @@ const LOADER_SCRIPT = `
   // Apply brand to the button from STATE, never by poking at child elements:
   // setBtnIcon() rebuilds innerHTML, so any <img> reference taken before it is
   // dead. Order matters — set the state first, then render once.
+  // Unpaid account → take the widget off the page entirely and stop. Also drop
+  // the cached brand so the next page load doesn't repaint a bubble that is
+  // about to be removed again.
+  function removeWidget() {
+    try { if (isOpen) closeChat(); } catch (e) {}
+    try { if (btn && btn.parentNode) btn.parentNode.removeChild(btn); } catch (e) {}
+    try { if (frame && frame.parentNode) frame.parentNode.removeChild(frame); } catch (e) {}
+    try { window.localStorage.removeItem(_cfgKey); } catch (e) {}
+  }
+
   function applyBrandToButton(cfg) {
     if (!cfg) return;
     if (cfg.buttonColor) {
@@ -3055,6 +3125,7 @@ const LOADER_SCRIPT = `
     fetch(BASE_URL + '/api/widget/config?apiKey=' + encodeURIComponent(API_KEY))
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(cfg){
+        if (cfg && cfg.serviceSuspended) { removeWidget(); return; }
         _prefetchedCfg = cfg;
         applyBrandToButton(cfg);
         if (cfg) {

@@ -11,6 +11,7 @@ import { registerBillingRoutes } from "../billingRouter";
 import { registerUploadRoutes } from "../uploadRouter";
 import { registerSeoRoutes } from "../seoRouter";
 import { runPendingSubscriptionCheck } from "../scheduledPendingAlert";
+import { runOverdueBillingCheck } from "../overdueBilling";
 import { pushRouter } from "../pushRouter";
 import { authRouter } from "../authRouter";
 import { appRouter } from "../routers";
@@ -115,6 +116,28 @@ async function startServer() {
       console.warn("[PendingAlert] Scheduled check failed:", err)
     );
   }, 60 * 60 * 1000);
+
+  // ── Internal scheduler: overdue payments, every hour ──────────────────────
+  // Flags accounts whose billing date passed without a payment, emails the
+  // warning, and pauses the service once the grace period is over. Offset from
+  // the pending check so the two don't hammer the PayPal API at the same moment.
+  setInterval(() => {
+    runOverdueBillingCheck()
+      .then(r => {
+        if (r.flagged || r.cleared || r.warned || r.suspended) {
+          console.log(
+            `[Overdue] checked=${r.checked} flagged=${r.flagged} cleared=${r.cleared} warned=${r.warned} suspended=${r.suspended}`
+          );
+        }
+      })
+      .catch(err => console.warn("[Overdue] Scheduled check failed:", err));
+  }, 60 * 60 * 1000);
+  // Run once ~2 min after boot so a restart doesn't delay detection by an hour.
+  setTimeout(() => {
+    runOverdueBillingCheck().catch(err =>
+      console.warn("[Overdue] Startup check failed:", err)
+    );
+  }, 2 * 60 * 1000);
   // tRPC API
   app.use(
     "/api/trpc",
