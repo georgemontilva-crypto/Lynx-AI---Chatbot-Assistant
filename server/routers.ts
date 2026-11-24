@@ -19,6 +19,7 @@ import {
   saveNotification,
   getNotificationsByUser,
   markNotificationRead,
+  markAllNotificationsRead,
   PLAN_LIMITS,
   usageOf,
   getAllUsers,
@@ -293,6 +294,15 @@ function computeSeoBreakdown(
 
 
 
+/** A user row without anything that could be used to take over the account. */
+function stripSecrets<T extends Record<string, unknown> | null | undefined>(user: T): T {
+  if (!user) return user;
+  const { passwordHash, verificationToken, resetToken, resetTokenExpiresAt, ...safe } =
+    user as Record<string, unknown>;
+  void passwordHash; void verificationToken; void resetToken; void resetTokenExpiresAt;
+  return safe as T;
+}
+
 // ─── Training helpers ────────────────────────────────────────────────────────
 export function trainingLimitsForPlan(plan: string) {
   switch (plan) {
@@ -479,8 +489,12 @@ function extractPageImage(html: string, baseUrl: string): string | undefined {
 function extractProductFallback(html: string, baseUrl: string): ProductEntry | undefined {
   const meta = (re: RegExp) => html.match(re)?.[1]?.trim();
   const ogType = meta(/<meta[^>]+property=["']og:type["'][^>]*content=["']([^"']+)["']/i) ?? "";
-  const isInfoPage = classifyInfoPage(new URL(baseUrl).pathname, meta(/<title[^>]*>([^<]+)<\/title>/i) ?? "") !== "PAGE";
-  if (isInfoPage && !/product/i.test(ogType)) return undefined;
+  const isProductType = /product/i.test(ogType);
+  const path = new URL(baseUrl).pathname.replace(/\/+$/, "") || "/";
+  const isInfoPage = classifyInfoPage(path, meta(/<title[^>]*>([^<]+)<\/title>/i) ?? "") !== "PAGE";
+  if (isInfoPage && !isProductType) return undefined;
+  // The home page is never a product, whatever its markup says.
+  if (path === "/") return undefined;
 
   const name = (
     meta(/<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
@@ -489,17 +503,42 @@ function extractProductFallback(html: string, baseUrl: string): ProductEntry | u
   )?.replace(/\s*[|\u2013\u2014-]\s*[^|\u2013\u2014-]{0,40}$/, "").trim();
   if (!name || name.length < 2) return undefined;
 
-  // Price: meta tags first (reliable), then a currency amount in the markup.
-  const price =
+  const visible = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
+  // Price: machine-readable tags are trustworthy; a currency amount found in
+  // the page text is only a hint (it may be a "free shipping over $100" banner).
+  const reliablePrice =
     meta(/<meta[^>]+property=["']product:price:amount["'][^>]*content=["']([^"']+)["']/i)
-    ?? meta(/<meta[^>]+itemprop=["']price["'][^>]*content=["']([^"']+)["']/i)
-    ?? meta(/["']price["']\s*:\s*["']?([\d.,]+)["']?/i)
-    ?? html.replace(/<script[\s\S]*?<\/script>/gi, "").match(/([$€£]\s?\d[\d.,]{0,9})/)?.[1];
+    ?? meta(/<meta[^>]+itemprop=["']price["'][^>]*content=["']([^"']+)["']/i);
+  const loosePrice =
+    meta(/["']price["']\s*:\s*["']?([\d.,]+)["']?/i)
+    ?? visible.match(/([$€£]\s?\d[\d.,]{0,9})/)?.[1];
+  const price = (reliablePrice ?? loosePrice)?.replace(/[.,]+$/, "");
 
   const image = extractPageImage(html, baseUrl);
-  // Without a price or a photo there is nothing worth showing on a card, and
-  // the risk of filing a non-product page rises sharply.
-  if (!price && !image) return undefined;
+
+  // ── Evidence that this page really is ONE product ────────────────────────
+  // This fallback used to accept any page with a price OR an image. Since
+  // nearly every site sets a site-wide og:image, that filed home pages,
+  // category listings and blog posts as "products" — inflating the count and
+  // putting cards like "All Products — $100" in front of visitors.
+  const segments = path.split("/").filter(Boolean);
+  const parent = segments.length >= 2 ? segments[segments.length - 2] : "";
+  const isDetailUrl = /^(products?|productos?|shop|store|tienda|item|items|p|compounds?|catalog(?:o|ue)?|merch|produkte?)$/i.test(parent);
+  const hasBuyButton = /add[\s_-]?to[\s_-]?(cart|bag|basket)|buy\s+now|a(?:\u00f1|n)adir al carrito|agregar al carrito|comprar ahora/i.test(visible);
+  // A listing page links to many product-detail URLs; a product page does not.
+  const detailLinks = new Set(
+    Array.from(visible.matchAll(/href=["'][^"'#?]*\/(?:products?|productos?|item|compounds?)\/([^"'#?\/]+)/gi)).map(m => m[1].toLowerCase())
+  );
+  const looksLikeListing = detailLinks.size >= 4 && !isDetailUrl;
+
+  const isProduct =
+    !looksLikeListing && (
+      isProductType ||
+      Boolean(reliablePrice) ||
+      (isDetailUrl && Boolean(price || image)) ||
+      (hasBuyButton && Boolean(price))
+    );
+  if (!isProduct) return undefined;
 
   const description = meta(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']+)["']/i)
     ?? meta(/<meta[^>]+property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
@@ -1055,7 +1094,10 @@ export const appRouter = router({
 
   // ─── Auth ──────────────────────────────────────────────────────────────────
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    // Never send credentials material to the browser. This used to return the
+    // whole row: password hash, email-verification token and password-reset
+    // token included, on every page load.
+    me: publicProcedure.query(opts => stripSecrets(opts.ctx.user)),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -1684,17 +1726,58 @@ Return ONLY valid JSON matching this exact schema:
           }
         } catch (_) { /* non-critical */ }
 
-        // 7. Save scan_complete notification
-        await saveNotification({
+        // 7. Tell the owner: inbox always, push only if that alert is on.
+        const { notifyAccount } = await import("./accountNotifications");
+        await notifyAccount({
           userId: ctx.user.id,
+          alert: "scanComplete",
           type: "scan_complete",
           title: "Site scan completed",
-          message: `${input.url} was scanned successfully. SEO score: ${finalScore}/100.`,
+          message: `${input.url} — ${scanReport.pagesRead.length} page${scanReport.pagesRead.length === 1 ? "" : "s"} read, ${allProducts.length} product${allProducts.length === 1 ? "" : "s"} learned. SEO score: ${finalScore}/100.`,
+          url: "/dashboard/scanner",
           metadata: { url: input.url, score: finalScore },
         });
+        // Critical SEO problems are measured facts (failed checks), so they earn
+        // their own alert instead of hiding inside the report.
+        const failedChecks = (seoBreakdown?.checks ?? []).filter((c) => c.status === "fail");
+        if (failedChecks.length > 0) {
+          await notifyAccount({
+            userId: ctx.user.id,
+            alert: "seoIssue",
+            type: "seo_issue",
+            title: `${failedChecks.length} critical SEO issue${failedChecks.length === 1 ? "" : "s"} found`,
+            message: failedChecks.slice(0, 3).map((c) => c.label).join(" · ") + (failedChecks.length > 3 ? ` · +${failedChecks.length - 3} more` : ""),
+            url: "/dashboard/seo",
+            metadata: { url: input.url, issues: failedChecks.map((c) => c.label) },
+          });
+        }
 
-        return {
+        // ── Real counts ─────────────────────────────────────────────────────
+        // The four headline numbers on the Scanner page used to be the model's
+        // GUESSES ("pagesEstimate", "productsEstimate"…), shown as if they were
+        // measurements — a 15-product store could be told it had 25. They are
+        // now counted from what the crawl actually found and read.
+        const POLICY_KINDS = new Set(["SHIPPING", "RETURNS", "PRIVACY POLICY", "TERMS", "FAQ"]);
+        const uniquePagesRead = Array.from(new Set(scanReport.pagesRead.map(pth => pth.replace(/\/+$/, "") || "/")));
+        const blogRe = /\/(blog|news|articles?|journal|noticias|stories)\/[^/]+/i;
+        const realCounts = {
+          pagesFound: Math.max(sitePageIndex.length, uniquePagesRead.length, scanReport.sitemapUrlCount),
+          pagesRead: uniquePagesRead.length,
+          products: allProducts.length,
+          policies: pageExtracts.filter(pg => POLICY_KINDS.has(pg.kind ?? "")).length,
+          blogArticles: sitePageIndex.filter(pg => blogRe.test(pg.path)).length,
+        };
+
+        const result = {
           ...analysis,
+          // Same field names the page already reads, now carrying real counts.
+          pagesEstimate: realCounts.pagesFound,
+          productsEstimate: realCounts.products,
+          policiesEstimate: realCounts.policies,
+          blogEstimate: realCounts.blogArticles,
+          counts: realCounts,
+          url: input.url,
+          scannedAt: new Date().toISOString(),
           seoScore: finalScore,
           // GTmetrix-style breakdown: weighted category scores + graded checks,
           // all from real measurements (HTTP timing/headers/HTML analysis).
@@ -1702,7 +1785,7 @@ Return ONLY valid JSON matching this exact schema:
           loadSpeed: measuredLoadSpeed,
           mobileScore: realMobileScore,
           topPages: finalTopPages,
-          pagesCrawled: 1 + pageExtracts.length,
+          pagesCrawled: uniquePagesRead.length,
           chatbotId: chatbot.id,
           productsFound: allProducts.length,
           products: allProducts.slice(0, 10),
@@ -1716,13 +1799,38 @@ Return ONLY valid JSON matching this exact schema:
             productsFromCatalogPages: scanReport.productsFromCatalogPages,
             productsFromStoreApi: scanReport.productsFromStoreApi,
             productsWithImage: scanReport.productsWithImage,
-            pagesRead: scanReport.pagesRead,
-            pagesReadCount: scanReport.pagesRead.length,
+            pagesRead: uniquePagesRead,
+            pagesReadCount: uniquePagesRead.length,
             pagesFailed: scanReport.pagesFailed,
             warnings: scanReport.warnings,
           },
         };
+
+        // Keep the summary so the Scanner page can show it again later. Before
+        // this the result lived only in the browser tab: leave the page and the
+        // whole report was gone, as if the scan had never run.
+        try {
+          const dbS = await getDb();
+          if (dbS) {
+            const { eq: eqS } = await import("drizzle-orm");
+            await dbS.update(chatbots).set({ lastScanResult: result as never }).where(eqS(chatbots.id, chatbot.id));
+          }
+        } catch (err) {
+          console.warn("[Scanner] Could not store scan summary:", err);
+        }
+
+        return result;
       }),
+
+    /** The stored summary of the most recent scan (null if never scanned). */
+    getLastScan: protectedProcedure.query(async ({ ctx }) => {
+      const chatbot = await getChatbotByUserId(ctx.user.id);
+      if (!chatbot?.lastScanResult) return null;
+      let raw: unknown = chatbot.lastScanResult;
+      // mysql2 can hand a JSON column back as a string — parse defensively.
+      if (typeof raw === "string") { try { raw = JSON.parse(raw); } catch { return null; } }
+      return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+    }),
 
     getLastReport: protectedProcedure.query(async ({ ctx }) => {
       const chatbot = await getChatbotByUserId(ctx.user.id);
@@ -1941,6 +2049,30 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
       }),
   }),
 
+  // ─── Billing requests ─────────────────────────────────────────────────
+  billing: router({
+    // A White-Label account asking for more client slots. Packs are applied by
+    // an admin (Admin → Change plan → Extra client slots) after payment is
+    // arranged, so this notifies the team instead of charging anything.
+    requestClientPack: protectedProcedure
+      .input(z.object({ pack: z.string().max(64), clients: z.number().int().min(1).max(1000), price: z.string().max(16) }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.plan !== "whitelabel") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Client packs are available on the White-Label plan." });
+        }
+        const sent = await notifyOwner({
+          title: `Client pack request — ${input.pack} (+${input.clients})`,
+          content:
+            `Account: ${ctx.user.name ?? "—"} <${ctx.user.email ?? "no email"}> (user #${ctx.user.id})\n` +
+            `Requested: ${input.pack} — +${input.clients} client sites at ${input.price}/mo\n` +
+            `Current extra slots: ${ctx.user.clientSlots ?? 0}\n\n` +
+            `To activate: Admin panel → Change plan → Extra client slots.`,
+        });
+        if (!sent) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Could not deliver the request." });
+        return { sent: true };
+      }),
+  }),
+
   // ─── Admin ─────────────────────────────────────────────────────────────
   admin: router({
     stats: adminProcedure.query(async () => {
@@ -1949,7 +2081,20 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
     listUsers: adminProcedure
       .input(z.object({ limit: z.number().optional(), offset: z.number().optional(), search: z.string().optional() }))
       .query(async ({ input }) => {
-        return await getAllUsers(input);
+        const res = await getAllUsers(input);
+        return { ...res, users: res.users.map(u => stripSecrets(u)) };
+      }),
+    // Extra client slots on top of the 15 a White-Label plan includes. This is
+    // how a sold "client pack" is applied to an account.
+    setClientSlots: adminProcedure
+      .input(z.object({ userId: z.number().int(), clientSlots: z.number().int().min(0).max(1000) }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { users } = await import("../drizzle/schema");
+        const { eq: eqOp } = await import("drizzle-orm");
+        await db.update(users).set({ clientSlots: input.clientSlots }).where(eqOp(users.id, input.userId));
+        return { ok: true };
       }),
     /**
      * Live subscription state from PayPal for one user. Read-only: it answers
@@ -2026,10 +2171,14 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
     }),
     markRead: protectedProcedure
       .input(z.object({ id: z.number().int() }))
-      .mutation(async ({ input }) => {
-        await markNotificationRead(input.id);
+      .mutation(async ({ ctx, input }) => {
+        await markNotificationRead(input.id, ctx.user.id);
         return { ok: true };
       }),
+    markAllRead: protectedProcedure.mutation(async ({ ctx }) => {
+      await markAllNotificationsRead(ctx.user.id);
+      return { ok: true };
+    }),
     notifyNewLead: protectedProcedure
       .input(z.object({ email: z.string().email(), page: z.string(), message: z.string().optional() }))
       .mutation(async ({ ctx, input }) => {
@@ -2082,9 +2231,49 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
 
   // ─── Onboarding ─────────────────────────────────────────────────────────────────────────────
   onboarding: router({
+    // Setup progress is derived from what the account has ACTUALLY done, not
+    // only from buttons clicked inside the wizard. Before this, someone who
+    // scanned from the Scanner page and installed the widget by hand stayed at
+    // "0/3" forever — and was bounced to the wizard every time they opened the
+    // dashboard home.
     get: protectedProcedure.query(async ({ ctx }) => {
-      const progress = await getOnboardingProgress(ctx.user.id);
-      return progress ?? { step1Done: false, step2Done: false, step3Done: false, completedAt: null };
+      const stored = await getOnboardingProgress(ctx.user.id);
+      if (stored?.completedAt) return stored;
+
+      const base = {
+        step1Done: stored?.step1Done ?? false,
+        step2Done: stored?.step2Done ?? false,
+        step3Done: stored?.step3Done ?? false,
+        completedAt: null as Date | null,
+      };
+      try {
+        const chatbot = await getChatbotByUserId(ctx.user.id);
+        const db = await getDb();
+        if (chatbot && db) {
+          const { eq: eqOp, sql: sqlOp } = await import("drizzle-orm");
+          // 1. The site was scanned.
+          if (chatbot.lastScannedAt) base.step1Done = true;
+          // 2. The widget is live somewhere: it reported at least one event.
+          const [ev] = await db.select({ n: sqlOp<number>`COUNT(*)` }).from(analyticsEvents)
+            .where(eqOp(analyticsEvents.chatbotId, chatbot.id));
+          if (Number(ev?.n ?? 0) > 0) base.step2Done = true;
+          // 3. It has answered someone.
+          const [cv] = await db.select({ n: sqlOp<number>`COUNT(*)` }).from(conversations)
+            .where(eqOp(conversations.chatbotId, chatbot.id));
+          if (Number(cv?.n ?? 0) > 0 || (chatbot.messagesThisMonth ?? 0) > 0) base.step3Done = true;
+        }
+      } catch { /* fall back to the stored flags */ }
+
+      const changed =
+        base.step1Done !== (stored?.step1Done ?? false) ||
+        base.step2Done !== (stored?.step2Done ?? false) ||
+        base.step3Done !== (stored?.step3Done ?? false);
+      if (changed) {
+        const allDone = base.step1Done && base.step2Done && base.step3Done;
+        if (allDone) base.completedAt = new Date();
+        await upsertOnboardingProgress(ctx.user.id, { ...base }).catch(() => {});
+      }
+      return base;
     }),
     update: protectedProcedure
       .input(z.object({
@@ -2176,30 +2365,36 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
     }),
 
     // ── Push notification preferences ────────────────────────────────────────
+    // Alert preferences. One set of switches for every channel (email + push);
+    // the Notifications inbox always records the event regardless.
     getPushPrefs: protectedProcedure.query(async ({ ctx }) => {
-      const { getUserById } = await import("./db");
-      const user = await getUserById(ctx.user.id);
-      if (!user) throw new Error("User not found");
-      // Default: all enabled
-      return {
-        newLead: user.pushPrefs?.newLead ?? true,
-        lowRating: user.pushPrefs?.lowRating ?? true,
-        usageLimit: user.pushPrefs?.usageLimit ?? true,
-      };
+      const { getAlertPrefs } = await import("./accountNotifications");
+      return await getAlertPrefs(ctx.user.id);
     }),
     updatePushPrefs: protectedProcedure
       .input(z.object({
-        newLead: z.boolean(),
-        lowRating: z.boolean(),
-        usageLimit: z.boolean(),
+        newLead: z.boolean().optional(),
+        lowRating: z.boolean().optional(),
+        usageLimit: z.boolean().optional(),
+        seoIssue: z.boolean().optional(),
+        scanComplete: z.boolean().optional(),
+        weeklyReport: z.boolean().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const { getDb } = await import("./db");
         const { users } = await import("../drizzle/schema");
         const { eq } = await import("drizzle-orm");
+        const { resolveAlertPrefs, readStoredPrefs } = await import("./accountNotifications");
         const db = await getDb();
         if (!db) throw new Error("Database unavailable");
-        await db.update(users).set({ pushPrefs: input }).where(eq(users.id, ctx.user.id));
+        // Merge instead of overwrite: the Profile page and the Notifications
+        // page each send only the switches they show, and the column also
+        // carries bookkeeping (when the last weekly report went out).
+        const rows = await db.select({ pushPrefs: users.pushPrefs }).from(users).where(eq(users.id, ctx.user.id)).limit(1);
+        const stored = readStoredPrefs(rows[0]?.pushPrefs);
+        const changes = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
+        const merged = { ...stored, ...resolveAlertPrefs(stored), ...changes };
+        await db.update(users).set({ pushPrefs: merged as never }).where(eq(users.id, ctx.user.id));
         return { success: true };
       }),
     }),
@@ -2231,14 +2426,14 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
       .input(z.object({
         topic: z.string().min(3).max(200),
         tone: z.enum(["professional", "friendly", "persuasive"]).default("friendly"),
-        language: z.enum(["es", "en", "pt", "fr", "de", "it"]).default("es"),
+        language: z.enum(["es", "en", "pt", "fr", "de", "it"]).default("en"),
       }))
       .mutation(async ({ input }) => {
         const langNames: Record<string, string> = {
           es: "Spanish", en: "English", pt: "Portuguese",
           fr: "French", de: "German", it: "Italian",
         };
-        const langName = langNames[input.language] ?? "Spanish";
+        const langName = langNames[input.language] ?? "English";
         const toneDesc = input.tone === "professional" ? "professional and authoritative"
           : input.tone === "persuasive" ? "persuasive and sales-oriented, guiding the reader toward trying Lynx AI"
           : "warm, friendly and approachable";

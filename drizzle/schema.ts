@@ -47,7 +47,13 @@ export const users = mysqlTable("users", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
   // Push notification preferences
-  pushPrefs: json("pushPrefs").$type<{ newLead: boolean; lowRating: boolean; usageLimit: boolean }>(),
+  // Alert switches (email + push) plus small bookkeeping values. A JSON column,
+  // so new keys need no migration; read it through resolveAlertPrefs().
+  pushPrefs: json("pushPrefs").$type<{
+    newLead?: boolean; lowRating?: boolean; usageLimit?: boolean;
+    seoIssue?: boolean; scanComplete?: boolean; weeklyReport?: boolean;
+    weeklyReportSentAt?: string;
+  }>(),
 });
 
 export const chatbots = mysqlTable("chatbots", {
@@ -85,6 +91,12 @@ export const chatbots = mysqlTable("chatbots", {
   siteUrl: text("siteUrl"),
   siteContext: text("siteContext"),
   lastScannedAt: timestamp("lastScannedAt"),
+  // Summary of the last scan (real counts, sample products, read report) so
+  // the Scanner page can show it again after a reload instead of going blank.
+  lastScanResult: json("lastScanResult").$type<Record<string, unknown>>(),
+  // Last time the automatic re-scan TRIED this site (success or not). Separate
+  // from lastScannedAt so a site that keeps failing is not retried every hour.
+  lastAutoScanAt: timestamp("lastAutoScanAt"),
   // ── Training (per-user customization) ──
   customInstructions: text("customInstructions"),
   knowledgeBase: json("knowledgeBase").$type<Array<{ title: string; content: string }>>(),

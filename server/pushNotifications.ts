@@ -46,9 +46,12 @@ export async function sendPushToUser(userId: number, payload: PushPayload): Prom
       .where(eq(users.id, userId))
       .limit(1);
 
-    const prefs = userRow[0]?.pushPrefs;
+    let prefs: unknown = userRow[0]?.pushPrefs;
+    if (typeof prefs === "string") { try { prefs = JSON.parse(prefs); } catch { prefs = null; } }
     // Default is enabled (null prefs = all on)
-    const isEnabled = prefs ? prefs[payload.eventType] !== false : true;
+    const isEnabled = prefs && typeof prefs === "object"
+      ? (prefs as Record<string, unknown>)[payload.eventType] !== false
+      : true;
     if (!isEnabled) {
       console.log(`[Push] User ${userId} has disabled ${payload.eventType} notifications, skipping`);
       return;

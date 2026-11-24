@@ -11,15 +11,15 @@ const BASE_URL = "https://lynxaiassistant.com";
 
 const SEO_MAP: Record<string, SeoMeta> = {
   "/": {
-    title: "Lynx AI — Chatbot Inteligente para tu Sitio Web | IA que conoce tu negocio",
+    title: "Lynx AI — AI Chatbot for Your Website | The Assistant That Knows Your Business",
     description:
       "Lynx AI scans your website, learns your content and answers your visitors 24/7 with accurate replies. Increase conversions, capture leads and improve your SEO automatically.",
     canonical: `${BASE_URL}/`,
   },
   "/pricing": {
-    title: "Precios de Lynx AI — Planes Cloud, Embedded y White-Label",
+    title: "Lynx AI Pricing — Cloud, Embedded and White-Label Plans",
     description:
-      "Elige el plan que se adapta a tu negocio. Desde $199/mes para sitios individuales hasta soluciones White-Label para agencias. Sin contratos, cancela cuando quieras.",
+      "Choose the plan that fits your business — from a single website to White-Label solutions for agencies. No contracts, cancel anytime.",
     canonical: `${BASE_URL}/pricing`,
   },
   "/blog": {
@@ -29,18 +29,18 @@ const SEO_MAP: Record<string, SeoMeta> = {
     canonical: `${BASE_URL}/blog`,
   },
   "/contact": {
-    title: "Contacto — Lynx AI | Habla con nuestro equipo",
+    title: "Contact — Lynx AI | Talk to Our Team",
     description:
       "Questions about Lynx AI? Get in touch for a personalized demo, technical support or details on White-Label plans for your agency.",
     canonical: `${BASE_URL}/contact`,
   },
   "/login": {
     title: "Sign in — Lynx AI",
-    description: "Accede a tu dashboard de Lynx AI para gestionar tu chatbot, ver leads y analizar conversaciones.",
+    description: "Sign in to your Lynx AI dashboard to manage your chatbot, view leads and review conversations.",
     canonical: `${BASE_URL}/login`,
   },
   "/register": {
-    title: "Crear cuenta gratis — Lynx AI",
+    title: "Create a Free Account — Lynx AI",
     description:
       "Get started free with Lynx AI. Build your intelligent chatbot in minutes — no coding and no manual training required.",
     canonical: `${BASE_URL}/register`,

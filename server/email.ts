@@ -13,7 +13,7 @@ interface SendEmailOptions {
 
 async function sendEmail({ to, subject, html }: SendEmailOptions): Promise<boolean> {
   if (!ENV.resendApiKey) {
-    console.warn("[Email] RESEND_API_KEY no configurado, omitiendo email");
+    console.warn("[Email] RESEND_API_KEY is not configured — email skipped");
     return false;
   }
 
@@ -61,9 +61,10 @@ const FOOTER_TEXT = (email = "support@lynxaiassistant.com") =>
 
 export async function sendWelcomeEmail(to: string, name: string, plan: string) {
   const planNames: Record<string, string> = {
-    cloud: "Cloud AI — $199/mes",
-    embedded: "Embedded AI — $399/mes",
-    whitelabel: "White-Label — $499/mes",
+    free: "Free trial",
+    cloud: "Cloud AI — $199/mo",
+    embedded: "Embedded AI — $399/mo",
+    whitelabel: "White-Label — $499/mo",
   };
 
   return sendEmail({
@@ -93,7 +94,7 @@ export async function sendWelcomeEmail(to: string, name: string, plan: string) {
         </ol>
       </div>
       <div style="text-align: center; margin: 32px 0;">
-        <a href="https://lynxaiassistant.com/dashboard" style="${BTN_BLUE}">Ir al dashboard →</a>
+        <a href="https://lynxaiassistant.com/dashboard" style="${BTN_BLUE}">Go to dashboard →</a>
       </div>
       ${FOOTER_TEXT()}
     </div>
@@ -114,7 +115,7 @@ export async function sendPaymentConfirmationEmail(
 ) {
   return sendEmail({
     to,
-    subject: `Pago confirmado — Plan ${plan} de Lynx AI`,
+    subject: `Payment confirmed — Lynx AI ${plan} plan`,
     html: `
 <!DOCTYPE html>
 <html>
@@ -122,17 +123,17 @@ export async function sendPaymentConfirmationEmail(
 <body style="${BASE_STYLE}">
   <div style="${CARD_STYLE}">
     <div style="${HEADER_BLUE}">
-      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Pago confirmado ✓</h1>
+      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Payment confirmed ✓</h1>
     </div>
     <div style="${BODY_PAD}">
       <p style="color: #374151; font-size: 16px; margin: 0 0 20px;">Hi ${name || "there"},</p>
       <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
-        Tu pago de Lynx AI fue procesado exitosamente.
+        Your Lynx AI payment was processed successfully.
       </p>
       <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 0 0 24px;">
         <table style="width: 100%; border-collapse: collapse;">
           <tr><td style="color: #6b7280; font-size: 14px; padding: 6px 0;">Plan</td><td style="color: #111827; font-size: 14px; font-weight: 600; text-align: right;">${plan}</td></tr>
-          <tr><td style="color: #6b7280; font-size: 14px; padding: 6px 0;">Monto</td><td style="color: #111827; font-size: 14px; font-weight: 600; text-align: right;">${amount}</td></tr>
+          <tr><td style="color: #6b7280; font-size: 14px; padding: 6px 0;">Amount</td><td style="color: #111827; font-size: 14px; font-weight: 600; text-align: right;">${amount}</td></tr>
           <tr><td style="color: #6b7280; font-size: 14px; padding: 6px 0;">Next charge</td><td style="color: #111827; font-size: 14px; font-weight: 600; text-align: right;">${nextBillingDate}</td></tr>
         </table>
       </div>
@@ -156,7 +157,7 @@ export async function sendUsageLimitAlertEmail(
   const pct = Math.round((used / limit) * 100);
   return sendEmail({
     to,
-    subject: `Aviso — Has usado el ${pct}% de tus mensajes de Lynx AI este mes`,
+    subject: `Heads up — you have used ${pct}% of your Lynx AI messages this month`,
     html: `
 <!DOCTYPE html>
 <html>
@@ -164,26 +165,26 @@ export async function sendUsageLimitAlertEmail(
 <body style="${BASE_STYLE}">
   <div style="${CARD_STYLE}">
     <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 32px 40px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Alerta de uso ⚠</h1>
+      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Usage alert ⚠</h1>
     </div>
     <div style="${BODY_PAD}">
       <p style="color: #374151; font-size: 16px; margin: 0 0 20px;">Hi ${name || "there"},</p>
       <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
-        Tu chatbot de Lynx AI ha usado <strong>${used.toLocaleString("es")} de ${limit.toLocaleString("es")} mensajes</strong> (${pct}%) este mes en el plan <strong>${plan}</strong>.
+        Your Lynx AI chatbot has used <strong>${used.toLocaleString("en-US")} of ${limit.toLocaleString("en-US")} messages</strong> (${pct}%) this month on the <strong>${plan}</strong> plan.
       </p>
       <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 16px 20px; margin: 0 0 24px;">
         <div style="background: #e5e7eb; border-radius: 999px; height: 8px; overflow: hidden; margin-bottom: 8px;">
           <div style="background: #f59e0b; width: ${pct}%; height: 100%; border-radius: 999px;"></div>
         </div>
-        <p style="color: #92400e; font-size: 13px; margin: 0; text-align: center;">${used.toLocaleString("es")} / ${limit.toLocaleString("es")} mensajes usados</p>
+        <p style="color: #92400e; font-size: 13px; margin: 0; text-align: center;">${used.toLocaleString("en-US")} / ${limit.toLocaleString("en-US")} messages used</p>
       </div>
       <p style="color: #374151; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
         Once the limit is reached, the widget stops replying until next month. Upgrade your plan to avoid interruptions.
       </p>
       <div style="text-align: center; margin: 0 0 24px;">
-        <a href="https://lynxaiassistant.com/dashboard/billing" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 600; font-size: 15px; display: inline-block;">Mejorar plan →</a>
+        <a href="https://lynxaiassistant.com/dashboard/billing" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 600; font-size: 15px; display: inline-block;">Upgrade plan →</a>
       </div>
-      <p style="color: #9ca3af; font-size: 13px; margin: 0; text-align: center;"><a href="https://lynxaiassistant.com/dashboard" style="color: #3b82f6;">Ver uso en el dashboard</a></p>
+      <p style="color: #9ca3af; font-size: 13px; margin: 0; text-align: center;"><a href="https://lynxaiassistant.com/dashboard" style="color: #3b82f6;">See usage in the dashboard</a></p>
     </div>
   </div>
 </body>
@@ -307,7 +308,7 @@ export async function sendNewLeadEmail(
   const botLabel = chatbotName ? ` via ${chatbotName}` : "";
   return sendEmail({
     to: ownerEmail,
-    subject: `🎯 Nuevo lead${botLabel}: ${leadName}`,
+    subject: `New lead${botLabel}: ${leadName}`,
     html: `
 <body style="${BASE_STYLE}">
   <div style="${CARD_STYLE}">
@@ -320,18 +321,18 @@ export async function sendNewLeadEmail(
       <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi ${ownerName}, someone left their details in your chatbot widget:</p>
       <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
         <tr style="background:#f8fafc;">
-          <td style="padding:12px 16px;font-size:13px;font-weight:600;color:#6b7280;width:120px;border-radius:8px 0 0 0;">Nombre</td>
+          <td style="padding:12px 16px;font-size:13px;font-weight:600;color:#6b7280;width:120px;border-radius:8px 0 0 0;">Name</td>
           <td style="padding:12px 16px;font-size:15px;font-weight:600;color:#111827;border-radius:0 8px 0 0;">${leadName}</td>
         </tr>
         <tr>
           <td style="padding:12px 16px;font-size:13px;font-weight:600;color:#6b7280;">Email</td>
           <td style="padding:12px 16px;font-size:15px;color:#3b82f6;"><a href="mailto:${leadEmail}" style="color:#3b82f6;text-decoration:none;">${leadEmail}</a></td>
         </tr>
-        ${leadCompany ? `<tr><td style="padding:12px 16px;font-size:13px;font-weight:600;color:#6b7280;">Empresa</td><td style="padding:12px 16px;font-size:15px;color:#111827;">${leadCompany}</td></tr>` : ""}
+        ${leadCompany ? `<tr><td style="padding:12px 16px;font-size:13px;font-weight:600;color:#6b7280;">Company</td><td style="padding:12px 16px;font-size:15px;color:#111827;">${leadCompany}</td></tr>` : ""}
         ${pageUrl ? `<tr style="background:#f8fafc;"><td style="padding:12px 16px;font-size:13px;font-weight:600;color:#6b7280;border-radius:0 0 0 8px;">Page</td><td style="padding:12px 16px;font-size:13px;color:#6b7280;border-radius:0 0 8px 0;">${pageUrl}</td></tr>` : ""}
       </table>
       <div style="text-align:center;margin-bottom:28px;">
-        <a href="https://lynxaiassistant.com/dashboard/leads" style="${BTN_BLUE}">Ver todos los leads →</a>
+        <a href="https://lynxaiassistant.com/dashboard/leads" style="${BTN_BLUE}">View all leads →</a>
       </div>
       ${FOOTER_TEXT()}
     </div>
@@ -373,7 +374,7 @@ export async function sendWebSetupRequestEmail(data: {
 
   return sendEmail({
     to: "sales@lynxaiassistant.com",
-    subject: `🚀 Nueva solicitud Web Setup — ${data.businessName}`,
+    subject: `New Web Setup request — ${data.businessName}`,
     html: `
 <!DOCTYPE html>
 <html>
@@ -388,7 +389,7 @@ export async function sendWebSetupRequestEmail(data: {
     <div style="${BODY_PAD}">
 
       <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
-        <p style="color: #15803d; font-size: 14px; font-weight: 700; margin: 0 0 4px;">👤 Cliente</p>
+        <p style="color: #15803d; font-size: 14px; font-weight: 700; margin: 0 0 4px;">👤 Client</p>
         <p style="color: #374151; font-size: 15px; margin: 0;">${data.userName} &lt;${data.userEmail}&gt; — User ID: ${data.userId}</p>
       </div>
 
@@ -403,9 +404,9 @@ export async function sendWebSetupRequestEmail(data: {
 
       <h2 style="color: #111827; font-size: 16px; font-weight: 700; margin: 0 0 16px; border-bottom: 2px solid #f3f4f6; padding-bottom: 8px;">🎨 Branding</h2>
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
-        <tr><td style="color:#6b7280;font-size:14px;padding:8px 0;width:40%;">Color primario</td><td style="color:#111827;font-size:14px;font-weight:600;padding:8px 0;">${colorSwatch(data.primaryColor)}</td></tr>
-        <tr><td style="color:#6b7280;font-size:14px;padding:8px 0;width:40%;">Color secundario</td><td style="color:#111827;font-size:14px;font-weight:600;padding:8px 0;">${colorSwatch(data.secondaryColor)}</td></tr>
-        ${data.logoUrl ? `<tr><td style="color:#6b7280;font-size:14px;padding:8px 0;">Logo</td><td style="padding:8px 0;"><a href="${data.logoUrl}" style="color:#3b82f6;">Ver logo →</a></td></tr>` : ""}
+        <tr><td style="color:#6b7280;font-size:14px;padding:8px 0;width:40%;">Primary color</td><td style="color:#111827;font-size:14px;font-weight:600;padding:8px 0;">${colorSwatch(data.primaryColor)}</td></tr>
+        <tr><td style="color:#6b7280;font-size:14px;padding:8px 0;width:40%;">Secondary color</td><td style="color:#111827;font-size:14px;font-weight:600;padding:8px 0;">${colorSwatch(data.secondaryColor)}</td></tr>
+        ${data.logoUrl ? `<tr><td style="color:#6b7280;font-size:14px;padding:8px 0;">Logo</td><td style="padding:8px 0;"><a href="${data.logoUrl}" style="color:#3b82f6;">View logo →</a></td></tr>` : ""}
         ${data.aiIconUrl ? `<tr><td style="color:#6b7280;font-size:14px;padding:8px 0;">AI icon</td><td style="padding:8px 0;"><a href="${data.aiIconUrl}" style="color:#3b82f6;">View icon →</a></td></tr>` : ""}
       </table>
 
@@ -415,7 +416,7 @@ export async function sendWebSetupRequestEmail(data: {
         ${row("Mensaje de bienvenida", data.chatbotWelcome)}
       </table>
 
-      <h2 style="color: #111827; font-size: 16px; font-weight: 700; margin: 0 0 16px; border-bottom: 2px solid #f3f4f6; padding-bottom: 8px;">📝 Detalles adicionales</h2>
+      <h2 style="color: #111827; font-size: 16px; font-weight: 700; margin: 0 0 16px; border-bottom: 2px solid #f3f4f6; padding-bottom: 8px;">📝 Additional details</h2>
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
         ${row("Audiencia objetivo", data.targetAudience)}
         ${row("Key pages", data.keyPages)}
@@ -450,16 +451,16 @@ export async function sendPaymentReceiptEmail(
     whitelabel: "White-Label",
   };
   const planAmounts: Record<string, string> = {
-    cloud: "$199.00 USD/mes",
-    embedded: "$399.00 USD/mes",
-    whitelabel: "$499.00 USD/mes",
+    cloud: "$199.00 USD/mo",
+    embedded: "$399.00 USD/mo",
+    whitelabel: "$499.00 USD/mo",
   };
   const displayPlan = planNames[plan] ?? plan;
   const displayAmount = planAmounts[plan] ?? amount;
 
   return sendEmail({
     to,
-    subject: `Recibo de pago — Plan ${displayPlan} de Lynx AI`,
+    subject: `Payment receipt — Lynx AI ${displayPlan} plan`,
     html: `
 <!DOCTYPE html>
 <html>
@@ -468,7 +469,7 @@ export async function sendPaymentReceiptEmail(
   <div style="${CARD_STYLE}">
     <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 32px 40px; text-align: center;">
       <img src="${LOGO_URL}" alt="Lynx AI" style="height: 36px; margin-bottom: 12px;">
-      <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Recibo de pago ✓</h1>
+      <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Payment receipt ✓</h1>
       <p style="color: #d1fae5; margin: 8px 0 0; font-size: 15px;">Your subscription is active</p>
     </div>
     <div style="${BODY_PAD}">
@@ -483,7 +484,7 @@ export async function sendPaymentReceiptEmail(
             <td style="color: #111827; font-size: 14px; font-weight: 700; text-align: right; padding: 10px 0;">${displayPlan}</td>
           </tr>
           <tr style="border-bottom: 1px solid #e5e7eb;">
-            <td style="color: #6b7280; font-size: 14px; padding: 10px 0;">Monto</td>
+            <td style="color: #6b7280; font-size: 14px; padding: 10px 0;">Amount</td>
             <td style="color: #111827; font-size: 14px; font-weight: 700; text-align: right; padding: 10px 0;">${displayAmount}</td>
           </tr>
           <tr style="border-bottom: 1px solid #e5e7eb;">
@@ -499,11 +500,11 @@ export async function sendPaymentReceiptEmail(
       <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 16px 20px; margin: 0 0 24px;">
         <p style="color: #065f46; font-size: 14px; margin: 0; font-weight: 600;">What's included in your plan?</p>
         <p style="color: #374151; font-size: 14px; margin: 8px 0 0; line-height: 1.6;">
-          Accede a tu dashboard para configurar tu chatbot, escanear tu sitio e instalar el snippet en tu web.
+          Open your dashboard to set up your chatbot, scan your site and install the snippet on your website.
         </p>
       </div>
       <div style="text-align: center; margin: 32px 0;">
-        <a href="https://lynxaiassistant.com/dashboard" style="${BTN_BLUE}">Ir al dashboard →</a>
+        <a href="https://lynxaiassistant.com/dashboard" style="${BTN_BLUE}">Go to dashboard →</a>
       </div>
       ${FOOTER_TEXT()}
     </div>
@@ -538,31 +539,31 @@ export async function sendPendingSubscriptionAlertEmail(
 <body style="${BASE_STYLE}">
   <div style="${CARD_STYLE}">
     <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 32px 40px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">⚠️ Alerta: Pagos pendientes</h1>
+      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">⚠️ Alert: pending payments</h1>
       <p style="color: #fef3c7; margin: 8px 0 0; font-size: 15px;">${pendingUsers.length} user(s) paid but their plan didn't activate</p>
     </div>
     <div style="${BODY_PAD}">
       <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 20px;">
-        The following users have a PayPal subscription stuck at <strong>"pending"</strong> for over 1 hour. The webhook may not have arrived. Revisa manualmente en el panel de admin o activa el plan directamente.
+        The following users have a PayPal subscription stuck at <strong>"pending"</strong> for over 1 hour. The webhook may not have arrived. Check manually in the admin panel or activate the plan directly.
       </p>
       <div style="overflow-x: auto; margin: 0 0 24px;">
         <table style="width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
           <thead>
             <tr style="background: #f9fafb;">
-              <th style="padding: 10px 8px; font-size: 13px; color: #6b7280; text-align: left; font-weight: 600;">Nombre</th>
+              <th style="padding: 10px 8px; font-size: 13px; color: #6b7280; text-align: left; font-weight: 600;">Name</th>
               <th style="padding: 10px 8px; font-size: 13px; color: #6b7280; text-align: left; font-weight: 600;">Email</th>
               <th style="padding: 10px 8px; font-size: 13px; color: #6b7280; text-align: left; font-weight: 600;">Plan</th>
               <th style="padding: 10px 8px; font-size: 13px; color: #6b7280; text-align: left; font-weight: 600;">Subscription ID</th>
-              <th style="padding: 10px 8px; font-size: 13px; color: #6b7280; text-align: left; font-weight: 600;">Desde</th>
+              <th style="padding: 10px 8px; font-size: 13px; color: #6b7280; text-align: left; font-weight: 600;">Since</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
       <div style="text-align: center; margin: 24px 0;">
-        <a href="https://lynxaiassistant.com/dashboard/admin" style="${BTN_BLUE}">Ir al panel de admin →</a>
+        <a href="https://lynxaiassistant.com/dashboard/admin" style="${BTN_BLUE}">Go to the admin panel →</a>
       </div>
-      <p style="color: #9ca3af; font-size: 13px; margin: 0; text-align: center;">This email is sent automatically every hour cuando hay suscripciones atascadas.</p>
+      <p style="color: #9ca3af; font-size: 13px; margin: 0; text-align: center;">This email is sent automatically every hour while there are stuck subscriptions.</p>
     </div>
   </div>
 </body>
@@ -696,6 +697,60 @@ export async function sendServicePausedEmail(to: string, name: string, daysPastD
         <a href="https://lynxaiassistant.com/dashboard/billing" style="${BTN_BLUE}">Restore my service →</a>
       </div>
       ${FOOTER_TEXT("billing@lynxaiassistant.com")}
+    </div>
+  </div>
+</body>
+</html>`,
+  });
+}
+
+// ─── Weekly report ────────────────────────────────────────────────────────────
+
+/**
+ * Monday summary of the previous seven days, for accounts that switched the
+ * weekly report on. Every number is a real count from the account's own data.
+ */
+export async function sendWeeklyReportEmail(
+  to: string,
+  name: string,
+  s: {
+    conversations: number; leads: number; avgRating: number | null; ratingsCount: number;
+    pageViews: number; chatOpens: number; messagesThisMonth: number;
+  }
+) {
+  const stat = (value: string, label: string) => `
+        <td style="padding: 14px 8px; text-align: center; width: 33%;">
+          <div style="font-size: 26px; font-weight: 700; color: #111827;">${value}</div>
+          <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">${label}</div>
+        </td>`;
+  const quiet = s.conversations === 0 && s.pageViews === 0;
+  return sendEmail({
+    to,
+    subject: `Your Lynx AI week: ${s.conversations} conversation${s.conversations === 1 ? "" : "s"}, ${s.leads} lead${s.leads === 1 ? "" : "s"}`,
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="${BASE_STYLE}">
+  <div style="${CARD_STYLE}">
+    <div style="${HEADER_BLUE}">
+      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Your week in review</h1>
+      <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0; font-size: 14px;">Last 7 days</p>
+    </div>
+    <div style="${BODY_PAD}">
+      <p style="color: #374151; font-size: 16px; margin: 0 0 20px;">Hi ${name || "there"},</p>
+      <table role="presentation" style="width: 100%; border-collapse: collapse; background: #f9fafb; border-radius: 12px; margin: 0 0 12px;">
+        <tr>${stat(String(s.conversations), "Conversations")}${stat(String(s.leads), "Leads captured")}${stat(s.avgRating === null ? "—" : `${s.avgRating}/5`, s.ratingsCount > 0 ? `Avg rating (${s.ratingsCount})` : "No ratings yet")}</tr>
+      </table>
+      <table role="presentation" style="width: 100%; border-collapse: collapse; background: #f9fafb; border-radius: 12px; margin: 0 0 24px;">
+        <tr>${stat(s.pageViews.toLocaleString("en-US"), "Page views")}${stat(s.chatOpens.toLocaleString("en-US"), "Chats opened")}${stat(s.messagesThisMonth.toLocaleString("en-US"), "Messages this month")}</tr>
+      </table>
+      ${quiet ? `<p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">A quiet week: no visits were recorded. If your site did have traffic, check that the widget snippet is still installed on it.</p>` : ""}
+      <div style="text-align: center; margin: 0 0 24px;">
+        <a href="https://lynxaiassistant.com/dashboard" style="${BTN_BLUE}">Open dashboard →</a>
+      </div>
+      <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0 0 16px;">You get this email because the weekly report is switched on. Turn it off any time under Notifications.</p>
+      ${FOOTER_TEXT()}
     </div>
   </div>
 </body>

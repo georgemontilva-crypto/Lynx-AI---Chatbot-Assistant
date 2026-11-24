@@ -149,7 +149,7 @@ function SEOContent() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.5 }} className="md:col-span-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 h-full">
               {[
-                { label: "Load speed", value: `${loadSpeed}s`, icon: Gauge, good: loadSpeed < 2.5, goodLabel: "Fast", badLabel: "Slow" },
+                { label: "Server response", value: loadSpeed > 0 ? `${loadSpeed}s` : "—", icon: Gauge, good: loadSpeed > 0 && loadSpeed < 2.5, goodLabel: "Fast", badLabel: loadSpeed > 0 ? "Slow" : "Not measured" },
                 { label: "Mobile score", value: `${mobileScore}/100`, icon: Smartphone, good: mobileScore >= 70, goodLabel: "Good", badLabel: "Needs work" },
                 { label: "Issues found", value: `${metaIssues.length + suggestions.filter(s => s.priority?.toLowerCase() === "high").length}`, icon: AlertTriangle, good: metaIssues.length === 0, goodLabel: "None", badLabel: "Fix needed" },
               ].map((stat, i) => (

@@ -9,7 +9,7 @@ export default function SchemaMarkup() {
     "name": "Lynx AI",
     "url": "https://lynxaiassistant.com",
     "logo": "https://lynxaiassistant.com/brand/lynx-logo-dark.png",
-    "description": "Lynx AI es una plataforma de chatbot inteligente que escanea tu sitio web y atiende a tus visitantes 24/7 con respuestas precisas basadas en tu contenido.",
+    "description": "Lynx AI is an AI chatbot platform that scans your website and answers your visitors 24/7 with accurate replies based on your own content.",
     "contactPoint": {
       "@type": "ContactPoint",
       "email": "support@lynxaiassistant.com",
@@ -28,7 +28,7 @@ export default function SchemaMarkup() {
     "applicationCategory": "BusinessApplication",
     "operatingSystem": "Web",
     "url": "https://lynxaiassistant.com",
-    "description": "Chatbot inteligente con IA que escanea tu sitio web, aprende tu contenido y atiende a tus visitantes 24/7. Captura leads, mejora el SEO y aumenta conversiones.",
+    "description": "AI chatbot that scans your website, learns your content and answers your visitors 24/7. Captures leads, improves SEO and increases conversions.",
     "offers": [
       {
         "@type": "Offer",
@@ -69,12 +69,12 @@ export default function SchemaMarkup() {
     ],
     "featureList": [
       "Automatic website scanning",
-      "Respuestas 24/7 basadas en tu contenido",
-      "Captura de leads integrada",
+      "24/7 answers based on your content",
+      "Built-in lead capture",
       "Automatic SEO analysis",
-      "Soporte multilingüe (50+ idiomas)",
+      "Multilingual support",
       "Full chatbot customization",
-      "Panel de analytics en tiempo real",
+      "Real-time analytics dashboard",
       "White-Label option for agencies"
     ]
   };

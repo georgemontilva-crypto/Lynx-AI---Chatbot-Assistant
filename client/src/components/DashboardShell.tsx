@@ -67,7 +67,7 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    title: "Visitantes",
+    title: "Visitors",
     items: [
       { href: "/dashboard/conversations", icon: MessageSquare, label: "Conversations", featureKey: "conversations", requiredPlan: "embedded" },
       { href: "/dashboard/leads",         icon: Users,         label: "Leads",         featureKey: "conversations" },
@@ -82,7 +82,7 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    title: "Cuenta",
+    title: "Account",
     items: [
       { href: "/dashboard/billing",   icon: CreditCard,      label: "Billing" },
     ],
@@ -219,7 +219,13 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
       isAuthenticated &&
       location === "/dashboard" &&
       onboardingProgress !== undefined &&
-      !onboardingProgress.completedAt
+      !onboardingProgress.completedAt &&
+      // Only a brand-new account is sent to the wizard. Once anything has been
+      // done, the home page must stay reachable — the progress card in the
+      // sidebar is the reminder, not a forced redirect.
+      !onboardingProgress.step1Done &&
+      !onboardingProgress.step2Done &&
+      !onboardingProgress.step3Done
     ) {
       navigate("/dashboard/onboarding");
     }

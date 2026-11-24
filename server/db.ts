@@ -421,6 +421,17 @@ export async function saveSeoReport(data: {
   await db.insert(seoReports).values(data);
 }
 
+/**
+ * JSON columns come back parsed from MySQL but as raw strings from MariaDB and
+ * some driver/proxy setups. Pages then saw a string where they expected an
+ * array and rendered an empty report. Normalise once, here.
+ */
+function asJson<T>(value: unknown, fallback: T): T {
+  if (value == null) return fallback;
+  if (typeof value !== "string") return value as T;
+  try { return JSON.parse(value) as T; } catch { return fallback; }
+}
+
 export async function getLatestSeoReport(chatbotId: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -428,7 +439,15 @@ export async function getLatestSeoReport(chatbotId: number) {
     .where(eq(seoReports.chatbotId, chatbotId))
     .orderBy(desc(seoReports.createdAt))
     .limit(1);
-  return result[0];
+  const row = result[0];
+  if (!row) return undefined;
+  return {
+    ...row,
+    keywords: asJson(row.keywords, [] as typeof row.keywords),
+    suggestions: asJson(row.suggestions, [] as typeof row.suggestions),
+    topPages: asJson(row.topPages, [] as typeof row.topPages),
+    metaIssues: asJson(row.metaIssues, [] as typeof row.metaIssues),
+  };
 }
 
 // ─── Conversations ────────────────────────────────────────────────────────────
@@ -448,89 +467,103 @@ export async function saveConversation(data: {
   await db.insert(conversations).values(data);
 }
 
-export async function getConversationsByChatbot(chatbotId: number, limit = 50) {
+export async function getConversationsByChatbot(chatbotId: number, limit = 200) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(conversations)
+  // Newest ACTIVITY first: a returning visitor continues their old
+  // conversation, and ordering by creation date buried it under stale ones.
+  const rows = await db.select().from(conversations)
     .where(eq(conversations.chatbotId, chatbotId))
-    .orderBy(desc(conversations.createdAt))
+    .orderBy(desc(conversations.updatedAt))
     .limit(limit);
+  return rows.map((row) => ({ ...row, messages: asJson(row.messages, [] as typeof row.messages) }));
 }
 
 // ─── Analytics ───────────────────────────────────────────────────────────────
+/**
+ * Visits and chats per day for the last 7 days.
+ *
+ * Aggregated in SQL: this used to load every event row of the week into memory
+ * (one row per page view) and count them in a loop, which gets slow and heavy
+ * exactly when a site is doing well.
+ *
+ * "Chats" = visitors who actually SENT a message that day. It used to add up
+ * chat_open and message_sent events, and since the widget opens itself for
+ * first-time visitors, the number mostly measured page loads.
+ */
 export async function getWeeklyAnalytics(chatbotId: number) {
   const db = await getDb();
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const labelOf = (dateStr: string) => {
+    const dow = new Date(`${dateStr}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+    return days[dow === 0 ? 6 : dow - 1];
+  };
   const now = new Date();
-  // Build 7-day buckets (Mon=0 ... Sun=6 relative to today)
   const buckets: Record<string, { visits: number; chats: number }> = {};
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const label = days[d.getDay() === 0 ? 6 : d.getDay() - 1]; // JS: 0=Sun
+    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
     buckets[d.toISOString().slice(0, 10)] = { visits: 0, chats: 0 };
   }
+  const toRows = () => Object.entries(buckets).map(([dateStr, v]) => ({ day: labelOf(dateStr), ...v }));
+  if (!db) return toRows();
 
-  if (!db) {
-    return Object.entries(buckets).map(([dateStr, v]) => ({
-      day: days[new Date(dateStr).getDay() === 0 ? 6 : new Date(dateStr).getDay() - 1],
-      ...v,
-    }));
-  }
-
-  const sevenDaysAgo = new Date(now);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-  sevenDaysAgo.setHours(0, 0, 0, 0);
-
-  const events = await db
-    .select()
+  const since = new Date(`${Object.keys(buckets)[0]}T00:00:00Z`);
+  const rows = await db
+    .select({
+      day: sql<string>`DATE_FORMAT(${analyticsEvents.createdAt}, '%Y-%m-%d')`,
+      eventType: analyticsEvents.eventType,
+      total: sql<number>`COUNT(*)`,
+      visitors: sql<number>`COUNT(DISTINCT ${analyticsEvents.visitorId})`,
+    })
     .from(analyticsEvents)
-    .where(
-      and(
-        eq(analyticsEvents.chatbotId, chatbotId),
-        sql`${analyticsEvents.createdAt} >= ${sevenDaysAgo}`
-      )
-    );
+    .where(and(eq(analyticsEvents.chatbotId, chatbotId), sql`${analyticsEvents.createdAt} >= ${since}`))
+    .groupBy(sql`DATE_FORMAT(${analyticsEvents.createdAt}, '%Y-%m-%d')`, analyticsEvents.eventType);
 
-  for (const ev of events) {
-    const dateKey = new Date(ev.createdAt).toISOString().slice(0, 10);
-    if (!buckets[dateKey]) continue;
-    if (ev.eventType === "page_view") buckets[dateKey].visits++;
-    if (ev.eventType === "chat_open" || ev.eventType === "message_sent") buckets[dateKey].chats++;
+  for (const r of rows) {
+    const bucket = buckets[String(r.day)];
+    if (!bucket) continue;
+    if (r.eventType === "page_view") bucket.visits += Number(r.total);
+    // Distinct visitors; falls back to the raw count for events with no visitor id.
+    if (r.eventType === "message_sent") bucket.chats += Number(r.visitors) || Number(r.total);
   }
-
-  return Object.entries(buckets).map(([dateStr, v]) => ({
-    day: days[new Date(dateStr).getDay() === 0 ? 6 : new Date(dateStr).getDay() - 1],
-    ...v,
-  }));
+  return toRows();
 }
 
+/**
+ * Most visited pages this week (top 5), from the widget's page_view events.
+ *
+ * The card this feeds was titled "Clicks by page" and read "click" events —
+ * which the widget has never sent, so it was permanently empty. Page views ARE
+ * recorded on every page load, so the card now shows something real. The field
+ * is still called `clicks` to keep the response shape stable.
+ */
 export async function getClicksByPage(chatbotId: number) {
   const db = await getDb();
   if (!db) return [];
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-  sevenDaysAgo.setHours(0, 0, 0, 0);
+  const since = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+  since.setUTCHours(0, 0, 0, 0);
 
-  const events = await db
-    .select()
+  const rows = await db
+    .select({ pageUrl: analyticsEvents.pageUrl, total: sql<number>`COUNT(*)` })
     .from(analyticsEvents)
-    .where(
-      and(
-        eq(analyticsEvents.chatbotId, chatbotId),
-        eq(analyticsEvents.eventType, "click"),
-        sql`${analyticsEvents.createdAt} >= ${sevenDaysAgo}`
-      )
-    );
+    .where(and(
+      eq(analyticsEvents.chatbotId, chatbotId),
+      eq(analyticsEvents.eventType, "page_view"),
+      sql`${analyticsEvents.createdAt} >= ${since}`
+    ))
+    .groupBy(analyticsEvents.pageUrl)
+    .orderBy(sql`COUNT(*) DESC`)
+    .limit(40);
 
+  // Same page with different query strings / trailing slashes is one page.
   const pageMap: Record<string, number> = {};
-  for (const ev of events) {
-    const page = ev.pageUrl ?? "/";
-    // Shorten to last segment for display
-    const label = page === "/" ? "Home" : page.split("/").filter(Boolean).pop() ?? page;
-    pageMap[label] = (pageMap[label] ?? 0) + 1;
+  for (const r of rows) {
+    let path = r.pageUrl ?? "/";
+    try { path = new URL(path).pathname; } catch { /* already a path */ }
+    path = path.replace(/\/+$/, "") || "/";
+    const label = path === "/" ? "Home" : path.split("/").filter(Boolean).pop() ?? path;
+    pageMap[label] = (pageMap[label] ?? 0) + Number(r.total);
   }
-
   return Object.entries(pageMap)
     .map(([page, clicks]) => ({ page, clicks }))
     .sort((a, b) => b.clicks - a.clicks)
@@ -574,10 +607,19 @@ export async function getNotificationsByUser(userId: number, limit = 30) {
     .limit(limit);
 }
 
-export async function markNotificationRead(notificationId: number) {
+/** Scoped to the owner: an id alone would let any account mark anyone's. */
+export async function markNotificationRead(notificationId: number, userId: number) {
   const db = await getDb();
   if (!db) return;
-  await db.update(notifications).set({ isRead: true }).where(eq(notifications.id, notificationId));
+  await db.update(notifications).set({ isRead: true })
+    .where(and(eq(notifications.id, notificationId), eq(notifications.userId, userId)));
+}
+
+export async function markAllNotificationsRead(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(notifications).set({ isRead: true })
+    .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
 }
 
 // ─── Onboarding ────────────────────────────────────────────────────────────────────────────────

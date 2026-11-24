@@ -12,6 +12,9 @@ import { registerUploadRoutes } from "../uploadRouter";
 import { registerSeoRoutes } from "../seoRouter";
 import { runPendingSubscriptionCheck } from "../scheduledPendingAlert";
 import { runOverdueBillingCheck } from "../overdueBilling";
+import { runWeeklyReports } from "../weeklyReport";
+import { ensureSchema } from "../ensureSchema";
+import { runAutoRescan } from "../autoRescan";
 import { pushRouter } from "../pushRouter";
 import { authRouter } from "../authRouter";
 import { appRouter } from "../routers";
@@ -38,6 +41,10 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  // Bring the database up to the columns this build expects BEFORE serving a
+  // single request — a missing column otherwise breaks login for everyone.
+  await ensureSchema().catch(err => console.error("[Schema] Startup check failed:", err));
+
   const app = express();
   const server = createServer(app);
   // Trust reverse proxy (required for express-rate-limit to read real client IP)
@@ -131,6 +138,25 @@ async function startServer() {
         }
       })
       .catch(err => console.warn("[Overdue] Scheduled check failed:", err));
+  }, 60 * 60 * 1000);
+  // ── Internal scheduler: automatic site re-scans ───────────────────────────
+  // Daily for Embedded/White-Label sites, weekly for Cloud — a few sites per
+  // hourly run so the load stays flat however many customers there are.
+  setInterval(() => {
+    runAutoRescan()
+      .then(r => {
+        if (r.due) console.log(`[AutoRescan] due=${r.due} updated=${r.updated} kept=${r.kept} failed=${r.failed}`);
+      })
+      .catch(err => console.warn("[AutoRescan] Scheduled run failed:", err));
+  }, 60 * 60 * 1000);
+
+  // ── Internal scheduler: weekly report emails ──────────────────────────────
+  // Checked hourly; the job itself only acts on Mondays and never sends the
+  // same account two reports in one week.
+  setInterval(() => {
+    runWeeklyReports()
+      .then(r => { if (r.sent) console.log(`[WeeklyReport] sent=${r.sent}`); })
+      .catch(err => console.warn("[WeeklyReport] Scheduled run failed:", err));
   }, 60 * 60 * 1000);
   // Run once ~2 min after boot so a restart doesn't delay detection by an hour.
   setTimeout(() => {

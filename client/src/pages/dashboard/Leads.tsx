@@ -158,12 +158,12 @@ function LeadsContent() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border/30">
-                      <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Nombre</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Name</th>
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Email</th>
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden lg:table-cell">Empresa</th>
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden md:table-cell">Page</th>
                       <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden sm:table-cell">Rating</th>
-                      <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Fecha</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Date</th>
                       <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Chat</th>
                     </tr>
                   </thead>
@@ -262,8 +262,8 @@ function LeadsContent() {
                 </div>
               ) : (transcriptQuery.data?.messages?.length ?? 0) === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
-                  No hay mensajes guardados para este lead.<br />
-                  <span className="text-xs">Los transcripts se guardan para las conversaciones nuevas del widget.</span>
+                  No messages were saved for this lead.<br />
+                  <span className="text-xs">Transcripts are saved for new widget conversations.</span>
                 </p>
               ) : (
                 transcriptQuery.data!.messages.map((m, i) => (

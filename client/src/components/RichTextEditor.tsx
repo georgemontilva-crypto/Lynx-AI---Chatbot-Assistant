@@ -38,7 +38,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: Props) 
   const format = (tag: string) => exec("formatBlock", tag);
 
   const addLink = () => {
-    const url = window.prompt("URL del enlace:");
+    const url = window.prompt("Link URL:");
     if (url) exec("createLink", url);
   };
 
@@ -61,23 +61,23 @@ export default function RichTextEditor({ value, onChange, placeholder }: Props) 
     <div className="border border-input rounded-lg overflow-hidden bg-background">
       {/* Toolbar */}
       <div className="flex items-center gap-0.5 flex-wrap px-2 py-1.5 border-b border-border/40 bg-muted/20">
-        <ToolbarButton onClick={() => exec("bold")} icon={Bold} title="Negrita" />
-        <ToolbarButton onClick={() => exec("italic")} icon={Italic} title="Cursiva" />
+        <ToolbarButton onClick={() => exec("bold")} icon={Bold} title="Bold" />
+        <ToolbarButton onClick={() => exec("italic")} icon={Italic} title="Italic" />
         <Divider />
         <ToolbarButton onClick={() => format("h2")} icon={Heading2} title="Heading" />
         <ToolbarButton onClick={() => format("h3")} icon={Heading3} title="Subheading" />
         <Divider />
         <ToolbarButton onClick={() => exec("insertUnorderedList")} icon={List} title="Bulleted list" />
-        <ToolbarButton onClick={() => exec("insertOrderedList")} icon={ListOrdered} title="Lista numerada" />
-        <ToolbarButton onClick={() => format("blockquote")} icon={Quote} title="Cita" />
-        <ToolbarButton onClick={addLink} icon={Link2} title="Enlace" />
+        <ToolbarButton onClick={() => exec("insertOrderedList")} icon={ListOrdered} title="Numbered list" />
+        <ToolbarButton onClick={() => format("blockquote")} icon={Quote} title="Quote" />
+        <ToolbarButton onClick={addLink} icon={Link2} title="Link" />
         <Divider />
-        <ToolbarButton onClick={() => exec("undo")} icon={Undo2} title="Deshacer" />
-        <ToolbarButton onClick={() => exec("redo")} icon={Redo2} title="Rehacer" />
+        <ToolbarButton onClick={() => exec("undo")} icon={Undo2} title="Undo" />
+        <ToolbarButton onClick={() => exec("redo")} icon={Redo2} title="Redo" />
         <div className="ml-auto">
           <button
             type="button"
-            title="Ver HTML"
+            title="View HTML"
             onMouseDown={(e) => { e.preventDefault(); setShowHtml((v) => !v); }}
             className={`h-8 px-2 flex items-center gap-1 rounded-md text-xs transition-colors ${
               showHtml ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent"

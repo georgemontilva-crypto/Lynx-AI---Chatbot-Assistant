@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 import { motion } from "framer-motion";
 import {
   CreditCard,
@@ -209,6 +210,13 @@ export default function Billing() {
       await fetchBillingStatus();
     }
   }
+
+  // Client packs are activated by our team, not self-serve. The button used to
+  // show a "coming soon" toast and do nothing; now it actually files the request.
+  const requestPack = trpc.billing.requestClientPack.useMutation({
+    onSuccess: () => toast.success("Request sent. We'll confirm by email and activate the extra client slots."),
+    onError: () => toast.error("We couldn't send the request. Please email sales@lynxaiassistant.com."),
+  });
 
   async function handleSubscribe(planId: string) {
     setSubscribingPlan(planId);
@@ -615,9 +623,10 @@ export default function Billing() {
                         size="sm"
                         className={`w-full text-xs ${pack.bg} ${pack.color} border ${pack.border} hover:opacity-80`}
                         variant="outline"
-                        onClick={() => toast.info("Client pack purchasing coming soon! Contact support to add slots now.")}
+                        disabled={requestPack.isPending}
+                        onClick={() => requestPack.mutate({ pack: pack.name, clients: pack.clients, price: pack.price })}
                       >
-                        Add Pack
+                        Request pack
                       </Button>
                     </CardContent>
                   </Card>

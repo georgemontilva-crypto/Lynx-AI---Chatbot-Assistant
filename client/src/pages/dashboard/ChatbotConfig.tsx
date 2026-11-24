@@ -181,19 +181,6 @@ export default function ChatbotConfig() {
                     <Label className="text-xs">Chatbot name</Label>
                     <Input value={config.name} onChange={(e) => update("name", e.target.value)} className="bg-muted/30 border-border/40 text-sm" placeholder="Lynx AI" />
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Default language</Label>
-                    <Select value={config.language} onValueChange={(v) => update("language", v)}>
-                      <SelectTrigger className="bg-muted/30 border-border/40 text-sm"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="en">English</SelectItem>
-                        <SelectItem value="es">Spanish</SelectItem>
-                        <SelectItem value="pt">Português</SelectItem>
-                        <SelectItem value="fr">Français</SelectItem>
-                        <SelectItem value="de">Deutsch</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs">Welcome message</Label>
@@ -204,7 +191,7 @@ export default function ChatbotConfig() {
                   <Input value={config.placeholder} onChange={(e) => update("placeholder", e.target.value)} className="bg-muted/30 border-border/40 text-sm" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Bot native language</Label>
+                  <Label className="text-xs">Bot language</Label>
                   {/* A native <select> renders with the OS dropdown (white list,
                       system font) and broke the dark UI. Chips match the rest of
                       the dashboard and show every option at a glance. */}
@@ -234,7 +221,6 @@ export default function ChatbotConfig() {
                   <p className="text-[11px] text-muted-foreground mt-1.5">
                     The bot opens in this language and switches only if the visitor writes in another one.
                   </p>
-                  <p className="text-[11px] text-muted-foreground">The bot opens and defaults to this language, and adapts if the visitor writes in another one.</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs">Disclaimer (small text under the chat)</Label>
@@ -244,7 +230,7 @@ export default function ChatbotConfig() {
                     className="bg-muted/30 border-border/40 text-sm resize-none"
                     rows={2}
                     maxLength={300}
-                    placeholder="Ej: For educational purposes only — not medical advice."
+                    placeholder="e.g. For educational purposes only — not medical advice."
                   />
                   <p className="text-[11px] text-muted-foreground">Shown in small print under the widget's message box. Leave it empty to show nothing.</p>
                 </div>

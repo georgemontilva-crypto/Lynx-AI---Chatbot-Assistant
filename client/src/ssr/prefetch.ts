@@ -48,7 +48,7 @@ const CANONICAL_ORIGIN = "https://lynxaiassistant.com";
 const OG_IMAGE = "/brand/og-image.png";
 const OG_IMAGE_WIDTH = 1200;
 const OG_IMAGE_HEIGHT = 630;
-const OG_IMAGE_ALT = "Lynx AI — Chatbot inteligente para sitios web";
+const OG_IMAGE_ALT = "Lynx AI — AI chatbot for websites";
 const OG_LOCALE = "en_US";
 
 const DEFAULT_DESC =
@@ -71,7 +71,7 @@ export async function prefetchForPath(
   // ── Home ──────────────────────────────────────────────────────────────────
   if (clean === "/") {
     return {
-      title: `${SITE} — Chatbot Inteligente para tu Sitio Web | IA que conoce tu negocio`,
+      title: `${SITE} — AI Chatbot for Your Website | The Assistant That Knows Your Business`,
       description: DEFAULT_DESC,
       ogType: "website",
       ogImage: OG_IMAGE,
@@ -86,9 +86,9 @@ export async function prefetchForPath(
   // ── Pricing ───────────────────────────────────────────────────────────────
   if (clean === "/pricing") {
     return {
-      title: `Precios de ${SITE} — Planes Cloud, Embedded y White-Label`,
+      title: `${SITE} Pricing — Cloud, Embedded and White-Label Plans`,
       description:
-        "Elige el plan que se adapta a tu negocio. Desde $199/mes para sitios individuales hasta soluciones White-Label para agencias. Sin contratos, cancela cuando quieras.",
+        "Choose the plan that fits your business — from a single website to White-Label solutions for agencies. No contracts, cancel anytime.",
       ogType: "website",
       ogImage: OG_IMAGE,
       ogImageWidth: OG_IMAGE_WIDTH,
@@ -161,7 +161,7 @@ export async function prefetchForPath(
   // ── Contact ───────────────────────────────────────────────────────────────
   if (clean === "/contact") {
     return {
-      title: `Contacto — ${SITE} | Habla con nuestro equipo`,
+      title: `Contact — ${SITE} | Talk to Our Team`,
       description:
         "Questions about Lynx AI? Get in touch for a personalized demo, technical support or details on White-Label plans for your agency.",
       ogType: "website",

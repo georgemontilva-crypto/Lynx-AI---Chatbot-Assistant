@@ -15,10 +15,11 @@ import { and, desc, eq, ne, gt } from "drizzle-orm";
 import { buildTrainingPromptSection } from "./routers";
 import { getDb, checkAndIncrementUsage, PLAN_LIMITS, saveAnalyticsEvent } from "./db";
 import { chatbots, users, conversations, widgetEmailVerifications } from "../drizzle/schema";
-import { invokeLLM } from "./_core/llm";
+import { invokeLLM, toAnthropicSystem, type SystemBlock } from "./_core/llm";
 import { sendUsageLimitAlertEmail, sendNewLeadEmail, sendChatVerificationCode } from "./email";
 import { sendPushToUser } from "./pushNotifications";
 import { overdueState, type OverdueState } from "./overdueState";
+import { notifyAccount } from "./accountNotifications";
 import path from "path";
 import fs from "fs";
 
@@ -207,6 +208,175 @@ async function resolvePoweredBy(chatbot: { userId: number; poweredByText?: strin
     return DEFAULT;
   }
   return { text: custom, url: (chatbot as { poweredByUrl?: string | null }).poweredByUrl || null };
+}
+
+// Marks where the per-request part of the system prompt starts. Everything
+// before it depends only on the chatbot, so it can be cached.
+const PROMPT_SPLIT = "\n<<<LYNX_PER_REQUEST>>>\n";
+
+/**
+ * Split the system prompt into a cached block and a small live tail.
+ *
+ * WHY: every visitor message used to resend the entire prompt — behaviour
+ * rules plus the whole scanned site, up to ~20,000 tokens — at full price,
+ * twice (reply + follow-up call). That prompt is identical for every request
+ * to the same chatbot, which is exactly what prompt caching is for: after the
+ * first request in a 5-minute window the cached block costs 10% of the normal
+ * input price. Only what truly varies per request (current page, timezone,
+ * verification notes, the final language rule) stays outside the cache.
+ */
+function splitSystemPrompt(prompt: string): SystemBlock[] {
+  const at = prompt.indexOf(PROMPT_SPLIT);
+  if (at === -1) return [{ text: prompt, cache: true }];
+  return [
+    { text: prompt.slice(0, at), cache: true },
+    { text: prompt.slice(at + PROMPT_SPLIT.length) },
+  ];
+}
+
+/** Product names the assistant can know about: scanned catalog + hand-typed entries. */
+export function catalogProductNames(siteContext: string | null | undefined, knowledgeBase?: unknown): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string) => {
+    const name = raw.trim().slice(0, 80);
+    const key = name.toLowerCase();
+    if (name && !seen.has(key)) { seen.add(key); names.push(name); }
+  };
+  const catalog = String(siteContext ?? "").split("=== PRODUCT CATALOG")[1]?.split("\n===")[0] ?? "";
+  for (const line of catalog.split("\n")) {
+    const m = line.match(/^\s*\d+\.\s+([^|]+)/);
+    if (m) add(m[1]);
+  }
+  try {
+    const kb = Array.isArray(knowledgeBase)
+      ? knowledgeBase
+      : typeof knowledgeBase === "string" ? JSON.parse(knowledgeBase) : [];
+    for (const raw of Array.isArray(kb) ? kb : []) {
+      const title = String((raw as { title?: string })?.title ?? "");
+      if (/^\s*(producto|product)\s*:/i.test(title)) add(title.replace(/^\s*(producto|product)\s*:\s*/i, ""));
+    }
+  } catch { /* malformed knowledge base — ignore */ }
+  return names;
+}
+
+/**
+ * Follow-up suggestions + which products the reply mentioned (for the cards).
+ *
+ * This runs after every streamed reply. It used to replay the ENTIRE
+ * conversation — full system prompt, whole site context, all history — just to
+ * get four short strings and a list of names: as expensive as the answer
+ * itself, doubling the cost of every message. It only needs the last exchange
+ * and the list of product names, so that is all it gets now (~10x smaller).
+ */
+async function generateReplyExtras(input: {
+  userMessage: string;
+  reply: string;
+  siteContext: string | null | undefined;
+  knowledgeBase?: unknown;
+}): Promise<{ quickReplies: string[]; products: ProductCard[] }> {
+  const names = catalogProductNames(input.siteContext, input.knowledgeBase).slice(0, 200);
+  const res = await invokeLLM({
+    model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5",
+    maxTokens: 700,
+    messages: [
+      {
+        role: "system" as const,
+        content:
+          "You prepare the extras shown under a website assistant's chat reply. Return JSON only.\n" +
+          "1) quickReplies: 3-4 short follow-up questions the VISITOR might tap next, each max 40 characters, " +
+          "written in the same language as the visitor's message, phrased as the visitor would ask them.\n" +
+          "2) products: every product from PRODUCT NAMES that the assistant's reply mentioned or recommended, " +
+          "in the order mentioned, up to 12. Use the name EXACTLY as it appears in PRODUCT NAMES. " +
+          "note: 3-6 words on what it is for, in the visitor's language. " +
+          "If the reply named no product from the list, return an empty array. Never invent a product.",
+      },
+      {
+        role: "user" as const,
+        content:
+          `PRODUCT NAMES:\n${names.length ? names.join("\n") : "(none)"}\n\n` +
+          `VISITOR'S MESSAGE:\n${input.userMessage.slice(0, 1000)}\n\n` +
+          `ASSISTANT'S REPLY:\n${input.reply.slice(0, 4000)}`,
+      },
+    ],
+    responseFormat: {
+      type: "json_schema",
+      json_schema: {
+        name: "reply_extras",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            quickReplies: { type: "array", items: { type: "string" } },
+            products: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { name: { type: "string" }, note: { type: "string" } },
+                required: ["name", "note"],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ["quickReplies", "products"],
+          additionalProperties: false,
+        },
+      },
+    },
+  });
+  const raw = res.choices[0]?.message?.content ?? "{}";
+  const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+  const quickReplies = Array.isArray(parsed.quickReplies)
+    ? parsed.quickReplies.slice(0, 4).map((q: unknown) => String(q).slice(0, 60))
+    : [];
+  // Only names that really exist in the catalog become cards: the list is the
+  // source of truth, so a hallucinated product can never be shown.
+  const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const known = names.map(norm).filter(Boolean);
+  // Same tolerance the catalog matcher uses: "BPC-157" still finds "BPC-157 10mg".
+  const isKnown = (name: string) => {
+    const t = norm(name);
+    return t.length > 1 && known.some((k) => k === t || k.includes(t) || t.includes(k));
+  };
+  const picked = (Array.isArray(parsed.products) ? parsed.products : [])
+    .filter((p: unknown) => p && typeof p === "object" && typeof (p as { name?: unknown }).name === "string")
+    .filter((p: { name: string }) => isKnown(p.name))
+    .map((p: { name: string; note?: string }) => ({ name: p.name, url: "", imageUrl: "", price: "", note: p.note ?? "" }));
+  return { quickReplies, products: sanitizeProducts(picked) };
+}
+
+/**
+ * A chatbot just crossed 80% of its monthly quota: log it in the owner's inbox
+ * and, if the alert is on, email and push. Shared by both chat endpoints —
+ * they used to carry two copies of this that had already drifted apart (only
+ * one of them sent the push).
+ */
+function notifyUsageAt80(
+  chatbot: { userId: number; name?: string | null },
+  usage: { used: number; limit: number },
+  userPlan: string,
+): void {
+  (async () => {
+    const db = await getDb();
+    if (!db) return;
+    const owner = (await db
+      .select({ id: users.id, email: users.email, name: users.name })
+      .from(users).where(eq(users.id, chatbot.userId)).limit(1))[0];
+    if (!owner) return;
+    const pct = Math.round((usage.used / usage.limit) * 100);
+    await notifyAccount({
+      userId: owner.id,
+      alert: "usageLimit",
+      type: "system",
+      title: `${chatbot.name ?? "Your assistant"} is at ${pct}% of its monthly messages`,
+      message: `${usage.used.toLocaleString("en-US")} of ${usage.limit.toLocaleString("en-US")} messages used this month. It stops answering when it reaches the limit.`,
+      url: "/dashboard/billing",
+      metadata: { used: usage.used, limit: usage.limit },
+      email: owner.email
+        ? () => sendUsageLimitAlertEmail(owner.email as string, owner.name ?? "", usage.used, usage.limit, userPlan)
+        : undefined,
+    });
+  })().catch(console.error);
 }
 
 /**
@@ -793,34 +963,8 @@ export function registerWidgetRoutes(app: Express) {
       }
 
       // Fire-and-forget 80% usage alert email + push
-      if (usage.shouldAlertAt80 && db) {
-        db.select({ id: users.id, email: users.email, name: users.name })
-          .from(users)
-          .where(eq(users.id, chatbot.userId))
-          .limit(1)
-          .then((rows) => {
-            const owner = rows[0];
-            if (owner?.email) {
-              sendUsageLimitAlertEmail(
-                owner.email,
-                owner.name ?? "",
-                usage.used,
-                usage.limit,
-                userPlan
-              ).catch(console.error);
-            }
-            if (owner?.id) {
-              const pct = Math.round((usage.used / usage.limit) * 100);
-              sendPushToUser(owner.id, {
-                title: `📊 Chatbot at ${pct}% of monthly limit`,
-                body: `${usage.used}/${usage.limit} messages used. Upgrade to avoid interruptions.`,
-                url: "/dashboard/billing",
-                tag: "usage-limit",
-                eventType: "usageLimit",
-              }).catch(console.error);
-            }
-          })
-          .catch(console.error);
+      if (usage.shouldAlertAt80) {
+        notifyUsageAt80(chatbot, usage, userPlan);
       }
       // ─────────────────────────────────────────────────────────────────────
 
@@ -862,7 +1006,7 @@ STYLE (this is what makes you feel human, not a bot):
 13. DISCLAIMER (only if provided below): If a "STORE DISCLAIMER" is given in the context, weave it in naturally as ONE short, friendly line at the end when you recommend a specific product — phrase it warmly in the visitor's language, never as a legal wall of text, and only once per recommendation (not in every message). If no disclaimer is provided, skip this entirely.
 14. When the visitor says goodbye or wraps up (thanks, that's all, bye), close warmly in one short sentence and ask how satisfied they were with the help — star buttons will appear right below your message for them to tap.
 ${buildTrainingPromptSection(chatbot)}${chatbot.disclaimer ? `\n\nSTORE DISCLAIMER (weave in naturally per rule 13): ${chatbot.disclaimer}` : ""}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
-${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
+${PROMPT_SPLIT}${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone} (use this for any time/schedule references — NEVER ask the visitor for their timezone).` : ""}${emailResult.codeSent ? `\n\nSYSTEM NOTE: We just emailed a 6-digit verification code to ${emailResult.email}. Tell the visitor (in their language) to check their inbox and type the code here to restore their previous conversation.` : ""}
 
 === LANGUAGE — FINAL RULE, OVERRIDES EVERYTHING ABOVE ===
@@ -880,6 +1024,11 @@ say and HOW to behave; it is never text to copy.
 - If the visitor switches language mid-chat, switch fully from that reply onward.
 - If their language is unclear, use ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}.`;
 
+      // Cacheable part (rules + training + site knowledge: identical for every
+      // request to this chatbot) vs. the per-request tail (page, timezone, notes).
+      const systemBlocks = splitSystemPrompt(systemPrompt);
+      const systemPromptText = systemPrompt.replace(PROMPT_SPLIT, "");
+
       const safeHistory = Array.isArray(history)
         ? history
             .filter(
@@ -895,7 +1044,7 @@ say and HOW to behave; it is never text to copy.
         : [];
 
       const messages = [
-        { role: "system" as const, content: systemPrompt },
+        { role: "system" as const, content: systemPromptText },
         ...safeHistory.map((m: { role: string; content: string }) => ({
           role: m.role as "user" | "assistant",
           content: m.content,
@@ -906,6 +1055,7 @@ say and HOW to behave; it is never text to copy.
       const response = await invokeLLM({
         model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5",
         messages,
+        systemBlocks,
         responseFormat: {
           type: "json_schema",
           json_schema: {
@@ -1121,7 +1271,7 @@ STYLE (this is what makes you feel human, not a bot):
 13. DISCLAIMER (only if provided below): If a "STORE DISCLAIMER" is given in the context, weave it in naturally as ONE short, friendly line at the end when you recommend a specific product — phrase it warmly in the visitor's language, never as a legal wall of text, and only once per recommendation (not in every message). If no disclaimer is provided, skip this entirely.
 14. When the visitor says goodbye or wraps up (thanks, that's all, bye), close warmly in one short sentence and ask how satisfied they were with the help — star buttons will appear right below your message for them to tap.
 ${buildTrainingPromptSection(chatbot)}${chatbot.disclaimer ? `\n\nSTORE DISCLAIMER (weave in naturally per rule 13): ${chatbot.disclaimer}` : ""}${chatbot.siteContext ? `\n\nSite context (use this to give accurate, specific answers):\n${chatbot.siteContext}` : ""}
-${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
+${PROMPT_SPLIT}${pageUrl ? `\n\nVisitor is currently on: ${pageUrl}` : ""}
 ${detectedTimezone ? `\n\nVisitor's timezone: ${detectedTimezone}` : ""}${emailResult.codeSent ? `\n\nSYSTEM NOTE: We just emailed a 6-digit verification code to ${emailResult.email}. Tell the visitor (in their language) to check their inbox and type the code here to restore their previous conversation.` : ""}
 
 === LANGUAGE — FINAL RULE, OVERRIDES EVERYTHING ABOVE ===
@@ -1139,6 +1289,11 @@ say and HOW to behave; it is never text to copy.
 - If the visitor switches language mid-chat, switch fully from that reply onward.
 - If their language is unclear, use ${LANG_NAMES[chatbot.language ?? "en"] ?? "English"}.`;
 
+      // Cacheable part (rules + training + site knowledge: identical for every
+      // request to this chatbot) vs. the per-request tail (page, timezone, notes).
+      const systemBlocks = splitSystemPrompt(systemPrompt);
+      const systemPromptText = systemPrompt.replace(PROMPT_SPLIT, "");
+
       const safeHistory = Array.isArray(history)
         ? history
             .filter((m: unknown) => m && typeof m === "object" && "role" in (m as object) && "content" in (m as object) &&
@@ -1147,7 +1302,7 @@ say and HOW to behave; it is never text to copy.
         : [];
 
       const messages = [
-        { role: "system" as const, content: systemPrompt },
+        { role: "system" as const, content: systemPromptText },
         ...safeHistory.map((m: { role: string; content: string }) => ({ role: m.role as "user" | "assistant", content: m.content })),
         { role: "user" as const, content: message.trim() },
       ];
@@ -1186,7 +1341,6 @@ say and HOW to behave; it is never text to copy.
 
       // ── Stream the reply from Claude (Anthropic Messages API, SSE) ────────────
       // Split system prompt out (Anthropic takes it as a top-level field).
-      const systemMsg = messages.find((m) => m.role === "system")?.content ?? "";
       const convoMsgs = messages
         .filter((m) => m.role !== "system")
         .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
@@ -1203,7 +1357,10 @@ say and HOW to behave; it is never text to copy.
           model: anthropicModel,
           max_tokens: 1024,
           stream: true,
-          system: systemMsg,
+          // Block array with a cache breakpoint: the big unchanging part is
+          // billed at a tenth of the input price on every request after the
+          // first within the cache window.
+          system: toAnthropicSystem(systemBlocks),
           messages: convoMsgs,
         }),
       });
@@ -1250,62 +1407,19 @@ say and HOW to behave; it is never text to copy.
       let quickReplies: string[] = [];
       let products: ProductCard[] = [];
       try {
-        const qrRes = await invokeLLM({
-          model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5",
-          messages: [
-            ...messages,
-            { role: "assistant" as const, content: fullReply },
-            { role: "user" as const, content: "Two things, as JSON only.\n1) quickReplies: 3-4 short follow-up questions the visitor might want to ask next, each max 40 chars.\n2) products: every product your previous reply mentioned or recommended, so they can be shown as visual cards. For each one give ONLY: name — exactly as written in the PRODUCT CATALOG, since the server matches on it — and note: 3-6 words on what it is for. Leave url, imageUrl and price as empty strings; the server fills them from the catalog, so never copy or invent them. Up to 12, in the order you mentioned them. If your reply named no specific product, return an empty array." },
-          ],
-          responseFormat: {
-            type: "json_schema",
-            json_schema: {
-              name: "reply_extras",
-              strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  quickReplies: { type: "array", items: { type: "string" } },
-                  products: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        name: { type: "string" },
-                        url: { type: "string" },
-                        imageUrl: { type: "string" },
-                        price: { type: "string" },
-                        note: { type: "string" },
-                      },
-                      required: ["name", "url", "imageUrl", "price", "note"],
-                      additionalProperties: false,
-                    },
-                  },
-                },
-                required: ["quickReplies", "products"],
-                additionalProperties: false,
-              },
-            },
-          },
+        const extras = await generateReplyExtras({
+          userMessage: message.trim(),
+          reply: fullReply,
+          siteContext: chatbot.siteContext,
+          knowledgeBase: chatbot.knowledgeBase,
         });
-        const raw = qrRes.choices[0]?.message?.content ?? "{}";
-        const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
-        quickReplies = Array.isArray(parsed.quickReplies)
-          ? parsed.quickReplies.slice(0, 4).map((q: unknown) => String(q).slice(0, 60))
-          : [];
-        products = enrichProductsFromCatalog(sanitizeProducts(parsed.products), chatbot.siteContext, chatbot.knowledgeBase);
+        quickReplies = extras.quickReplies;
+        products = enrichProductsFromCatalog(extras.products, chatbot.siteContext, chatbot.knowledgeBase);
       } catch { /* extras are optional — never break the reply over them */ }
 
       // ── Fire-and-forget 80% usage alert ──────────────────────────────────────
-      if (usage.shouldAlertAt80 && db) {
-        db.select({ id: users.id, email: users.email, name: users.name })
-          .from(users).where(eq(users.id, chatbot.userId)).limit(1)
-          .then((rows) => {
-            const owner = rows[0];
-            if (owner?.email) {
-              sendUsageLimitAlertEmail(owner.email, owner.name ?? "", usage.used, usage.limit, userPlan).catch(console.error);
-            }
-          }).catch(console.error);
+      if (usage.shouldAlertAt80) {
+        notifyUsageAt80(chatbot, usage, userPlan);
       }
 
       // Persist the turn server-side so the dashboard always has transcripts
@@ -1437,36 +1551,37 @@ say and HOW to behave; it is never text to copy.
         }
       }
 
-      // Notify owner by email + push (non-blocking)
-      try {
+      // Tell the account owner: inbox entry always, email + push if they
+      // left the "new lead" alert on. Non-blocking.
+      (async () => {
         const ownerDb = await getDb();
-        if (ownerDb) {
-          const owner = await ownerDb.select().from(users).where(eq(users.id, chatbot.userId)).limit(1);
-          if (owner[0]?.email) {
-            sendNewLeadEmail(
-              owner[0].email,
-              owner[0].name ?? "there",
-              name.trim(),
-              email.trim().toLowerCase(),
-              typeof pageUrl === "string" ? pageUrl : null,
-              chatbot.name ?? undefined,
-              companyTrimmed,
-            ).catch(() => {});
-          }
-          if (owner[0]?.id) {
-            const leadDisplay = companyTrimmed
-              ? `${name.trim()} (${companyTrimmed})`
-              : name.trim();
-            sendPushToUser(owner[0].id, {
-              title: `🎯 New lead via ${chatbot.name ?? "Lynx AI"}`,
-              body: `${leadDisplay} — ${email.trim().toLowerCase()}`,
-              url: "/dashboard/leads",
-              tag: "new-lead",
-              eventType: "newLead",
-            }).catch(() => {});
-          }
-        }
-      } catch { /* non-blocking */ }
+        if (!ownerDb) return;
+        const owner = (await ownerDb.select().from(users).where(eq(users.id, chatbot.userId)).limit(1))[0];
+        if (!owner) return;
+        const cleanName = name.trim();
+        const cleanEmail = email.trim().toLowerCase();
+        const leadDisplay = companyTrimmed ? `${cleanName} (${companyTrimmed})` : cleanName;
+        await notifyAccount({
+          userId: owner.id,
+          alert: "newLead",
+          type: "new_lead",
+          title: `New lead via ${chatbot.name ?? "your assistant"}`,
+          message: `${leadDisplay} — ${cleanEmail}`,
+          url: "/dashboard/leads",
+          metadata: { email: cleanEmail, conversationId, pageUrl: typeof pageUrl === "string" ? pageUrl : null },
+          email: owner.email
+            ? () => sendNewLeadEmail(
+                owner.email as string,
+                owner.name ?? "there",
+                cleanName,
+                cleanEmail,
+                typeof pageUrl === "string" ? pageUrl : null,
+                chatbot.name ?? undefined,
+                companyTrimmed,
+              )
+            : undefined,
+        });
+      })().catch(() => { /* non-blocking */ });
 
       return res.json({ success: true, conversationId });
     } catch (err) {
@@ -1508,10 +1623,12 @@ say and HOW to behave; it is never text to copy.
             content: String(m.content).slice(0, 2000),
             timestamp: m.timestamp ?? Date.now(),
           }));
+        // Scoped to this chatbot: the id alone would let any API key holder
+        // overwrite a conversation that belongs to someone else's account.
         await db
           .update(conversations)
           .set({ messages: safeMessages })
-          .where(eq(conversations.id, conversationId));
+          .where(and(eq(conversations.id, conversationId), eq(conversations.chatbotId, chatbot.id)));
       }
 
       return res.json({ success: true });
@@ -1573,23 +1690,18 @@ say and HOW to behave; it is never text to copy.
         }
       }
 
-      // Send push notification for low ratings (1-2 stars) — non-blocking
+      // Low ratings (1-2 stars) reach the owner's inbox, plus a push if that
+      // alert is on. Non-blocking.
       if (ratingNum <= 2) {
-        try {
-          const ownerDb = await getDb();
-          if (ownerDb) {
-            const owner = await ownerDb.select({ id: users.id }).from(users).where(eq(users.id, chatbot.userId)).limit(1);
-            if (owner[0]?.id) {
-              sendPushToUser(owner[0].id, {
-                title: `⚠️ Low rating on ${chatbot.name ?? "Lynx AI"}`,
-                body: `A visitor rated their experience ${ratingNum} star${ratingNum === 1 ? "" : "s"}. Review the conversation.`,
-                url: "/dashboard/conversations",
-                tag: "low-rating",
-                eventType: "lowRating",
-              }).catch(() => {});
-            }
-          }
-        } catch { /* non-blocking */ }
+        notifyAccount({
+          userId: chatbot.userId,
+          alert: "lowRating",
+          type: "low_rating",
+          title: `Low rating on ${chatbot.name ?? "your assistant"}`,
+          message: `A visitor rated their conversation ${ratingNum} star${ratingNum === 1 ? "" : "s"}. Open the transcript to see what went wrong.`,
+          url: "/dashboard/conversations",
+          metadata: { rating: ratingNum, pageUrl: typeof pageUrl === "string" ? pageUrl : null },
+        }).catch(() => { /* non-blocking */ });
       }
 
       return res.json({ success: true });
@@ -1695,7 +1807,7 @@ say and HOW to behave; it is never text to copy.
     // the chat to 0px and it vanishes with no error. Absolute values (px, rem)
     // are left untouched — they always resolve, and re-measuring them could
     // fight a layout that simply had not painted yet.
-    var isRelativeHeight = !height || /%\s*$/.test(height);
+    var isRelativeHeight = !height || /%\\s*$/.test(height);
     if (isRelativeHeight) {
       requestAnimationFrame(function() {
         if (wrap.offsetHeight < 200) {
@@ -1878,6 +1990,17 @@ function buildFrameApp(): string {
   window.__lynxAIWidget = true;
 
   var _params = new URLSearchParams(window.location.search);
+  // The page the visitor is really on. Inside this iframe, window.location is
+  // the frame's own address on the chat host — which is what every chat
+  // request, lead and analytics event used to report as "the page". The loader
+  // passes the real URL in and keeps it current as the visitor navigates.
+  var _pageUrl = _params.get('pu') || '';
+  var _underLoader = _params.get('lw') === '1';
+  function currentPageUrl() {
+    if (_pageUrl) return _pageUrl;
+    if (_underLoader && document.referrer) return document.referrer;
+    return window.location.href;
+  }
   var API_KEY = _params.get('apiKey') || '';
   var BASE_URL = _params.get('base') || (function() {
     var src = window.location.origin;
@@ -1946,7 +2069,7 @@ function buildFrameApp(): string {
       fetch(BASE_URL + '/api/widget/track', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ apiKey: API_KEY, eventType: eventType, pageUrl: window.location.href, visitorId: visitorId }, extra || {})),
+        body: JSON.stringify(Object.assign({ apiKey: API_KEY, eventType: eventType, pageUrl: currentPageUrl(), visitorId: visitorId }, extra || {})),
       }).catch(function() {});
     } catch(e) {}
   }
@@ -2009,7 +2132,7 @@ function buildFrameApp(): string {
     '.lynx-card-price{font-size:12.5px;font-weight:700;margin-top:3px;letter-spacing:-0.01em;}',
     '.lynx-card-go{font-size:11px;font-weight:650;padding:6px 11px;border-radius:999px;color:#fff;white-space:nowrap;flex-shrink:0;letter-spacing:0.01em;}',
     // Placeholder when the catalog has no photo — keeps every card the same shape
-    '.lynx-cards-all{display:block;text-align:center;padding:9px;border:1px dashed;border-radius:12px;font-size:12px;font-weight:650;text-decoration:none;background:rgba(0,0,0,0.015);}',
+    '.lynx-cards-all{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;text-align:center;padding:9px;border:1px dashed;border-radius:12px;font-size:12px;font-weight:650;text-decoration:none;background:rgba(0,0,0,0.015);}',
     '.lynx-card-ph{width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,#f3f4f6,#e5e7eb);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;color:#9ca3af;flex-shrink:0;}',
     '@media (max-width:480px){#lynx-widget-panel{bottom:0 !important;left:0 !important;right:0 !important;width:100vw !important;max-width:100vw !important;height:100% !important;height:100dvh !important;max-height:100% !important;max-height:100dvh !important;border-radius:0 !important;}#lynx-widget-messages{padding:12px 12px !important;}.lynx-msg{font-size:14px !important;max-width:86% !important;}#lynx-widget-input-row{padding:10px 10px calc(10px + env(safe-area-inset-bottom));}#lynx-widget-input-row textarea{font-size:16px !important;}}',
     // Full-page mode (shared link): header + input span the full width; the
@@ -2322,7 +2445,7 @@ function buildFrameApp(): string {
         fetch(BASE_URL + '/api/widget/rate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey: API_KEY, rating: rating, pageUrl: window.location.href, visitorId: visitorId }),
+          body: JSON.stringify({ apiKey: API_KEY, rating: rating, pageUrl: currentPageUrl(), visitorId: visitorId }),
         }).catch(function() {});
         trackEvent('rating_given');
       });
@@ -2369,11 +2492,10 @@ function buildFrameApp(): string {
                 messageCount++;
               }
             });
-          // Auto-open: always open after 3 seconds on first visit
-          if (!isOpen) {
-            var delay = (cfg.autoOpen !== false) ? ((cfg.autoOpenDelay || 3) * 1000) : 3000;
-            setTimeout(function() { if (!isOpen) openPanel(); }, delay);
-          }
+          // Get the panel ready straight away. Whether and when the chat is
+          // SHOWN to the visitor is the loader's decision (it owns the bubble
+          // and honours the owner's auto-open setting).
+          if (!isOpen) openPanel();
         }
       })
       .catch(function(e) {
@@ -2383,8 +2505,7 @@ function buildFrameApp(): string {
           addMessage('assistant', config.welcomeMessage, 'welcome');
           messageCount++;
         }
-        // Auto-open even on config error
-        setTimeout(function() { if (!isOpen) openPanel(); }, 3000);
+        if (!isOpen) openPanel();
       });
   }
 
@@ -2402,13 +2523,29 @@ function buildFrameApp(): string {
     var urlRe = /(https?:\\/\\/[^\\s<>"')]+)/g;
     var out = escapeHtml(String(text == null ? '' : text));
 
+    // Markdown links first: [label](https://…). They are swapped for
+    // placeholders so the bare-URL pass below cannot re-link the address
+    // inside them — which is what left "[Shop](https://…)" on screen as raw
+    // text. Only http(s) targets are accepted, so a model- or catalog-supplied
+    // "javascript:" link can never become clickable.
+    var mdLinks = [];
+    out = out.replace(/\\[([^\\]\\n]{1,200})\\]\\((https?:\\/\\/[^\\s<>"')]+)\\)/g, function(_m, label, href) {
+      mdLinks.push('<a href="' + href + '" target="_blank" rel="noopener">' + label + '</a>');
+      return '\\u0001' + (mdLinks.length - 1) + '\\u0001';
+    });
+
     // Links and bare image URLs
     out = out.replace(urlRe, function(u) {
+      // Sentence punctuation right after a URL belongs to the sentence.
+      var tail = '';
+      var m = u.match(/[.,;:!?]+$/);
+      if (m) { tail = m[0]; u = u.slice(0, u.length - tail.length); }
       if (/\\.(png|jpe?g|webp|gif)(\\?|$)/i.test(u)) {
-        return '<img class="lynx-product-img" src="' + u + '" alt="" loading="lazy" />';
+        return '<img class="lynx-product-img" src="' + u + '" alt="" loading="lazy" />' + tail;
       }
-      return '<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>';
+      return '<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>' + tail;
     });
+    out = out.replace(/\\u0001(\\d+)\\u0001/g, function(_m, i) { return mdLinks[+i] || ''; });
 
     // Inline markdown: bold, italic, code
     out = out.replace(/\\*\\*([^*\\n]+)\\*\\*/g, '<strong>$1</strong>');
@@ -2673,7 +2810,11 @@ function buildFrameApp(): string {
     lockPageScroll();
     // The stub button never shows inside the frame — the parent owns the bubble.
     btn.style.display = 'none';
-    trackEvent('chat_open');
+    // Under the loader this only prepares the hidden frame — the visitor has
+    // not opened anything yet. The real "chat opened" is reported when the
+    // loader shows the frame (see the message handler). Counting it here logged
+    // an opened chat for every single page view.
+    if (!_underLoader) trackEvent('chat_open');
     if (!configLoaded) {
       loadConfig();
     } else {
@@ -2757,7 +2898,7 @@ function buildFrameApp(): string {
         apiKey: API_KEY,
         message: text,
         history: history.slice(-20),
-        pageUrl: window.location.href,
+        pageUrl: currentPageUrl(),
         visitorId: visitorId,
         visitorTimezone: tz,
       }),
@@ -2848,7 +2989,7 @@ function buildFrameApp(): string {
       fetch(BASE_URL + '/api/widget/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: API_KEY, message: text, history: history.slice(-20), pageUrl: window.location.href, visitorId: visitorId, visitorTimezone: tz }),
+        body: JSON.stringify({ apiKey: API_KEY, message: text, history: history.slice(-20), pageUrl: currentPageUrl(), visitorId: visitorId, visitorTimezone: tz }),
       }).then(function(r) { return r.json(); }).then(function(data) {
         hideTyping();
         if (data.restoredMessages) prependMessages(data.restoredMessages);
@@ -2909,7 +3050,12 @@ function buildFrameApp(): string {
   window.addEventListener('message', function(e) {
     var d = e.data;
     if (!d || !d.__lynxParent) return;
-    if (d.type === 'focus' && inputEl) { try { inputEl.focus(); } catch(x){} }
+    if (d.type === 'page' && typeof d.url === 'string' && d.url) _pageUrl = d.url;
+    if (d.type === 'focus') {
+      // The loader just showed the chat to the visitor: this is the real open.
+      trackEvent('chat_open');
+      if (inputEl) { try { inputEl.focus(); } catch(x){} }
+    }
   });
 
 })();
@@ -3011,6 +3157,8 @@ const LOADER_SCRIPT = `
     // the client's domain). Third-party iframes often can't persist their own
     // localStorage (Safari/Brave), which would reset the conversation on reload.
     if (_lynxVid) extra += '&vid=' + encodeURIComponent(_lynxVid);
+    // Tell the frame it lives under this loader, and which page it is on.
+    extra += '&lw=1&pu=' + encodeURIComponent(String(window.location.href).slice(0, 500));
     frame.src = BASE_URL + '/api/widget/frame?apiKey=' + encodeURIComponent(API_KEY) + '&base=' + encodeURIComponent(BASE_URL) + extra;
     document.body.appendChild(frame);
     return frame;
@@ -3024,7 +3172,19 @@ const LOADER_SCRIPT = `
     frame.classList.add('open');
     btn.classList.add('hidden-mobile');
     setBtnIcon(true);
+    // Once the visitor has seen the chat this session, never auto-open it again.
+    try { window.sessionStorage.setItem('lynx_ao_' + API_KEY, '1'); } catch (e) {}
+    postPageUrl();
     try { frame.contentWindow.postMessage({ __lynxParent: true, type: 'focus' }, '*'); } catch(e){}
+  }
+  // Keep the frame informed of the page the visitor is on (single-page apps
+  // change URL without reloading, so the value passed at creation goes stale).
+  function postPageUrl() {
+    try {
+      if (frame && frame.contentWindow) {
+        frame.contentWindow.postMessage({ __lynxParent: true, type: 'page', url: String(window.location.href).slice(0, 500) }, '*');
+      }
+    } catch(e){}
   }
   function closeChat() {
     isOpen = false;
@@ -3072,6 +3232,7 @@ const LOADER_SCRIPT = `
       btn.style.removeProperty('display');
       if (frame) frame.style.removeProperty('display');
     }
+    postPageUrl();
   }
   applyRouteVisibility();
 
@@ -3088,6 +3249,26 @@ const LOADER_SCRIPT = `
     try { if (btn && btn.parentNode) btn.parentNode.removeChild(btn); } catch (e) {}
     try { if (frame && frame.parentNode) frame.parentNode.removeChild(frame); } catch (e) {}
     try { window.localStorage.removeItem(_cfgKey); } catch (e) {}
+  }
+
+  // Auto-open, as configured by the owner (off by default). The switch existed
+  // in the dashboard but nothing here ever read it, so the chat never opened on
+  // its own. Rules that keep it from being a nuisance: once per browser
+  // session, never on small screens (it would cover the whole page), never on
+  // excluded routes, and not if the visitor already opened it themselves.
+  function scheduleAutoOpen(cfg) {
+    if (!cfg || cfg.autoOpen !== true) return;
+    if (window.innerWidth < 768) return;
+    var key = 'lynx_ao_' + API_KEY;
+    try { if (window.sessionStorage.getItem(key) === '1') return; } catch (e) {}
+    var delay = Number(cfg.autoOpenDelay);
+    if (!(delay >= 1)) delay = 5;
+    if (delay > 120) delay = 120;
+    setTimeout(function() {
+      if (isOpen || isExcludedPath()) return;
+      try { window.sessionStorage.setItem(key, '1'); } catch (e) {}
+      openChat();
+    }, delay * 1000);
   }
 
   function applyBrandToButton(cfg) {
@@ -3138,6 +3319,7 @@ const LOADER_SCRIPT = `
           } catch (e) {}
         }
         ensureFrame();
+        scheduleAutoOpen(cfg);
       })
       .catch(function(){ ensureFrame(); });
   } catch(e){ ensureFrame(); }

@@ -86,6 +86,13 @@ export default function Admin() {
     onError: (e) => toast.error(e.message),
   });
 
+  // Extra White-Label client slots (how a sold client pack gets applied).
+  const [extraSlots, setExtraSlots] = useState("0");
+  const setSlotsMutation = trpc.admin.setClientSlots.useMutation({
+    onSuccess: () => utils.admin.listUsers.invalidate(),
+    onError: (e) => toast.error(e.message),
+  });
+
   const toggleBanMutation = trpc.admin.toggleBan.useMutation({
     onSuccess: (_, vars) => {
       toast.success(vars.banned ? "User banned" : "User unbanned");
@@ -286,6 +293,7 @@ export default function Admin() {
                               onClick={() => {
                                 setSelectedUser(u);
                                 setNewPlan(u.plan ?? "free");
+                                setExtraSlots(String(u.clientSlots ?? 0));
                                 setPlanDialogOpen(true);
                               }}
                             >
@@ -573,18 +581,42 @@ export default function Admin() {
                 <SelectValue placeholder="Select plan" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="free">Free trial — 50 msg/mo</SelectItem>
                 <SelectItem value="cloud">Cloud AI — 500 msg/mo</SelectItem>
                 <SelectItem value="embedded">Embedded AI — 2,000 msg/mo</SelectItem>
                 <SelectItem value="whitelabel">White-Label — 8,000 msg/mo + 15 clients</SelectItem>
               </SelectContent>
             </Select>
+            {newPlan === "whitelabel" && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Extra client slots</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={extraSlots}
+                  onChange={(e) => setExtraSlots(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  On top of the 15 included. Set this when the account buys a client pack
+                  (e.g. 15, 30, 60 or 100). Total allowed: {15 + (Number(extraSlots) || 0)} client sites.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPlanDialogOpen(false)}>Cancel</Button>
             <Button
-              onClick={() =>
-                updatePlanMutation.mutate({ userId: selectedUser.id, plan: newPlan as any })
-              }
+              onClick={() => {
+                if (newPlan === "whitelabel") {
+                  setSlotsMutation.mutate({
+                    userId: selectedUser.id,
+                    clientSlots: Math.max(0, Math.min(1000, Math.floor(Number(extraSlots) || 0))),
+                  });
+                }
+                updatePlanMutation.mutate({ userId: selectedUser.id, plan: newPlan as any });
+              }}
               disabled={updatePlanMutation.isPending}
             >
               {updatePlanMutation.isPending ? "Saving..." : "Save Plan"}

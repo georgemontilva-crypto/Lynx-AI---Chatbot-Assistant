@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 
@@ -49,7 +50,23 @@ export function LynxLogo({
       : theme === "dark"
         ? "/brand/lynx-logo-dark.png"
         : "/brand/lynx-logo-light.png";
-  return <img src={src} alt={alt} className={className} />;
+  // If the image is missing (no logo uploaded yet and no file in /brand), show
+  // the name as text instead of the browser's broken-image icon — a broken
+  // logo in the header of every page reads as a broken product.
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [src]);
+  if (failed) {
+    return (
+      <span
+        className={`inline-flex items-center font-bold tracking-tight text-lg leading-none ${
+          wantDark ? "text-white" : "text-foreground"
+        }`}
+      >
+        {alt}
+      </span>
+    );
+  }
+  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
 }
 
 export default LynxLogo;

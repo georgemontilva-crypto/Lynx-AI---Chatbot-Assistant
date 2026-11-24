@@ -205,12 +205,12 @@ export default function PricingPage() {
           transition={{ duration: 0.7 }}
         >
           <Badge variant="outline" className="mb-6 text-primary border-primary/30 bg-primary/5 px-4 py-1.5">
-            Precios transparentes · Sin sorpresas
+            Transparent pricing · No surprises
           </Badge>
           <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-6 max-w-3xl mx-auto">
-            Elige el plan que{" "}
+            Choose the plan that{" "}
             <span className="bg-gradient-to-r from-blue-500 to-violet-500 bg-clip-text text-transparent">
-              impulsa tu negocio
+              grows your business
             </span>
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
@@ -379,8 +379,8 @@ export default function PricingPage() {
             transition={{ duration: 0.6 }}
             className="text-center mb-12"
           >
-            <h2 className="text-3xl font-bold mb-4">Preguntas frecuentes</h2>
-            <p className="text-muted-foreground">Todo lo que necesitas saber antes de empezar.</p>
+            <h2 className="text-3xl font-bold mb-4">Frequently asked questions</h2>
+            <p className="text-muted-foreground">Everything you need to know before you start.</p>
           </motion.div>
 
           <motion.div
@@ -422,7 +422,7 @@ export default function PricingPage() {
               </Link>
               <Link href="/#contact">
                 <Button size="lg" variant="outline" className="px-8 font-semibold">
-                  Hablar con ventas
+                  Talk to sales
                 </Button>
               </Link>
             </div>

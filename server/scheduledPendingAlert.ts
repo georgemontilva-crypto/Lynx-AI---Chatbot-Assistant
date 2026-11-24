@@ -142,7 +142,7 @@ export async function runPendingSubscriptionCheck(): Promise<PendingCheckResult>
         plan: u.plan ?? "cloud",
         subscriptionId: u.subscriptionId ?? "",
         createdAt: u.createdAt
-          ? new Date(u.createdAt).toLocaleString("es-MX", { timeZone: "America/Mexico_City" })
+          ? new Date(u.createdAt).toLocaleString("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" }) + " UTC"
           : "Unknown",
       }));
 

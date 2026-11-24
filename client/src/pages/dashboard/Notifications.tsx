@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { motion } from "framer-motion";
 import DashboardShell from "@/components/DashboardShell";
 import UpgradeGate from "@/components/UpgradeGate";
@@ -6,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/lib/trpc";
-import { Bell, UserPlus, Star, AlertTriangle, CheckCircle, Clock, Settings, Inbox, ScanLine } from "lucide-react";
+import { Bell, UserPlus, Star, AlertTriangle, CheckCircle, Clock, Settings, Inbox, ScanLine, Gauge } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 type NotifRow = {
@@ -23,6 +24,7 @@ const typeConfig: Record<string, { icon: React.ElementType; color: string; bg: s
   low_rating: { icon: Star, color: "text-yellow-400", bg: "bg-yellow-500/10" },
   seo_issue: { icon: AlertTriangle, color: "text-red-400", bg: "bg-red-500/10" },
   scan_complete: { icon: ScanLine, color: "text-blue-400", bg: "bg-blue-500/10" },
+  system: { icon: Gauge, color: "text-orange-400", bg: "bg-orange-500/10" },
   default: { icon: Bell, color: "text-primary", bg: "bg-primary/10" },
 };
 
@@ -30,17 +32,32 @@ function timeAgo(date: Date) {
   try { return formatDistanceToNow(date, { addSuffix: true }); } catch { return "recently"; }
 }
 
+type AlertPrefs = {
+  newLead: boolean; lowRating: boolean; usageLimit: boolean;
+  seoIssue: boolean; scanComplete: boolean; weeklyReport: boolean;
+};
+
 function NotificationsContent() {
-  const [alertConfig, setAlertConfig] = useState({
-    newLead: true,
-    lowRating: true,
-    seoIssue: true,
-    scanComplete: true,
-    weeklyReport: false,
+  // Alert switches are stored on the account. They used to be plain component
+  // state: they looked like settings but reset on every reload and controlled
+  // nothing.
+  const utils = trpc.useUtils();
+  const { data: savedPrefs } = trpc.profile.getPushPrefs.useQuery();
+  const [alertConfig, setAlertConfig] = useState<AlertPrefs | null>(null);
+  useEffect(() => { if (savedPrefs) setAlertConfig(savedPrefs as AlertPrefs); }, [savedPrefs]);
+  const savePrefs = trpc.profile.updatePushPrefs.useMutation({
+    onSuccess: () => utils.profile.getPushPrefs.invalidate(),
+    onError: () => {
+      if (savedPrefs) setAlertConfig(savedPrefs as AlertPrefs);
+      toast.error("Couldn't save that preference. Please try again.");
+    },
   });
+  const toggleAlert = (key: keyof AlertPrefs, value: boolean) => {
+    setAlertConfig((prev) => (prev ? { ...prev, [key]: value } : prev));
+    savePrefs.mutate({ [key]: value });
+  };
 
   const { data: rawNotifications, isLoading } = trpc.notifications.list.useQuery();
-  const utils = trpc.useUtils();
 
   const markReadMutation = trpc.notifications.markRead.useMutation({
     onSuccess: () => utils.notifications.list.invalidate(),
@@ -49,8 +66,11 @@ function NotificationsContent() {
   const notifications: NotifRow[] = (rawNotifications ?? []) as NotifRow[];
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
+  const markAllReadMutation = trpc.notifications.markAllRead.useMutation({
+    onSuccess: () => utils.notifications.list.invalidate(),
+  });
   const markRead = (id: number) => markReadMutation.mutate({ id });
-  const markAllRead = () => notifications.filter((n) => !n.isRead).forEach((n) => markRead(n.id));
+  const markAllRead = () => markAllReadMutation.mutate();
 
   return (
     <DashboardShell title="Notifications">
@@ -81,7 +101,7 @@ function NotificationsContent() {
             <div className="glass-card rounded-2xl p-10 text-center">
               <Inbox className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
               <p className="text-sm text-muted-foreground">No notifications yet.</p>
-              <p className="text-xs text-muted-foreground mt-1">Notifications appear here when leads are captured, ratings are received or SEO issues are found.</p>
+              <p className="text-xs text-muted-foreground mt-1">New leads, low ratings, finished scans, SEO issues and usage warnings will show up here.</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -123,13 +143,17 @@ function NotificationsContent() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {[
+              <p className="text-xs text-muted-foreground -mt-1">
+                These control the email and push alerts. Everything is always kept in the list on the left.
+              </p>
+              {([
                 { key: "newLead", label: "New lead captured", desc: "When a visitor leaves their email", icon: UserPlus, color: "text-emerald-400" },
                 { key: "lowRating", label: "Low rating received", desc: "When you receive 1 or 2 stars", icon: Star, color: "text-yellow-400" },
-                { key: "seoIssue", label: "Critical SEO issue", desc: "When a high-priority issue is found", icon: AlertTriangle, color: "text-red-400" },
-                { key: "scanComplete", label: "Scan completed", desc: "When a site re-scan finishes", icon: ScanLine, color: "text-blue-400" },
-                { key: "weeklyReport", label: "Weekly report", desc: "Summary of metrics every Monday", icon: CheckCircle, color: "text-violet-400" },
-              ].map((item) => (
+                { key: "usageLimit", label: "Usage warning", desc: "When you reach 80% of your monthly messages", icon: Gauge, color: "text-orange-400" },
+                { key: "seoIssue", label: "Critical SEO issue", desc: "When a scan finds a failed check", icon: AlertTriangle, color: "text-red-400" },
+                { key: "scanComplete", label: "Scan completed", desc: "When a site scan finishes", icon: ScanLine, color: "text-blue-400" },
+                { key: "weeklyReport", label: "Weekly report", desc: "An email summary every Monday", icon: CheckCircle, color: "text-violet-400" },
+              ] as const).map((item) => (
                 <div key={item.key} className="flex items-start gap-3">
                   <div className="w-7 h-7 rounded-lg bg-muted/30 flex items-center justify-center shrink-0 mt-0.5">
                     <item.icon className={`w-3.5 h-3.5 ${item.color}`} />
@@ -138,7 +162,12 @@ function NotificationsContent() {
                     <div className="text-xs font-medium">{item.label}</div>
                     <div className="text-xs text-muted-foreground">{item.desc}</div>
                   </div>
-                  <Switch checked={alertConfig[item.key as keyof typeof alertConfig]} onCheckedChange={(v) => setAlertConfig({ ...alertConfig, [item.key]: v })} className="shrink-0" />
+                  <Switch
+                    checked={alertConfig ? alertConfig[item.key] : false}
+                    disabled={!alertConfig}
+                    onCheckedChange={(v) => toggleAlert(item.key, v)}
+                    className="shrink-0"
+                  />
                 </div>
               ))}
             </CardContent>

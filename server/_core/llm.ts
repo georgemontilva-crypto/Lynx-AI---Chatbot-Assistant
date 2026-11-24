@@ -65,6 +65,19 @@ export type ToolChoice =
   | ToolChoiceByName
   | ToolChoiceExplicit;
 
+export type SystemBlock = { text: string; cache?: boolean };
+
+/** Anthropic `system` array for a list of blocks (empty blocks dropped). */
+export function toAnthropicSystem(blocks: SystemBlock[]): Array<Record<string, unknown>> {
+  return blocks
+    .filter((b) => b.text && b.text.trim().length > 0)
+    .map((b) => ({
+      type: "text",
+      text: b.text,
+      ...(b.cache ? { cache_control: { type: "ephemeral" } } : {}),
+    }));
+}
+
 export type InvokeParams = {
   messages: Message[];
   tools?: Tool[];
@@ -77,6 +90,13 @@ export type InvokeParams = {
   responseFormat?: ResponseFormat;
   response_format?: ResponseFormat;
   model?: string;
+  /**
+   * System prompt as ordered blocks, overriding any system message in
+   * `messages`. Mark the large, unchanging block with `cache: true` so repeat
+   * requests read it from Anthropic's prompt cache at a tenth of the price —
+   * anything that varies per request must go in a later, uncached block.
+   */
+  systemBlocks?: SystemBlock[];
   thinking?: Record<string, unknown>;
   reasoning?: Record<string, unknown>;
 };
@@ -107,6 +127,8 @@ export type InvokeResult = {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    cache_write_tokens?: number;
+    cache_read_tokens?: number;
   };
 };
 
@@ -382,7 +404,12 @@ type AnthropicResponse = {
     | { type: "tool_use"; id: string; name: string; input: unknown }
   >;
   stop_reason: string | null;
-  usage?: { input_tokens: number; output_tokens: number };
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 };
 
 const STOP_REASON_MAP: Record<string, string> = {
@@ -413,6 +440,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     model,
     maxTokens,
     max_tokens,
+    systemBlocks,
   } = params;
 
   const { system, messages: anthropicMessages } =
@@ -424,7 +452,9 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     messages: anthropicMessages,
   };
 
-  if (system) {
+  if (systemBlocks && systemBlocks.length > 0) {
+    payload.system = toAnthropicSystem(systemBlocks);
+  } else if (system) {
     payload.system = system;
   }
 
@@ -528,7 +558,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     }));
   }
 
-  const promptTokens = data.usage?.input_tokens ?? 0;
+  // With prompt caching, input_tokens only counts what came AFTER the cached
+  // block — add the cached parts back so prompt_tokens stays the real total.
+  const cacheWrite = data.usage?.cache_creation_input_tokens ?? 0;
+  const cacheRead = data.usage?.cache_read_input_tokens ?? 0;
+  const promptTokens = (data.usage?.input_tokens ?? 0) + cacheWrite + cacheRead;
   const completionTokens = data.usage?.output_tokens ?? 0;
 
   return {
@@ -552,6 +586,8 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
       prompt_tokens: promptTokens,
       completion_tokens: completionTokens,
       total_tokens: promptTokens + completionTokens,
+      cache_write_tokens: cacheWrite,
+      cache_read_tokens: cacheRead,
     },
   };
 }

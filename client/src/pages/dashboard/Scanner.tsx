@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import DashboardShell from "@/components/DashboardShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,16 +72,45 @@ export default function Scanner() {
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [result, setResult] = useState<ScanResult | null>(null);
+  // True when the report on screen came from a previous visit, not a scan that
+  // just ran — it changes the heading and hides the step-by-step animation.
+  const [restored, setRestored] = useState(false);
+  const [scannedAt, setScannedAt] = useState<string | null>(null);
+  const scanRun = useRef(0);
+  const utils = trpc.useUtils();
+
+  // Bring back the last scan. The report used to live only in this component:
+  // leave the page and it was gone, as if the scan had never happened.
+  const { data: lastScan } = trpc.scanner.getLastScan.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+  });
+  useEffect(() => {
+    if (!lastScan || status !== "idle" || result) return;
+    const saved = lastScan as unknown as ScanResult & { url?: string; scannedAt?: string };
+    setResult(saved);
+    setRestored(true);
+    setScannedAt(saved.scannedAt ?? null);
+    if (saved.url) setUrl(saved.url);
+    setStatus("complete");
+  }, [lastScan, status, result]);
 
   const scanMutation = trpc.scanner.scan.useMutation({
     onSuccess: (data) => {
+      scanRun.current++; // stops the progress animation
       setResult(data as ScanResult);
+      setRestored(false);
+      setScannedAt(new Date().toISOString());
       setStatus("complete");
       setProgress(100);
       setCompletedSteps(scanSteps.map((_, i) => i));
-      toast.success("Scan complete! Lynx AI now knows your site.");
+      utils.scanner.getLastScan.invalidate();
+      utils.seo.getReport.invalidate();
+      utils.seo.getHistory.invalidate();
+      utils.onboarding.get.invalidate();
+      toast.success("Scan complete! Your assistant now knows your site.");
     },
     onError: (err) => {
+      scanRun.current++;
       setStatus("error");
       toast.error(`Scan failed: ${err.message}`);
     },
@@ -96,18 +125,23 @@ export default function Scanner() {
     setCurrentStep(0);
     setCompletedSteps([]);
     setResult(null);
+    setRestored(false);
 
-    // Animate steps while the real request runs in parallel
-    const stepDuration = 1400;
+    // Start the real scan NOW. It used to wait for the whole step animation
+    // (~8 seconds of pure theatre) before the request was even sent.
+    const run = ++scanRun.current;
+    scanMutation.mutate({ url: fullUrl });
+
+    // The steps are a progress hint that runs alongside the request. They are
+    // paced for a typical scan and hold on the last one until the server answers.
+    const stepDuration = 4500;
     for (let i = 0; i < scanSteps.length - 1; i++) {
       await new Promise((r) => setTimeout(r, stepDuration));
+      if (scanRun.current !== run) return; // finished or failed meanwhile
       setCurrentStep(i + 1);
       setCompletedSteps((prev) => [...prev, i]);
-      setProgress(Math.round(((i + 1) / scanSteps.length) * 85));
+      setProgress(Math.round(((i + 1) / scanSteps.length) * 90));
     }
-
-    // Fire the real backend call
-    scanMutation.mutate({ url: fullUrl });
   };
 
   const priorityColor = (p: string) => {
@@ -204,7 +238,7 @@ export default function Scanner() {
 
         {/* Scanning progress */}
         <AnimatePresence>
-          {(status === "scanning" || status === "complete") && (
+          {(status === "scanning" || (status === "complete" && !restored)) && (
             <motion.div
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.4 }}
@@ -251,12 +285,20 @@ export default function Scanner() {
         <AnimatePresence>
           {status === "complete" && result && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.5 }} className="space-y-4">
+              {scannedAt && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  {restored ? "Showing your last scan — " : "Scanned "}
+                  {new Date(scannedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                  {restored && ". Your assistant answers from this data; scan again after you change products or policies."}
+                </p>
+              )}
               {/* Stats grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
                   { label: "Pages found", value: result.pagesEstimate, icon: FileText, color: "text-blue-400", bg: "bg-blue-500/10" },
                   { label: "Products detected", value: result.productsEstimate, icon: ShoppingBag, color: "text-violet-400", bg: "bg-violet-500/10" },
-                  { label: "Policies read", value: result.policiesEstimate, icon: Shield, color: "text-emerald-400", bg: "bg-emerald-500/10" },
+                  { label: "Policy pages read", value: result.policiesEstimate, icon: Shield, color: "text-emerald-400", bg: "bg-emerald-500/10" },
                   { label: "Blog articles", value: result.blogEstimate, icon: BookOpen, color: "text-cyan-400", bg: "bg-cyan-500/10" },
                 ].map((stat) => (
                   <Card key={stat.label} className="glass-card border-border/40">
@@ -290,7 +332,7 @@ export default function Scanner() {
                       <Gauge className="w-5 h-5 text-emerald-400" />
                     </div>
                     <div>
-                      <div className="text-2xl font-bold">{result.loadSpeed}s</div>
+                      <div className="text-2xl font-bold">{result.loadSpeed > 0 ? `${result.loadSpeed}s` : "—"}</div>
                       <div className="text-xs text-muted-foreground">Load speed</div>
                     </div>
                   </CardContent>
@@ -329,7 +371,7 @@ export default function Scanner() {
                   <Card className="glass-card border-border/40">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-primary" />Reporte de lectura
+                        <FileText className="w-4 h-4 text-primary" />Read report
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
@@ -338,7 +380,7 @@ export default function Scanner() {
                           {result.scanReport.homeReadable ? "✓ Home page read" : "✕ Home page unreadable"}
                         </span>
                         <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.sitemapFound ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-amber-400/40 bg-amber-400/10 text-amber-400"}`}>
-                          {result.scanReport.sitemapFound ? `✓ Sitemap encontrado (${result.scanReport.sitemapUrlCount} URLs)` : "⚠ Sin sitemap"}
+                          {result.scanReport.sitemapFound ? `✓ Sitemap found (${result.scanReport.sitemapUrlCount} URLs)` : "⚠ Sin sitemap"}
                         </span>
                         <span className={`text-xs px-2 py-1 rounded-lg border ${result.scanReport.storeCatalogFound ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-400" : "border-border/40 bg-muted/20 text-muted-foreground"}`}>
                           {result.scanReport.storeCatalogFound ? "✓ Store catalog detected" : "No catalog auto-detected"}
@@ -446,13 +488,13 @@ export default function Scanner() {
                   <Card className="glass-card border-border/40">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-primary" />Desglose del puntaje SEO
+                        <FileText className="w-4 h-4 text-primary" />SEO score breakdown
                         <span className="ml-auto text-lg font-bold">{result.seoBreakdown.score}<span className="text-xs text-muted-foreground font-normal">/100</span></span>
                       </CardTitle>
                       <p className="text-[11px] text-muted-foreground mt-1">
                         {result.seoBreakdown.source === "lighthouse"
-                          ? `Performance medido con Google Lighthouse ${result.seoBreakdown.webVitals?.lighthouseVersion ?? ""} (el mismo motor de GTmetrix/PageSpeed)`
-                          : "Performance estimado por mediciones HTTP (Lighthouse no disponible para esta URL)"}
+                          ? `Performance measured with Google Lighthouse ${result.seoBreakdown.webVitals?.lighthouseVersion ?? ""} (the same engine GTmetrix and PageSpeed use)`
+                          : "Performance estimated from HTTP measurements (Lighthouse was not available for this URL)"}
                       </p>
                     </CardHeader>
                     <CardContent className="space-y-4">

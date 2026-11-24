@@ -51,8 +51,8 @@ export default function Overview() {
   const isLoading = chatbotLoading || convsLoading || seoLoading;
 
   const kpis = [
-    { title: "Total chats", value: isLoading ? "—" : totalChats.toString(), change: "+0%", positive: true, icon: MessageSquare, color: "text-blue-400", bg: "bg-blue-500/10" },
-    { title: "Leads captured", value: isLoading ? "—" : leads.toString(), change: "+0%", positive: true, icon: Users, color: "text-emerald-400", bg: "bg-emerald-500/10" },
+    { title: "Total chats", value: isLoading ? "—" : totalChats.toString(), change: "", positive: true, icon: MessageSquare, color: "text-blue-400", bg: "bg-blue-500/10" },
+    { title: "Leads captured", value: isLoading ? "—" : leads.toString(), change: "", positive: true, icon: Users, color: "text-emerald-400", bg: "bg-emerald-500/10" },
     { title: "Avg. rating", value: isLoading ? "—" : (avgRating === "0.0" ? "—" : avgRating === "—" ? "—" : `${avgRating}/5`), change: "", positive: true, icon: Star, color: "text-yellow-400", bg: "bg-yellow-500/10" },
     { title: "SEO score", value: isLoading ? "—" : (seoReport ? `${seoReport.score}/100` : "—"), change: "", positive: (seoReport?.score ?? 0) >= 70, icon: TrendingUp, color: "text-violet-400", bg: "bg-violet-500/10" },
   ];
@@ -152,14 +152,14 @@ export default function Overview() {
             <Card className="glass-card border-border/40">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <MousePointerClick className="w-4 h-4 text-primary" />Clicks by page
+                  <MousePointerClick className="w-4 h-4 text-primary" />Most visited pages
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {analyticsLoading ? (
                   <Skeleton className="h-[200px] w-full rounded-xl" />
                 ) : !hasClickData ? (
-                  <EmptyChart label="No click data yet. Data will appear as visitors interact with your chatbot." />
+                  <EmptyChart label="No visits recorded this week. They appear here once the widget is installed on your site." />
                 ) : (
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={clickData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
@@ -167,7 +167,7 @@ export default function Overview() {
                       <XAxis dataKey="page" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
                       <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "12px", fontSize: 12 }} />
-                      <Bar dataKey="clicks" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Clicks" />
+                      <Bar dataKey="clicks" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Visits" />
                     </BarChart>
                   </ResponsiveContainer>
                 )}

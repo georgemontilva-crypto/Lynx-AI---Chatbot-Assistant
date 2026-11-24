@@ -78,9 +78,9 @@ export default function DashboardBlog() {
       if (!res.ok) throw new Error("upload failed");
       const json = await res.json();
       setForm((f) => ({ ...f, coverImageUrl: json.url as string }));
-      toast.success("Imagen subida");
+      toast.success("Image uploaded");
     } catch {
-      toast.error("No se pudo subir la imagen");
+      toast.error("The image could not be uploaded");
     } finally {
       setUploadingCover(false);
     }
@@ -225,7 +225,7 @@ export default function DashboardBlog() {
         <div className="p-6 max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
             <button onClick={backToList} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="w-4 h-4" /> Volver a la lista
+              <ArrowLeft className="w-4 h-4" /> Back to the list
             </button>
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => handleSubmit(false)} disabled={isSaving}>
@@ -255,7 +255,7 @@ export default function DashboardBlog() {
             <div className="space-y-4">
               <div className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
                 <div>
-                  <Label className="text-xs">Extracto (resumen SEO)</Label>
+                  <Label className="text-xs">Excerpt (SEO summary)</Label>
                   <Textarea
                     placeholder="1-2 sentences summarizing the post"
                     value={form.excerpt}
@@ -264,7 +264,7 @@ export default function DashboardBlog() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Imagen de portada</Label>
+                  <Label className="text-xs">Cover image</Label>
                   <div className="mt-1 flex items-center gap-3">
                     {form.coverImageUrl ? (
                       <img
@@ -309,7 +309,7 @@ export default function DashboardBlog() {
                 <div>
                   <Label className="text-xs">Slug (URL)</Label>
                   <Input
-                    placeholder="url-del-articulo" value={form.slug}
+                    placeholder="post-url-slug" value={form.slug}
                     onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
                     className="mt-1 font-mono text-xs"
                   />
@@ -318,26 +318,26 @@ export default function DashboardBlog() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs">Category</Label>
-                    <Input placeholder="ej: Ventas" value={form.category}
+                    <Input placeholder="e.g. Sales" value={form.category}
                       onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
                       className="mt-1 text-sm" />
                   </div>
                   <div>
-                    <Label className="text-xs">Lectura (min)</Label>
+                    <Label className="text-xs">Reading time (min)</Label>
                     <Input type="number" min={1} max={60} value={form.readingTimeMinutes}
                       onChange={(e) => setForm((f) => ({ ...f, readingTimeMinutes: Number(e.target.value) }))}
                       className="mt-1 text-sm" />
                   </div>
                 </div>
                 <div>
-                  <Label className="text-xs">Autor</Label>
+                  <Label className="text-xs">Author</Label>
                   <Input value={form.author}
                     onChange={(e) => setForm((f) => ({ ...f, author: e.target.value }))}
                     className="mt-1 text-sm" />
                 </div>
                 <div>
-                  <Label className="text-xs">Tags (separados por coma)</Label>
-                  <Input placeholder="ia, ventas, chatbot" value={form.tags}
+                  <Label className="text-xs">Tags (comma separated)</Label>
+                  <Input placeholder="ai, sales, chatbot" value={form.tags}
                     onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
                     className="mt-1 text-sm" />
                 </div>
@@ -373,11 +373,11 @@ export default function DashboardBlog() {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" asChild>
               <a href="/blog" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
-                <ExternalLink className="w-4 h-4" /> Ver blog
+                <ExternalLink className="w-4 h-4" /> View blog
               </a>
             </Button>
             <Button variant="outline" onClick={() => setShowGen(true)} className="gap-1.5">
-              <Sparkles className="w-4 h-4 text-primary" /> Generar con IA
+              <Sparkles className="w-4 h-4 text-primary" /> Generate with AI
             </Button>
             <Button onClick={openCreate} className="lynx-gradient text-white border-0 gap-1.5">
               <Plus className="w-4 h-4" /> Nuevo
@@ -388,8 +388,8 @@ export default function DashboardBlog() {
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           {[
             { label: "Total", value: stats.total, key: "all" as const, icon: FileText },
-            { label: "Publicados", value: stats.published, key: "published" as const, icon: Globe },
-            { label: "Borradores", value: stats.drafts, key: "draft" as const, icon: FileText },
+            { label: "Published", value: stats.published, key: "published" as const, icon: Globe },
+            { label: "Drafts", value: stats.drafts, key: "draft" as const, icon: FileText },
           ].map(({ label, value, key, icon: Icon }) => (
             <button
               key={key}
@@ -431,10 +431,10 @@ export default function DashboardBlog() {
             {(!posts || posts.length === 0) && (
               <div className="flex items-center justify-center gap-2">
                 <Button onClick={() => setShowGen(true)} variant="outline" className="gap-1.5">
-                  <Sparkles className="w-4 h-4 text-primary" /> Generar con IA
+                  <Sparkles className="w-4 h-4 text-primary" /> Generate with AI
                 </Button>
                 <Button onClick={openCreate} variant="outline" className="gap-1.5">
-                  <Plus className="w-4 h-4" /> Crear manual
+                  <Plus className="w-4 h-4" /> Write manually
                 </Button>
               </div>
             )}
@@ -450,7 +450,7 @@ export default function DashboardBlog() {
                     <h3 className="font-semibold text-sm truncate group-hover:text-primary transition-colors">{post.title}</h3>
                     <Badge variant={post.status === "published" ? "default" : "secondary"}
                       className={`text-xs shrink-0 ${post.status === "published" ? "bg-green-500/20 text-green-600 border-green-500/30" : ""}`}>
-                      {post.status === "published" ? "Publicado" : "Borrador"}
+                      {post.status === "published" ? "Published" : "Draft"}
                     </Badge>
                     {post.isAutoGenerated && (
                       <Badge variant="outline" className="text-xs shrink-0 text-primary border-primary/30">
@@ -476,7 +476,7 @@ export default function DashboardBlog() {
                 <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                   {post.status === "published" && (
                     <Button size="sm" variant="ghost" className="h-8 w-8 p-0" asChild>
-                      <a href={`/blog/${post.slug}`} target="_blank" rel="noopener noreferrer" title="Ver publicado">
+                      <a href={`/blog/${post.slug}`} target="_blank" rel="noopener noreferrer" title="View published post">
                         <Eye className="w-4 h-4" />
                       </a>
                     </Button>
@@ -488,11 +488,11 @@ export default function DashboardBlog() {
                       <Globe className="w-3 h-3 mr-1" /> Publicar
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Editar"
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Edit"
                     onClick={() => openEdit(post as BlogPost)}>
                     <Edit className="w-4 h-4" />
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive" title="Eliminar"
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive" title="Delete"
                     onClick={() => setDeletePost(post as BlogPost)}>
                     <Trash2 className="w-4 h-4" />
                   </Button>
@@ -524,7 +524,7 @@ export default function DashboardBlog() {
                 />
               </div>
               <div>
-                <Label className="text-xs">Tono</Label>
+                <Label className="text-xs">Tone</Label>
                 <div className="grid grid-cols-3 gap-2 mt-1">
                   {([
                     { key: "friendly" as const, label: "Amigable" },
@@ -541,7 +541,7 @@ export default function DashboardBlog() {
                 </div>
               </div>
               <div>
-                <Label className="text-xs">Idioma</Label>
+                <Label className="text-xs">Language</Label>
                 <div className="grid grid-cols-3 gap-2 mt-1">
                   {([
                     { key: "es" as const, label: "Spanish" },
@@ -567,7 +567,7 @@ export default function DashboardBlog() {
                 {generateMutation.isPending ? (
                   <>Generating post…</>
                 ) : (
-                  <><Sparkles className="w-4 h-4" /> Generar</>
+                  <><Sparkles className="w-4 h-4" /> Generate</>
                 )}
               </Button>
               <p className="text-[11px] text-muted-foreground text-center">
@@ -587,7 +587,7 @@ export default function DashboardBlog() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => deletePost && deleteMutation.mutate({ id: deletePost.id })}>
               Eliminar
