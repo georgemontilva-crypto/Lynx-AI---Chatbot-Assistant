@@ -56,7 +56,7 @@ export default function ForgotPassword() {
               <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mx-auto mb-4">
                 <Mail className="w-7 h-7 text-blue-600 dark:text-blue-400" />
               </div>
-              <h1 className="text-2xl font-bold tracking-tight mb-2">Check your email</h1>
+              <h1 className="lx-heading text-3xl mb-2">Check your email</h1>
               <p className="text-muted-foreground text-sm leading-relaxed mb-6">
                 If an account exists for <strong>{email}</strong>, we've sent a password reset link. It expires in 1 hour.
               </p>
@@ -72,7 +72,7 @@ export default function ForgotPassword() {
             </div>
           ) : (
             <>
-              <h1 className="text-2xl font-bold tracking-tight mb-1">Reset your password</h1>
+              <h1 className="lx-heading text-3xl mb-1.5">Reset your password</h1>
               <p className="text-muted-foreground text-sm">
                 Enter your email and we'll send you a reset link.
               </p>
@@ -104,7 +104,7 @@ export default function ForgotPassword() {
 
             <Button
               type="submit"
-              className="w-full lynx-gradient text-white border-0 h-11 font-semibold"
+              className="w-full bg-action hover:bg-action/90 text-white border-0 h-11 font-semibold"
               disabled={loading}
             >
               {loading ? (

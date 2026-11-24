@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5, viewport-fit=cover" />
@@ -12,11 +12,11 @@
     <meta name="twitter:site" content="@lynxaiassistant" />
 
     <!-- ── Theme & PWA ────────────────────────────────────────────────── -->
-    <meta name="theme-color" content="#0d0f14" />
+    <meta name="theme-color" content="#0b1220" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="msapplication-TileColor" content="#0d0f14" />
+    <meta name="msapplication-TileColor" content="#0b1220" />
     <link rel="manifest" href="/manifest.json" />
 
     <!-- ── Favicon ───────────────────────────────────────────────────── -->
@@ -24,12 +24,9 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/icon-192x192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icon-192x192.png" />
 
-    <!-- ── Preconnects (performance) ─────────────────────────────────── -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-
-    <!-- ── Fonts ─────────────────────────────────────────────────────── -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;1,14..32,400&display=swap" rel="stylesheet" />
+    <!-- ── Theme: dark is the default. Apply an explicit light choice before
+         first paint so nobody sees a flash of the wrong theme. ─────────── -->
+    <script>try{if(localStorage.getItem("lynx-theme-choice")==="light")document.documentElement.classList.remove("dark")}catch(e){}</script>
   </head>
   <body>
     <div id="root"><!--app-html--></div>

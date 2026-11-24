@@ -26,13 +26,13 @@ const contactInfo = [
   {
     icon: MessageSquare,
     label: "Live chat",
-    value: "Available in the dashboard",
+    value: "The chat bubble on this page",
     href: null,
   },
   {
     icon: Headphones,
     label: "Response time",
-    value: "Within 24 hours",
+    value: "Within one business day",
     href: null,
   },
 ];
@@ -94,18 +94,14 @@ export default function Contact() {
           initial={{ opacity: 0, y: 20 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }}
-          className="text-center mb-16"
+          className="mb-14 max-w-[46rem]"
         >
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-medium mb-4">
-            <Mail className="w-3.5 h-3.5" />
-            Get in touch
-          </div>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
-            Talk to our team
+          <h2 className="lx-display text-[clamp(2.5rem,5.5vw,4.6rem)]">
+            Ask us anything before you start.
           </h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Have questions about Lynx AI? Want to explore the White-Label plan?
-            We're here to help you find the right solution for your business.
+          <p className="lx-prose mt-6 text-muted-foreground text-lg sm:text-xl leading-relaxed">
+            Questions about a plan, about White-Label for your agency, or whether Lynx fits your
+            site. A person reads every message and replies within one business day.
           </p>
         </motion.div>
 
@@ -135,7 +131,7 @@ export default function Contact() {
                     <item.icon className="w-4 h-4 text-primary" />
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
+                    <p className="text-xs font-medium text-muted-foreground mb-0.5">
                       {item.label}
                     </p>
                     {item.href ? (
@@ -209,7 +205,7 @@ export default function Contact() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Name */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <label className="text-sm font-medium">
                       Full name <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
@@ -226,7 +222,7 @@ export default function Contact() {
 
                   {/* Email */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <label className="text-sm font-medium">
                       Email address <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
@@ -246,7 +242,7 @@ export default function Contact() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Company */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <label className="text-sm font-medium">
                       Company
                     </label>
                     <div className="relative">
@@ -262,7 +258,7 @@ export default function Contact() {
 
                   {/* Plan interest */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <label className="text-sm font-medium">
                       Interested in
                     </label>
                     <div className="relative">
@@ -284,7 +280,7 @@ export default function Contact() {
 
                 {/* Message */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  <label className="text-sm font-medium">
                     Message <span className="text-red-500">*</span>
                   </label>
                   <Textarea
@@ -301,7 +297,7 @@ export default function Contact() {
                   <Button
                     type="submit"
                     disabled={sendContact.isPending}
-                    className="w-full lynx-gradient text-white border-0 font-semibold rounded-xl px-6 gap-2"
+                    className="w-full bg-action hover:bg-action/90 text-white border-0 font-semibold rounded-lg px-6 gap-2"
                   >
                     {sendContact.isPending ? (
                       <>

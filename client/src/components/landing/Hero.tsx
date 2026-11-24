@@ -1,333 +1,327 @@
-import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import {
-  ArrowRight,
-  Play,
-  Zap,
-  MessageSquare,
-  TrendingUp,
-  ShieldCheck,
-  Search,
-  Send,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
+import { Backpack, Flame, Shirt, FileText, CornerDownRight } from "lucide-react";
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.1, duration: 0.7, ease: "easeOut" as const },
-  }),
+/**
+ * The hero makes the product's one promise literal: an answer never comes from
+ * nowhere. On the left is an example store as Lynx sees it — its pages. On the
+ * right, a visitor asks something. When the answer lands, the page it was read
+ * from lights up in amber ("sight"), the only place that colour is used.
+ */
+
+type SourceId = "products" | "shipping" | "returns";
+
+type Exchange = {
+  id: string;
+  question: string;
+  answer: string;
+  source: SourceId;
+  /** Product tile to light up and show as a card, if the answer recommends one. */
+  product?: "pack" | "jacket" | "stove";
 };
 
-const floatingCard = {
-  hidden: { opacity: 0, scale: 0.8, y: 20 },
-  visible: (i: number) => ({
-    opacity: 1,
-    scale: 1,
-    y: 0,
-    transition: { delay: 0.8 + i * 0.15, duration: 0.6, ease: "easeOut" as const },
-  }),
+const PRODUCTS = {
+  pack: { name: "Trail Pack 28L", price: "$89", icon: Backpack },
+  jacket: { name: "Ridge Shell Jacket", price: "$149", icon: Shirt },
+  stove: { name: "Summit Stove", price: "$64", icon: Flame },
+} as const;
+
+const SOURCE_PATH: Record<SourceId, string> = {
+  products: "/products",
+  shipping: "/shipping",
+  returns: "/returns",
 };
 
-// Static chat widget — all messages visible at once, no animation loop
-function StaticChat() {
+const EXCHANGES: Exchange[] = [
+  {
+    id: "ship",
+    question: "Do you ship to Canada?",
+    answer: "Yes. Orders leave within 2 business days, to Canada and the US, and shipping is free over $100.",
+    source: "shipping",
+  },
+  {
+    id: "jacket",
+    question: "I need a jacket for wind and rain",
+    answer: "The Ridge Shell is the one: fully waterproof, taped seams, and it packs into its own pocket.",
+    source: "products",
+    product: "jacket",
+  },
+  {
+    id: "return",
+    question: "Can I return it if it doesn't fit?",
+    answer: "You can, within 30 days as long as it's unworn. We email you a prepaid label.",
+    source: "returns",
+  },
+];
+
+type Phase = "asking" | "thinking" | "answered";
+
+function useStage() {
+  // Server render and reduced-motion both show a finished exchange, so the
+  // page is complete without any script running.
+  const [index, setIndex] = useState(1);
+  const [phase, setPhase] = useState<Phase>("answered");
+  const auto = useRef(true);
+  const timers = useRef<number[]>([]);
+
+  const clear = () => {
+    timers.current.forEach((t) => window.clearTimeout(t));
+    timers.current = [];
+  };
+
+  const play = (i: number, thenContinue: boolean) => {
+    clear();
+    setIndex(i);
+    setPhase("asking");
+    timers.current.push(window.setTimeout(() => setPhase("thinking"), 650));
+    timers.current.push(window.setTimeout(() => setPhase("answered"), 1750));
+    if (thenContinue) {
+      timers.current.push(
+        window.setTimeout(() => {
+          if (auto.current) play((i + 1) % EXCHANGES.length, true);
+        }, 7200)
+      );
+    }
+  };
+
+  useEffect(() => {
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) return;
+    // Let the page settle, then start from the first question.
+    timers.current.push(window.setTimeout(() => play(0, true), 2600));
+    return clear;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const choose = (i: number) => {
+    auto.current = false; // the visitor took over — stop cycling
+    play(i, false);
+  };
+
+  return { exchange: EXCHANGES[index], index, phase, choose };
+}
+
+function SitePanel({ lit, litProduct }: { lit: SourceId | null; litProduct: Exchange["product"] | null }) {
   return (
-    <div className="p-3 space-y-2.5 bg-white" style={{ minHeight: 168 }}>
-      {/* Center hint */}
-      <p className="text-xs text-gray-400 text-center py-1">
-        I know your catalog and policies, ask me anything.
-      </p>
-      {/* User message */}
-      <div className="flex justify-end">
-        <div className="lynx-gradient rounded-2xl rounded-tr-sm px-3.5 py-2 text-xs text-white max-w-[78%] shadow-sm">
-          Do you have this in size S?
+    <div className="rounded-xl border border-border bg-card/60 overflow-hidden">
+      <div className="flex items-center gap-3 px-4 h-11 border-b border-border">
+        <span className="flex gap-1.5" aria-hidden="true">
+          <span className="w-2.5 h-2.5 rounded-full bg-border" />
+          <span className="w-2.5 h-2.5 rounded-full bg-border" />
+          <span className="w-2.5 h-2.5 rounded-full bg-border" />
+        </span>
+        <span className="font-mono text-xs text-muted-foreground truncate">northwind-outfitters.com</span>
+        <span className="ml-auto text-xs text-muted-foreground hidden sm:block">Example store</span>
+      </div>
+
+      <div className="p-4 sm:p-5 space-y-3">
+        {/* /products */}
+        <div className="lx-read rounded-lg border border-border p-3.5" data-lit={lit === "products"}>
+          <PageLabel path="/products" lit={lit === "products"} />
+          <div className="mt-3 grid grid-cols-3 gap-2.5">
+            {(Object.keys(PRODUCTS) as Array<keyof typeof PRODUCTS>).map((key) => {
+              const p = PRODUCTS[key];
+              const on = lit === "products" && litProduct === key;
+              return (
+                <div
+                  key={key}
+                  className="lx-read rounded-md border border-border/70 p-2.5"
+                  data-lit={on}
+                >
+                  <div className="aspect-[4/3] rounded bg-muted flex items-center justify-center">
+                    <p.icon className={`w-6 h-6 ${on ? "text-sight" : "text-muted-foreground"}`} strokeWidth={1.5} />
+                  </div>
+                  <div className="mt-2 text-xs font-medium leading-tight">{p.name}</div>
+                  <div className="text-xs text-muted-foreground">{p.price}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="lx-read rounded-lg border border-border p-3.5" data-lit={lit === "shipping"}>
+            <PageLabel path="/shipping" lit={lit === "shipping"} />
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              Orders ship within 2 business days. We deliver to Canada and the US. Free shipping over $100.
+            </p>
+          </div>
+          <div className="lx-read rounded-lg border border-border p-3.5" data-lit={lit === "returns"}>
+            <PageLabel path="/returns" lit={lit === "returns"} />
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              Return unworn items within 30 days. We send a prepaid label by email.
+            </p>
+          </div>
         </div>
       </div>
-      {/* Bot reply */}
-      <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-xs text-gray-800 max-w-[85%] shadow-sm">
-        <p className="leading-relaxed">Yes — I found 2 size S units in stock for that exact product. Here's the page:</p>
-        <button className="mt-2 lynx-gradient text-white text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1 font-medium">
-          View product <ArrowRight className="w-2.5 h-2.5" />
-        </button>
+    </div>
+  );
+}
+
+function PageLabel({ path, lit }: { path: string; lit: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      <FileText className={`w-3.5 h-3.5 ${lit ? "text-sight" : "text-muted-foreground"}`} strokeWidth={1.75} />
+      <span className={`font-mono text-xs ${lit ? "text-sight" : "text-muted-foreground"}`}>{path}</span>
+      {lit && <span className="lx-in ml-auto text-[0.6875rem] font-medium text-sight">Read for this answer</span>}
+    </div>
+  );
+}
+
+function ChatPanel({
+  exchange,
+  index,
+  phase,
+  choose,
+}: {
+  exchange: Exchange;
+  index: number;
+  phase: Phase;
+  choose: (i: number) => void;
+}) {
+  const product = exchange.product ? PRODUCTS[exchange.product] : null;
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col">
+      <div className="flex items-center gap-3 px-4 h-11 border-b border-border">
+        <span className="w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />
+        <span className="text-sm font-semibold">Northwind assistant</span>
+        <span className="ml-auto text-xs text-muted-foreground">Answers from the site</span>
       </div>
-      {/* User message */}
-      <div className="flex justify-end">
-        <div className="lynx-gradient rounded-2xl rounded-tr-sm px-3.5 py-2 text-xs text-white max-w-[78%] shadow-sm">
-          Do you ship to Canada?
+
+      {/* Fixed height: the exchange changes, the layout never jumps. */}
+      <div className="p-4 sm:p-5 flex flex-col gap-3 h-[17.5rem]" aria-live="polite">
+        <div key={exchange.id + "-q"} className="lx-in self-end max-w-[85%] rounded-2xl rounded-br-md bg-action text-white px-3.5 py-2.5 text-sm">
+          {exchange.question}
         </div>
+
+        {phase === "thinking" && (
+          <div className="lx-in self-start rounded-2xl rounded-bl-md bg-muted px-4 py-3.5">
+            <span className="lx-typing flex gap-1" aria-label="Typing">
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+            </span>
+          </div>
+        )}
+
+        {phase === "answered" && (
+          <div key={exchange.id + "-a"} className="lx-in self-start max-w-[92%] space-y-2.5">
+            <div className="rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm leading-relaxed">
+              {exchange.answer}
+            </div>
+            {product && (
+              <div className="flex items-center gap-3 rounded-xl border border-border bg-background/60 p-2.5">
+                <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center shrink-0">
+                  <product.icon className="w-5 h-5 text-muted-foreground" strokeWidth={1.5} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold truncate">{product.name}</div>
+                  <div className="text-xs text-muted-foreground">{product.price}</div>
+                </div>
+                <span className="ml-auto text-xs font-semibold text-primary whitespace-nowrap">View product</span>
+              </div>
+            )}
+            <div className="flex items-center gap-1.5 text-xs text-sight">
+              <CornerDownRight className="w-3.5 h-3.5" strokeWidth={1.75} />
+              <span>
+                From <span className="font-mono">{SOURCE_PATH[exchange.source]}</span>
+              </span>
+            </div>
+          </div>
+        )}
       </div>
-      {/* Bot reply */}
-      <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-xs text-gray-800 max-w-[85%] shadow-sm">
-        <p className="leading-relaxed">Yes. Standard shipping to Canada takes 5–8 business days. Full details here:</p>
-        <button className="mt-2 lynx-gradient text-white text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1 font-medium">
-          View shipping policy <ArrowRight className="w-2.5 h-2.5" />
-        </button>
+
+      <div className="border-t border-border p-3 flex flex-wrap gap-2">
+        {EXCHANGES.map((ex, i) => (
+          <button
+            key={ex.id}
+            onClick={() => choose(i)}
+            aria-pressed={i === index}
+            className={`rounded-full border px-3 py-1.5 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+              i === index
+                ? "border-foreground/40 text-foreground"
+                : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+            }`}
+          >
+            {ex.question}
+          </button>
+        ))}
       </div>
     </div>
   );
 }
 
 export default function Hero() {
+  const { exchange, index, phase, choose } = useStage();
+  const lit = phase === "answered" ? exchange.source : null;
+  const litProduct = phase === "answered" ? exchange.product ?? null : null;
+
+  // The real assistant runs on this page as the floating bubble. Offer it by
+  // name only once we know it actually loaded.
+  const [liveChat, setLiveChat] = useState(false);
+  useEffect(() => {
+    let tries = 0;
+    const check = () => {
+      if ((window as unknown as { LynxAI?: { open?: () => void } }).LynxAI?.open) {
+        setLiveChat(true);
+        return;
+      }
+      if (++tries < 10) timer = window.setTimeout(check, 600);
+    };
+    let timer = window.setTimeout(check, 400);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const openLiveChat = () => (window as unknown as { LynxAI?: { open?: () => void } }).LynxAI?.open?.();
+
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden hero-bg pt-16">
-      {/* Animated background orbs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <motion.div
-          className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full opacity-20"
-          style={{
-            background: "radial-gradient(circle, oklch(0.55 0.22 260), transparent 70%)",
-            filter: "blur(60px)",
-          }}
-          animate={{ x: [0, 30, 0], y: [0, -20, 0], scale: [1, 1.1, 1] }}
-          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute bottom-1/3 right-1/4 w-80 h-80 rounded-full opacity-15"
-          style={{
-            background: "radial-gradient(circle, oklch(0.65 0.18 200), transparent 70%)",
-            filter: "blur(60px)",
-          }}
-          animate={{ x: [0, -25, 0], y: [0, 25, 0], scale: [1, 1.15, 1] }}
-          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 2 }}
-        />
-        <motion.div
-          className="absolute top-1/2 right-1/3 w-64 h-64 rounded-full opacity-10"
-          style={{
-            background: "radial-gradient(circle, oklch(0.72 0.16 240), transparent 70%)",
-            filter: "blur(50px)",
-          }}
-          animate={{ x: [0, 20, 0], y: [0, 30, 0] }}
-          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", delay: 4 }}
-        />
-      </div>
-
-      {/* Grid pattern overlay */}
-      <div
-        className="absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage: `linear-gradient(oklch(0.65 0.18 240) 1px, transparent 1px), linear-gradient(90deg, oklch(0.65 0.18 240) 1px, transparent 1px)`,
-          backgroundSize: "60px 60px",
-        }}
-      />
-
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl relative z-10">
-        <div className="text-center max-w-5xl mx-auto">
-          {/* Badge */}
-          <motion.div
-            custom={0}
-            variants={fadeUp}
-            initial="hidden"
-            animate="visible"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border/60 bg-card/50 backdrop-blur-sm text-sm text-muted-foreground mb-8"
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            Cloud AI that reads your entire website
-            <Zap className="w-3.5 h-3.5 text-primary" />
-          </motion.div>
-
-          {/* Headline */}
-          <motion.h1
-            custom={1}
-            variants={fadeUp}
-            initial="hidden"
-            animate="visible"
-            className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05] mb-6"
-          >
-            An AI that truly
-            <br />
-            <span className="lynx-text-gradient">knows your website</span>
-          </motion.h1>
-
-          {/* Subheadline */}
-          <motion.p
-            custom={2}
-            variants={fadeUp}
-            initial="hidden"
-            animate="visible"
-            className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed"
-          >
-            Lynx scans your site, learns your real products, pages and policies, and gives every visitor personalized, accurate answers — day or night, with no manual training.
-          </motion.p>
-
-          {/* CTAs */}
-          <motion.div
-            custom={3}
-            variants={fadeUp}
-            initial="hidden"
-            animate="visible"
-            className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16"
-          >
-            <Link href="/register">
-              <Button
-                size="lg"
-                className="lynx-gradient text-white border-0 shadow-xl hover:opacity-90 transition-all duration-200 text-base font-semibold px-8 h-12 group"
-              >
-                See plans — from $199/mo
-                <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </Button>
+    <section className="relative pt-24 sm:pt-32 pb-16 sm:pb-24">
+      <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
+        <div>
+          {/* Two sentences, one per line once there is room for it. */}
+          <h1 className="lx-display text-[clamp(2.5rem,5.5vw,4.6rem)]">
+            <span className="lg:block">Your site already has the answers. </span>
+            <span className="lg:block">Lynx gives them to every visitor.</span>
+          </h1>
+          <p className="lx-prose mt-6 sm:mt-8 max-w-[38rem] text-lg sm:text-xl leading-relaxed text-muted-foreground">
+            Lynx reads your products, prices and policies, then answers each visitor in your
+            store&rsquo;s own words, at any hour and in their language. Nothing to script, no
+            flows to build.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Link href="/register" className="lx-btn">
+              Start free trial
             </Link>
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-border/60 bg-card/30 backdrop-blur-sm hover:bg-card/60 text-base font-medium px-8 h-12 gap-2"
-              onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}
-            >
-              <Play className="w-4 h-4 fill-current" />
-              How it works
-            </Button>
-          </motion.div>
+            {liveChat ? (
+              <button onClick={openLiveChat} className="lx-btn-quiet">
+                Ask our assistant a question
+              </button>
+            ) : (
+              <a href="#how-it-works" className="lx-btn-quiet">
+                See how it works
+              </a>
+            )}
+          </div>
+          <p className="mt-4 text-sm text-muted-foreground">
+            14 days and 50 messages on your own site. No card needed.
+          </p>
+        </div>
 
-          {/* Stats */}
-          <motion.div
-            custom={4}
-            variants={fadeUp}
-            initial="hidden"
-            animate="visible"
-            className="grid grid-cols-3 gap-6 max-w-lg mx-auto mb-16"
-          >
-            {[
-              { value: "< 2s", label: "Response time" },
-              { value: "24/7", label: "Availability" },
-              { value: "100%", label: "Site context" },
-            ].map((stat) => (
-              <div key={stat.label} className="text-center">
-                <div className="text-2xl font-bold lynx-text-gradient">{stat.value}</div>
-                <div className="text-xs text-muted-foreground mt-1">{stat.label}</div>
-              </div>
-            ))}
-          </motion.div>
-
-          {/* Floating UI Preview */}
-          <div className="relative max-w-4xl mx-auto overflow-hidden sm:overflow-visible">
-            {/* Main chat preview */}
-            <motion.div
-              initial={{ opacity: 0, y: 60, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ delay: 0.5, duration: 0.8, ease: "easeOut" }}
-              className="glass-card rounded-2xl p-1 shadow-2xl"
-            >
-              {/* Browser chrome */}
-              <div className="bg-card/80 rounded-xl overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40">
-                  <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-red-400/70" />
-                    <div className="w-3 h-3 rounded-full bg-yellow-400/70" />
-                    <div className="w-3 h-3 rounded-full bg-emerald-400/70" />
-                  </div>
-                  <div className="flex-1 mx-4">
-                    <div className="bg-muted/50 rounded-md h-6 flex items-center px-3">
-                      <span className="text-xs text-muted-foreground">mitienda.com</span>
-                    </div>
-                  </div>
-                </div>
-                {/* Website content mockup */}
-                <div className="relative h-64 sm:h-80 bg-gradient-to-br from-muted/20 to-muted/5 p-6 overflow-hidden">
-                  {/* Fake website content */}
-                  <div className="space-y-3 opacity-40">
-                    <div className="h-8 bg-muted/60 rounded-lg w-2/3" />
-                    <div className="h-4 bg-muted/40 rounded w-full" />
-                    <div className="h-4 bg-muted/40 rounded w-5/6" />
-                    <div className="h-4 bg-muted/40 rounded w-4/5" />
-                    <div className="flex gap-3 mt-4">
-                      <div className="h-24 w-24 bg-muted/50 rounded-xl" />
-                      <div className="h-24 w-24 bg-muted/50 rounded-xl" />
-                      <div className="h-24 w-24 bg-muted/50 rounded-xl" />
-                    </div>
-                  </div>
-
-                  {/* Lynx Chat Widget */}
-                  <motion.div
-                    className="absolute bottom-4 right-4 w-72 glass-card rounded-2xl shadow-2xl overflow-hidden"
-                    animate={{ y: [0, -4, 0] }}
-                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                  >
-                    {/* Chat header */}
-                    <div className="lynx-gradient px-4 py-3 flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                        <MessageSquare className="w-4 h-4 text-white" />
-                      </div>
-                      <div>
-                        <div className="text-white text-sm font-semibold">Lynx</div>
-                        <div className="text-white/70 text-xs flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                          AI Assistant · online
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Static chat messages */}
-                    <StaticChat />
-
-                    {/* Input */}
-                    <div className="px-3 pb-3 bg-card/90">
-                      <div className="flex items-center gap-2 bg-muted/50 rounded-xl px-3 py-2">
-                        <span className="text-xs text-muted-foreground flex-1">Ask about sizes, shipping, returns...</span>
-                        <div className="w-6 h-6 rounded-full lynx-gradient flex items-center justify-center flex-shrink-0">
-                          <Send className="w-3 h-3 text-white" />
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Floating stat cards */}
-            <motion.div
-              custom={0}
-              variants={floatingCard}
-              initial="hidden"
-              animate="visible"
-              className="absolute -left-4 sm:-left-16 top-1/3 glass-card rounded-xl p-3 shadow-xl hidden sm:flex items-center gap-3"
-            >
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-emerald-400" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold">+34% conversion</div>
-                <div className="text-xs text-muted-foreground">vs. last month</div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              custom={1}
-              variants={floatingCard}
-              initial="hidden"
-              animate="visible"
-              className="absolute -right-4 sm:-right-16 top-1/4 glass-card rounded-xl p-3 shadow-xl hidden sm:flex items-center gap-3"
-            >
-              <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-                <ShieldCheck className="w-4 h-4 text-primary" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold">100% private</div>
-                <div className="text-xs text-muted-foreground">Your content only</div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              custom={2}
-              variants={floatingCard}
-              initial="hidden"
-              animate="visible"
-              className="absolute -left-4 sm:-left-12 bottom-8 glass-card rounded-xl p-3 shadow-xl hidden sm:flex items-center gap-3"
-            >
-              <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <Search className="w-4 h-4 text-purple-400" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold">SEO improved</div>
-                <div className="text-xs text-muted-foreground">Automatic suggestions</div>
-              </div>
-            </motion.div>
+        {/* The stage */}
+        {/* On a phone the conversation comes first, so the answer and the page
+            it came from are both in view without scrolling between them. */}
+        <div className="mt-12 sm:mt-14 grid lg:grid-cols-[1.15fr_1fr] gap-4 lg:gap-6 items-start">
+          <div className="order-2 lg:order-1">
+            <SitePanel lit={lit} litProduct={litProduct} />
+          </div>
+          <div className="order-1 lg:order-2">
+            <ChatPanel exchange={exchange} index={index} phase={phase} choose={choose} />
           </div>
         </div>
+        <p className="mt-4 text-sm text-muted-foreground max-w-[44rem]">
+          An example store. The page that lights up is the one the answer was read from. Lynx only
+          says what your site says, and only links to pages that exist on it.
+        </p>
       </div>
-
-      {/* Bottom gradient fade */}
-      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent pointer-events-none" />
     </section>
   );
 }

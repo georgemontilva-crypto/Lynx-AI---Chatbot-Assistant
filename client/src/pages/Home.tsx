@@ -2,7 +2,8 @@ import Navbar from "@/components/landing/Navbar";
 import Hero from "@/components/landing/Hero";
 import HowItWorks from "@/components/landing/HowItWorks";
 import Features from "@/components/landing/Features";
-import Comparison from "@/components/landing/Comparison";
+import Inbox from "@/components/landing/Inbox";
+import Faq from "@/components/landing/Faq";
 import WhiteLabel from "@/components/landing/WhiteLabel";
 import Pricing from "@/components/landing/Pricing";
 import Footer from "@/components/landing/Footer";
@@ -37,9 +38,10 @@ export default function Home() {
       <Hero />
       <HowItWorks />
       <Features />
-      <Comparison />
+      <Inbox />
       <WhiteLabel />
       <Pricing />
+      <Faq />
       <Footer />
     </div>
   );

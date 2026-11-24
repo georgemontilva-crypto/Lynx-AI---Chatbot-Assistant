@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Loader2, Check } from "lucide-react";
 import { LynxLogo } from "@/components/LynxLogo";
+import AuthAside from "@/components/AuthAside";
 
 function PasswordStrength({ password }: { password: string }) {
   const checks = [
@@ -41,11 +42,6 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const { data: siteSettings } = trpc.siteSettings.get.useQuery(undefined, {
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-  const authGradient = siteSettings?.authGradient || "";
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -106,58 +102,7 @@ export default function Register() {
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Left panel — branding */}
-      <div
-        className="hidden lg:flex lg:w-1/2 lynx-auth-gradient flex-col justify-between p-12 relative overflow-hidden"
-        style={authGradient ? { background: authGradient } : undefined}
-      >
-        <div
-          className="absolute inset-0 opacity-[0.12]"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
-            backgroundSize: "44px 44px",
-          }}
-        />
-        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute -bottom-32 -left-16 w-80 h-80 rounded-full bg-white/5 blur-3xl" />
-        <div className="relative z-10">
-          <Link href="/">
-            <LynxLogo onDark className="h-9 w-auto object-contain" />
-          </Link>
-        </div>
-        <div className="relative z-10 space-y-6">
-          <h2 className="text-3xl font-bold text-white leading-tight">
-            Start serving your visitors
-            <br />
-            <span className="text-blue-200">smarter, 24/7</span>
-          </h2>
-          <div className="space-y-3">
-            {[
-              "14-day free trial, no credit card required",
-              "AI trained on your website in minutes",
-              "Responds in 50+ languages automatically",
-              "Cancel anytime, no lock-in",
-            ].map((item) => (
-              <div key={item} className="flex items-center gap-3">
-                <div className="w-5 h-5 rounded-full bg-emerald-400/20 flex items-center justify-center shrink-0">
-                  <Check className="w-3 h-3 text-emerald-400" />
-                </div>
-                <span className="text-blue-100/90 text-sm">{item}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="relative z-10 flex gap-6 text-white/50 text-xs">
-          <span>© 2026 Lynx AI</span>
-          <Link href="/legal/privacy" className="hover:text-white/80 transition-colors">
-            Privacy
-          </Link>
-          <Link href="/legal/terms" className="hover:text-white/80 transition-colors">
-            Terms
-          </Link>
-        </div>
-      </div>
+      <AuthAside statement="Your site already has the answers." />
 
       {/* Right panel — form */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
@@ -170,7 +115,7 @@ export default function Register() {
 
         <div className="w-full max-w-sm">
           <div className="mb-8">
-            <h1 className="text-2xl font-bold tracking-tight mb-1">Create your account</h1>
+            <h1 className="lx-heading text-3xl mb-1.5">Create your account</h1>
             <p className="text-muted-foreground text-sm">
               Get started with Lynx AI — free for 14 days
             </p>
@@ -239,7 +184,7 @@ export default function Register() {
 
             <Button
               type="submit"
-              className="w-full lynx-gradient text-white border-0 h-11 font-semibold"
+              className="w-full bg-action hover:bg-action/90 text-white border-0 h-11 font-semibold"
               disabled={loading}
             >
               {loading ? (

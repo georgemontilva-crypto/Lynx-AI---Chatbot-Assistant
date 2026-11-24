@@ -1,5 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Self-hosted type. Bricolage Grotesque carries headlines (it has a width axis,
+   used condensed at large sizes); Instrument Sans carries everything you read. */
+@import "@fontsource-variable/bricolage-grotesque/standard.css";
+@import "@fontsource-variable/instrument-sans/wght.css";
 
 @custom-variant dark (&:is(.dark *));
 @custom-variant light (&:is(.light *));
@@ -40,6 +44,13 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* "Sight": the amber of a lynx's eye. Reserved for one meaning across the
+     product — something Lynx has read from the customer's site. Never use it
+     as a generic highlight. */
+  --color-sight: var(--sight);
+  --color-action: var(--action);
+  --font-display: "Bricolage Grotesque Variable", "Instrument Sans Variable", system-ui, sans-serif;
+  --font-sans: "Instrument Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 :root {
@@ -77,43 +88,50 @@
   --sidebar-ring: oklch(0.55 0.20 240);
   --lynx-gradient: linear-gradient(135deg, oklch(0.45 0.22 260), oklch(0.55 0.18 240), oklch(0.62 0.16 200));
   --lynx-glow: 0 0 40px oklch(0.55 0.20 240 / 0.25);
+  --sight: oklch(0.58 0.14 70);
+  --action: oklch(0.52 0.21 258);
 }
 
 /* Dark mode: applies when .dark IS on <html> */
 :root.dark {
-  --background: oklch(0.08 0.01 240);
-  --foreground: oklch(0.97 0.005 240);
-  --card: oklch(0.12 0.015 240);
-  --card-foreground: oklch(0.95 0.005 240);
-  --popover: oklch(0.11 0.015 240);
-  --popover-foreground: oklch(0.95 0.005 240);
-  --primary: oklch(0.65 0.18 240);
-  --primary-foreground: oklch(0.98 0.005 240);
-  --secondary: oklch(0.18 0.02 240);
-  --secondary-foreground: oklch(0.88 0.01 240);
-  --muted: oklch(0.16 0.015 240);
-  --muted-foreground: oklch(0.58 0.02 240);
-  --accent: oklch(0.20 0.025 240);
-  --accent-foreground: oklch(0.90 0.01 240);
-  --destructive: oklch(0.60 0.22 25);
-  --border: oklch(0.22 0.02 240);
-  --input: oklch(0.18 0.02 240);
-  --ring: oklch(0.65 0.18 240);
-  --chart-1: oklch(0.65 0.18 240);
-  --chart-2: oklch(0.72 0.16 270);
-  --chart-3: oklch(0.60 0.20 200);
-  --chart-4: oklch(0.75 0.14 220);
-  --chart-5: oklch(0.55 0.22 260);
-  --sidebar: oklch(0.10 0.015 240);
-  --sidebar-foreground: oklch(0.90 0.01 240);
-  --sidebar-primary: oklch(0.65 0.18 240);
-  --sidebar-primary-foreground: oklch(0.98 0.005 240);
-  --sidebar-accent: oklch(0.16 0.02 240);
-  --sidebar-accent-foreground: oklch(0.88 0.01 240);
-  --sidebar-border: oklch(0.20 0.02 240);
-  --sidebar-ring: oklch(0.65 0.18 240);
+  /* Night: a blue-black, not a neutral one. Every surface keeps the same hue
+     and only steps up in lightness, so depth reads as "closer", not "greyer". */
+  --background: oklch(0.165 0.030 262);
+  --foreground: oklch(0.955 0.010 262);
+  --card: oklch(0.205 0.034 262);
+  --card-foreground: oklch(0.955 0.010 262);
+  --popover: oklch(0.215 0.036 262);
+  --popover-foreground: oklch(0.955 0.010 262);
+  --primary: oklch(0.66 0.17 256);
+  --primary-foreground: oklch(0.99 0.004 262);
+  --secondary: oklch(0.245 0.036 262);
+  --secondary-foreground: oklch(0.90 0.015 262);
+  --muted: oklch(0.225 0.034 262);
+  --muted-foreground: oklch(0.715 0.030 262);
+  --accent: oklch(0.265 0.040 262);
+  --accent-foreground: oklch(0.93 0.012 262);
+  --destructive: oklch(0.64 0.21 25);
+  --border: oklch(0.305 0.040 262);
+  --input: oklch(0.265 0.040 262);
+  --ring: oklch(0.66 0.17 256);
+  --chart-1: oklch(0.66 0.17 256);
+  --chart-2: oklch(0.82 0.15 80);
+  --chart-3: oklch(0.70 0.13 200);
+  --chart-4: oklch(0.75 0.12 300);
+  --chart-5: oklch(0.72 0.15 160);
+  --sidebar: oklch(0.185 0.032 262);
+  --sidebar-foreground: oklch(0.90 0.015 262);
+  --sidebar-primary: oklch(0.66 0.17 256);
+  --sidebar-primary-foreground: oklch(0.99 0.004 262);
+  --sidebar-accent: oklch(0.245 0.036 262);
+  --sidebar-accent-foreground: oklch(0.90 0.015 262);
+  --sidebar-border: oklch(0.285 0.038 262);
+  --sidebar-ring: oklch(0.66 0.17 256);
   --lynx-gradient: linear-gradient(135deg, oklch(0.55 0.22 260), oklch(0.65 0.18 240), oklch(0.72 0.16 200));
   --lynx-glow: 0 0 40px oklch(0.65 0.18 240 / 0.3);
+  --sight: oklch(0.83 0.15 82);
+  /* Filled buttons: deep enough for white text to pass contrast. */
+  --action: oklch(0.56 0.21 258);
 }
 
 @layer base {
@@ -122,7 +140,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -184,7 +202,7 @@
   .dark .hero-bg {
     background: radial-gradient(ellipse 80% 60% at 50% -10%, oklch(0.35 0.12 240 / 0.4), transparent),
                 radial-gradient(ellipse 60% 40% at 80% 50%, oklch(0.30 0.15 270 / 0.2), transparent),
-                oklch(0.08 0.01 240);
+                var(--background);
   }
   .section-bg-alt {
     background: var(--muted);
@@ -312,4 +330,69 @@ body {
     width: 0;
     height: 0;
   }
+}
+
+
+/* ─── Public site ─────────────────────────────────────────────────────────── */
+/* Display type: condensed and heavy, tight leading. The width axis does the
+   work a second "impact" typeface would otherwise be brought in for. */
+.lx-display {
+  font-family: var(--font-display);
+  font-stretch: 82%;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+.lx-heading {
+  font-family: var(--font-display);
+  font-stretch: 84%;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.04;
+  text-wrap: balance;
+}
+.lx-prose { text-wrap: pretty; }
+
+/* Primary action. One filled button style for the whole public site. */
+.lx-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  height: 2.875rem; padding: 0 1.25rem; border-radius: 0.5rem;
+  background: var(--action); color: oklch(0.99 0.004 262);
+  font-weight: 600; font-size: 0.9375rem; white-space: nowrap;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.lx-btn:hover { background: color-mix(in oklch, var(--action) 88%, white); }
+.lx-btn:active { transform: translateY(1px); }
+.lx-btn-quiet {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  height: 2.875rem; padding: 0 1.125rem; border-radius: 0.5rem;
+  border: 1px solid var(--border); color: var(--foreground);
+  font-weight: 600; font-size: 0.9375rem; white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.lx-btn-quiet:hover { background: var(--accent); border-color: color-mix(in oklch, var(--border) 60%, var(--foreground)); }
+.lx-btn:focus-visible, .lx-btn-quiet:focus-visible, .lx-link:focus-visible {
+  outline: 2px solid var(--ring); outline-offset: 3px;
+}
+.lx-link { text-decoration: underline; text-decoration-color: color-mix(in oklch, currentColor 35%, transparent); text-underline-offset: 0.2em; }
+.lx-link:hover { text-decoration-color: currentColor; }
+
+/* The hero stage: a page lights up in amber the moment Lynx answers from it. */
+.lx-read { transition: background-color 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease, color 0.5s ease; }
+.lx-read[data-lit="true"] {
+  border-color: color-mix(in oklch, var(--sight) 70%, transparent);
+  background: color-mix(in oklch, var(--sight) 9%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--sight) 25%, transparent), 0 0 28px color-mix(in oklch, var(--sight) 14%, transparent);
+}
+@keyframes lxIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.lx-in { animation: lxIn 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes lxDot { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+.lx-typing > span { animation: lxDot 1.1s infinite; }
+.lx-typing > span:nth-child(2) { animation-delay: 0.15s; }
+.lx-typing > span:nth-child(3) { animation-delay: 0.3s; }
+@media (prefers-reduced-motion: reduce) {
+  .lx-in, .lx-typing > span { animation: none; }
+  .lx-read { transition: none; }
+  html { scroll-behavior: auto; }
 }

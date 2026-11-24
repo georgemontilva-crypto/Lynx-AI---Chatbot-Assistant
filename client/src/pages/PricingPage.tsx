@@ -1,195 +1,81 @@
-import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  CheckCircle,
-  XCircle,
-  Cloud,
-  Code2,
-  Building2,
-  Zap,
-  ChevronDown,
-  ChevronUp,
-  ArrowRight,
-  Shield,
-  CreditCard,
-  HeadphonesIcon,
-} from "lucide-react";
-import { useState } from "react";
+import { Check, Minus } from "lucide-react";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
+import { PlanPanel } from "@/components/landing/Pricing";
 
-const plans = [
-  {
-    id: "cloud",
-    icon: Cloud,
-    name: "Lynx Cloud AI",
-    tagline: "Runs entirely in the cloud — nothing to install on your site.",
-    price: "$199",
-    period: "/mo",
-    note: "1 website · Cancel anytime",
-    popular: false,
-    iconColor: "text-blue-400",
-    iconBg: "bg-blue-500/10",
-    accentColor: "blue",
-    features: [
-      "100% cloud-hosted AI",
-      "Learns your website automatically",
-      "Automatic weekly re-scan",
-      "New content visible after next scan",
-      "24/7 AI support",
-      "API connection",
-      "Lead capture form",
-      "Analytics dashboard",
-    ],
-    cta: "Get started with Cloud",
-    ctaHref: "/register",
-  },
-  {
-    id: "embedded",
-    icon: Code2,
-    name: "Lynx Embedded AI",
-    tagline: "Installed directly on your site — learns every corner of it.",
-    price: "$399",
-    period: "/mo",
-    note: "1 website · Cancel anytime",
-    popular: true,
-    iconColor: "text-violet-400",
-    iconBg: "bg-violet-500/10",
-    accentColor: "violet",
-    features: [
-      "Everything in Lynx Cloud AI",
-      "Installs directly via single installation API",
-      "Learns from every page on your site",
-      "On-demand sync from your dashboard",
-      "Automatic re-scan every 24 hours",
-      "Spontaneous proactive support",
-      "Custom branding & colors",
-      "Priority support",
-    ],
-    cta: "Get started with Embedded",
-    ctaHref: "/register",
-  },
-  {
-    id: "whitelabel",
-    icon: Building2,
-    name: "Lynx White-Label",
-    tagline: "One chatbot, your brand. Install it on all your clients' sites.",
-    price: "$499",
-    period: "/mo",
-    note: "Up to 15 client sites · Cancel anytime",
-    popular: false,
-    iconColor: "text-yellow-400",
-    iconBg: "bg-yellow-500/10",
-    accentColor: "yellow",
-    features: [
-      "Everything in Lynx Embedded AI",
-      "Full white-label — your brand, your colors, your domain",
-      "1 chatbot configured by you, installed on up to 15 client sites",
-      "Client management dashboard with per-site analytics",
-      "Generate & download PDF reports per client",
-      "Priority support & dedicated account manager",
-      "Full API access",
-      "Client expansion packs available",
-    ],
-    cta: "Get started with White-Label",
-    ctaHref: "/register",
-  },
-];
+type Cell = boolean | string;
 
-// Feature comparison table
-const comparisonFeatures = [
-  { feature: "AI-powered chatbot", cloud: true, embedded: true, whitelabel: true },
-  { feature: "Automatic site scanning", cloud: true, embedded: true, whitelabel: true },
-  { feature: "Lead capture & CRM", cloud: true, embedded: true, whitelabel: true },
-  { feature: "Analytics dashboard", cloud: true, embedded: true, whitelabel: true },
-  { feature: "API access", cloud: true, embedded: true, whitelabel: true },
-  { feature: "Re-scan frequency", cloud: "Weekly", embedded: "Daily", whitelabel: "Daily" },
-  { feature: "Messages per month", cloud: "500", embedded: "2,000", whitelabel: "8,000" },
-  { feature: "Client sites (1 bot installed on each)", cloud: "—", embedded: "—", whitelabel: "Up to 15" },
-  { feature: "Custom branding", cloud: false, embedded: true, whitelabel: true },
-  { feature: "On-demand sync", cloud: false, embedded: true, whitelabel: true },
-  { feature: "Proactive support messages", cloud: false, embedded: true, whitelabel: true },
-  { feature: "White-label (your brand)", cloud: false, embedded: false, whitelabel: true },
-  { feature: "Client management dashboard", cloud: false, embedded: false, whitelabel: true },
-  { feature: "PDF reports per client", cloud: false, embedded: false, whitelabel: true },
-  { feature: "Dedicated account manager", cloud: false, embedded: false, whitelabel: true },
-  { feature: "Reseller expansion packs", cloud: false, embedded: false, whitelabel: true },
+// Every row is something the product does today, and where a plan differs
+// the difference is the real limit enforced by the server.
+const comparison: Array<{ feature: string; cloud: Cell; embedded: Cell; whitelabel: Cell }> = [
+  { feature: "Messages a month", cloud: "500", embedded: "2,000", whitelabel: "8,000" },
+  { feature: "Websites", cloud: "1", embedded: "1", whitelabel: "1 + 15 client sites" },
+  { feature: "Messages per client site", cloud: false, embedded: false, whitelabel: "6,000 each" },
+  { feature: "Reads your whole site", cloud: true, embedded: true, whitelabel: true },
+  { feature: "Re-reads it automatically", cloud: "Weekly", embedded: "Daily", whitelabel: "Daily" },
+  { feature: "Product cards with photo, price and link", cloud: true, embedded: true, whitelabel: true },
+  { feature: "Replies in the visitor's language", cloud: true, embedded: true, whitelabel: true },
+  { feature: "Leads captured in conversation", cloud: true, embedded: true, whitelabel: true },
+  { feature: "Your own tone and instructions", cloud: true, embedded: true, whitelabel: true },
+  { feature: "Knowledge base for facts not on your site", cloud: false, embedded: "20 entries", whitelabel: "50 entries" },
+  { feature: "Conversation history and ratings", cloud: false, embedded: true, whitelabel: true },
+  { feature: "Alerts and weekly summary", cloud: false, embedded: true, whitelabel: true },
+  { feature: "SEO report for your site", cloud: false, embedded: true, whitelabel: true },
+  { feature: "Your own “Powered by” line", cloud: false, embedded: false, whitelabel: true },
+  { feature: "Branding and instructions per client", cloud: false, embedded: false, whitelabel: true },
+  { feature: "PDF report for each client", cloud: false, embedded: false, whitelabel: true },
 ];
 
 const faqs = [
   {
-    q: "Can I change plans at any time?",
-    a: "Yes — upgrade or downgrade any time from your dashboard. Changes take effect on your next billing cycle.",
+    q: "How does the free trial work?",
+    a: "Every new account gets 14 days, 50 messages and one scan of your site, with no card. It's enough to install it and watch it answer real visitors.",
   },
   {
-    q: "Is there a free trial?",
-    a: "Every plan includes a 14-day free trial. No credit card required to start.",
+    q: "What happens when I use up my messages?",
+    a: "You get an email at 80% of your monthly allowance. At 100% the assistant stops answering until the count resets the following month, or until you move to a larger plan.",
   },
   {
-    q: "What happens if I go over the message limit?",
-    a: "You get an alert when you reach 80% of your monthly limit. At 100%, the chatbot shows visitors a friendly message until the counter resets next month.",
+    q: "Can I change plan or cancel?",
+    a: "Yes, both from the Billing page of your dashboard. If you cancel, your plan stays active until the end of the period you already paid for.",
   },
   {
-    q: "How does the White-Label model work?",
-    a: "You set up one chatbot with your brand, colors and personality, then install it on your clients’ websites (up to 15 sites). Each client gets the same bot, but with the context of their own scanned site. You are the only one with dashboard access — your clients never need an account.",
+    q: "What if a payment fails?",
+    a: "We email you and the assistant keeps working for three more days while you update your payment method. After that it is paused, and it comes back by itself as soon as the payment goes through. Nothing is deleted.",
   },
   {
-    q: "How do I share metrics with my clients?",
-    a: "From the Clients section of your dashboard you can generate and download a professional PDF report for each client, with charts for visits, chats started, leads captured and conversion rate over the period you choose.",
+    q: "How does White-Label work for my clients?",
+    a: "Each client site gets its own assistant: its own key, its own knowledge of that site, its own branding and 6,000 messages a month. You manage all of them from one dashboard, under your brand.",
   },
   {
-    q: "Can I add more sites to the White-Label plan?",
-    a: "Yes. The base plan includes 15 client sites, and you can expand with add-on packs: +15 sites ($99/mo), +30 sites ($179/mo), +60 sites ($299/mo) or +100 sites ($449/mo).",
+    q: "Can I have more than 15 client sites?",
+    a: "Yes. Extra packs start at $99 a month for 15 more sites. Request one from the Billing page and we add the slots to your account.",
   },
   {
-    q: "How does site scanning work?",
-    a: "Lynx AI automatically scans every page of your website and builds a knowledge base. The chatbot uses it to answer precise questions about your products, services and policies.",
-  },
-  {
-    q: "What languages does the chatbot work in?",
-    a: "Lynx AI supports many languages. The chatbot detects the language the visitor writes in and replies in it.",
-  },
-  {
-    q: "Can I cancel any time?",
-    a: "Yes, you can cancel any time with no penalty. Your access continues until the end of the current billing period.",
+    q: "How do I show clients what it did for them?",
+    a: "From My Clients you can download a PDF report per client with visits, conversations, leads and conversion for the period.",
   },
 ];
 
-function FAQItem({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div
-      className="border border-border/50 rounded-xl overflow-hidden cursor-pointer hover:border-primary/30 transition-colors"
-      onClick={() => setOpen(!open)}
-    >
-      <div className="flex items-center justify-between p-5 gap-4">
-        <span className="font-medium text-sm">{q}</span>
-        {open ? (
-          <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
-        )}
-      </div>
-      {open && (
-        <div className="px-5 pb-5 text-sm text-muted-foreground leading-relaxed border-t border-border/30 pt-4">
-          {a}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FeatureCell({ value }: { value: boolean | string }) {
-  if (typeof value === "boolean") {
-    return value ? (
-      <CheckCircle className="w-5 h-5 text-primary mx-auto" />
-    ) : (
-      <XCircle className="w-5 h-5 text-muted-foreground/30 mx-auto" />
+function CellValue({ value }: { value: Cell }) {
+  if (value === true) {
+    return (
+      <>
+        <Check className="w-4 h-4 text-primary" strokeWidth={2.25} aria-hidden="true" />
+        <span className="sr-only">Included</span>
+      </>
     );
   }
-  return <span className="text-sm text-center block text-muted-foreground">{value}</span>;
+  if (value === false) {
+    return (
+      <>
+        <Minus className="w-4 h-4 text-muted-foreground/40" aria-hidden="true" />
+        <span className="sr-only">Not included</span>
+      </>
+    );
+  }
+  return <span className="text-sm">{value}</span>;
 }
 
 export default function PricingPage() {
@@ -197,238 +83,97 @@ export default function PricingPage() {
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />
 
-      {/* Hero */}
-      <section className="pt-32 pb-16 text-center px-4">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7 }}
-        >
-          <Badge variant="outline" className="mb-6 text-primary border-primary/30 bg-primary/5 px-4 py-1.5">
-            Transparent pricing · No surprises
-          </Badge>
-          <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-6 max-w-3xl mx-auto">
-            Choose the plan that{" "}
-            <span className="bg-gradient-to-r from-blue-500 to-violet-500 bg-clip-text text-transparent">
-              grows your business
-            </span>
+      <section className="pt-28 sm:pt-36 pb-16 sm:pb-20">
+        <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
+          <h1 className="lx-display text-[clamp(2.5rem,5.5vw,4.6rem)] max-w-[18ch]">
+            Free to try. Pay when it&rsquo;s earning its keep.
           </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-            Every plan runs the same AI engine. What changes is how it is installed, how often it learns and how it is branded.
+          <p className="lx-prose mt-6 max-w-[38rem] text-lg sm:text-xl leading-relaxed text-muted-foreground">
+            The assistant is the same on every plan. What changes is how many messages you get, how
+            often it re-reads your site, and how much you can see and brand.
           </p>
-          <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
-            <span className="flex items-center gap-2"><Shield className="w-4 h-4 text-green-500" /> 14 days free</span>
-            <span className="flex items-center gap-2"><CreditCard className="w-4 h-4 text-blue-500" /> No credit card</span>
-            <span className="flex items-center gap-2"><HeadphonesIcon className="w-4 h-4 text-violet-500" /> Soporte 24/7</span>
+
+          <div className="mt-12 sm:mt-14">
+            <PlanPanel />
           </div>
-        </motion.div>
+          <p className="mt-6 text-sm text-muted-foreground">
+            A message is one visitor question and its answer. Prices in US dollars, billed monthly through PayPal.
+          </p>
+        </div>
       </section>
 
-      {/* Plans grid */}
-      <section className="pb-20 px-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {plans.map((plan, i) => (
-              <motion.div
-                key={plan.id}
-                initial={{ opacity: 0, y: 40 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.15, duration: 0.6 }}
-                className={`relative rounded-2xl p-7 flex flex-col transition-all duration-300 ${
-                  plan.popular
-                    ? "border-2 border-primary/50 bg-primary/5 shadow-2xl shadow-primary/10"
-                    : "border border-border/50 bg-card hover:border-primary/20"
-                }`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <div className="lynx-gradient text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5">
-                      <Zap className="w-3 h-3" />
-                      MOST POPULAR
-                    </div>
-                  </div>
-                )}
+      <section className="py-20 sm:py-28 border-t border-border">
+        <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
+          <h2 className="lx-heading text-[clamp(2rem,4.4vw,3.25rem)]">Plan by plan.</h2>
 
-                <div className={`w-12 h-12 rounded-xl ${plan.iconBg} flex items-center justify-center mb-5`}>
-                  <plan.icon className={`w-6 h-6 ${plan.iconColor}`} />
-                </div>
-
-                <h2 className="text-xl font-bold mb-1">{plan.name}</h2>
-                <p className="text-sm text-muted-foreground mb-6 leading-relaxed">{plan.tagline}</p>
-
-                <div className="mb-1 flex items-end gap-1">
-                  <span className="text-5xl font-bold">{plan.price}</span>
-                  <span className="text-muted-foreground text-sm mb-2">{plan.period}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mb-7">{plan.note}</p>
-
-                <div className="space-y-3 mb-8 flex-1">
-                  {plan.features.map((feature) => (
-                    <div key={feature} className="flex items-start gap-2.5">
-                      <CheckCircle
-                        className={`w-4 h-4 mt-0.5 shrink-0 ${
-                          plan.popular ? "text-primary" : "text-muted-foreground"
-                        }`}
-                      />
-                      <span className="text-sm text-muted-foreground">{feature}</span>
-                    </div>
+          {/* Horizontal scroll on small screens so four columns never squash */}
+          <div className="mt-10 overflow-x-auto -mx-5 px-5 sm:mx-0 sm:px-0">
+            <table className="w-full min-w-[640px] border-collapse text-left">
+              <thead>
+                <tr className="border-b border-border">
+                  <th scope="col" className="py-4 pr-4 text-sm font-medium text-muted-foreground w-[40%]">
+                    <span className="sr-only">Feature</span>
+                  </th>
+                  {[
+                    ["Cloud", "$199"],
+                    ["Embedded", "$399"],
+                    ["White-Label", "$499"],
+                  ].map(([name, price]) => (
+                    <th key={name} scope="col" className="py-4 px-4 align-bottom">
+                      <div className="lx-heading text-lg">{name}</div>
+                      <div className="text-sm font-normal text-muted-foreground">{price} a month</div>
+                    </th>
                   ))}
-                </div>
+                </tr>
+              </thead>
+              <tbody>
+                {comparison.map((row) => (
+                  <tr key={row.feature} className="border-b border-border">
+                    <th scope="row" className="py-4 pr-4 text-[0.9375rem] font-normal">
+                      {row.feature}
+                    </th>
+                    <td className="py-4 px-4"><CellValue value={row.cloud} /></td>
+                    <td className="py-4 px-4"><CellValue value={row.embedded} /></td>
+                    <td className="py-4 px-4"><CellValue value={row.whitelabel} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
 
-                <Link href={plan.ctaHref} className="block w-full">
-                  <Button
-                    className={`w-full font-semibold group ${
-                      plan.popular
-                        ? "lynx-gradient text-white border-0 shadow-lg hover:opacity-90"
-                        : "bg-secondary hover:bg-secondary/80 text-foreground"
-                    }`}
-                  >
-                    {plan.cta}
-                    <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                  </Button>
+      <section className="py-20 sm:py-28 border-t border-border">
+        <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
+          <div className="grid lg:grid-cols-[1fr_2fr] gap-x-16 gap-y-8">
+            <div>
+              <h2 className="lx-heading text-[clamp(2rem,4.4vw,3.25rem)]">About paying.</h2>
+              <p className="mt-5 text-[0.9375rem] leading-relaxed text-muted-foreground max-w-[22rem]">
+                Something else?{" "}
+                <Link href="/contact" className="lx-link text-foreground">
+                  Ask us directly
                 </Link>
-              </motion.div>
-            ))}
+                .
+              </p>
+            </div>
+            <div className="border-t border-border">
+              {faqs.map((f) => (
+                <details key={f.q} className="group border-b border-border">
+                  <summary className="flex items-center justify-between gap-6 py-5 cursor-pointer list-none [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm">
+                    <span className="lx-heading text-lg">{f.q}</span>
+                    <span
+                      aria-hidden="true"
+                      className="relative w-4 h-4 shrink-0 text-muted-foreground before:absolute before:inset-x-0 before:top-1/2 before:h-px before:bg-current after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-current after:transition-transform group-open:after:scale-y-0"
+                    />
+                  </summary>
+                  <p className="lx-prose pb-6 pr-10 text-[0.9375rem] leading-relaxed text-muted-foreground max-w-[42rem]">
+                    {f.a}
+                  </p>
+                </details>
+              ))}
+            </div>
           </div>
-
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-            className="text-center text-sm text-muted-foreground mt-8"
-          >
-            Every plan includes a 14-day free trial. No credit card required.
-          </motion.p>
         </div>
-      </section>
-
-      {/* Comparison table */}
-      <section className="py-20 px-4 bg-muted/20">
-        <div className="max-w-5xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-12"
-          >
-            <h2 className="text-3xl font-bold mb-4">Full plan comparison</h2>
-            <p className="text-muted-foreground">Everything each plan includes — no fine print.</p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="rounded-2xl border border-border/50 overflow-hidden bg-card"
-          >
-            {/* Horizontal scroll on small screens so the 4-col table never squashes */}
-            <div className="overflow-x-auto">
-            <div className="min-w-[560px]">
-            {/* Table header */}
-            <div className="grid grid-cols-4 bg-muted/50 border-b border-border/50">
-              <div className="p-4 font-semibold text-sm">Feature</div>
-              <div className="p-4 text-center">
-                <div className="font-bold text-sm">Cloud</div>
-                <div className="text-xs text-muted-foreground">$199/mo</div>
-              </div>
-              <div className="p-4 text-center bg-primary/5 border-x border-primary/20">
-                <div className="font-bold text-sm text-primary">Embedded</div>
-                <div className="text-xs text-primary/70">$399/mo</div>
-              </div>
-              <div className="p-4 text-center">
-                <div className="font-bold text-sm">White-Label</div>
-                <div className="text-xs text-muted-foreground">$499/mo</div>
-              </div>
-            </div>
-
-            {/* Table rows */}
-            {comparisonFeatures.map((row, i) => (
-              <div
-                key={row.feature}
-                className={`grid grid-cols-4 border-b border-border/30 last:border-0 ${
-                  i % 2 === 0 ? "bg-background" : "bg-muted/10"
-                }`}
-              >
-                <div className="p-4 text-sm font-medium">{row.feature}</div>
-                <div className="p-4 flex items-center justify-center">
-                  <FeatureCell value={row.cloud} />
-                </div>
-                <div className="p-4 flex items-center justify-center bg-primary/5 border-x border-primary/10">
-                  <FeatureCell value={row.embedded} />
-                </div>
-                <div className="p-4 flex items-center justify-center">
-                  <FeatureCell value={row.whitelabel} />
-                </div>
-              </div>
-            ))}
-            </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="py-20 px-4">
-        <div className="max-w-3xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-12"
-          >
-            <h2 className="text-3xl font-bold mb-4">Frequently asked questions</h2>
-            <p className="text-muted-foreground">Everything you need to know before you start.</p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="space-y-3"
-          >
-            {faqs.map((faq) => (
-              <FAQItem key={faq.q} q={faq.q} a={faq.a} />
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* CTA final */}
-      <section className="py-20 px-4">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.7 }}
-          className="max-w-3xl mx-auto text-center"
-        >
-          <div className="rounded-3xl border border-primary/20 bg-primary/5 p-12">
-            <h2 className="text-3xl font-bold mb-4">
-              Ready to transform your website?
-            </h2>
-            <p className="text-muted-foreground mb-8 text-lg">
-              Join hundreds of businesses already using Lynx AI to capture more leads and support their visitors 24/7.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/register">
-                <Button size="lg" className="lynx-gradient text-white border-0 shadow-lg hover:opacity-90 px-8 font-semibold">
-                  Start free — 14 days
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
-              <Link href="/#contact">
-                <Button size="lg" variant="outline" className="px-8 font-semibold">
-                  Talk to sales
-                </Button>
-              </Link>
-            </div>
-            <p className="text-xs text-muted-foreground mt-6">No credit card · Cancel any time</p>
-          </div>
-        </motion.div>
       </section>
 
       <Footer />

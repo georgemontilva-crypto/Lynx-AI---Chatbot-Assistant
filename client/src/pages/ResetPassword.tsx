@@ -94,14 +94,14 @@ export default function ResetPassword() {
               <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto mb-4">
                 <Check className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
               </div>
-              <h1 className="text-2xl font-bold tracking-tight mb-2">Password updated!</h1>
+              <h1 className="lx-heading text-3xl mb-2">Password updated!</h1>
               <p className="text-muted-foreground text-sm leading-relaxed">
                 Your password has been changed successfully. Redirecting you to sign in...
               </p>
             </div>
           ) : (
             <>
-              <h1 className="text-2xl font-bold tracking-tight mb-1">Choose a new password</h1>
+              <h1 className="lx-heading text-3xl mb-1.5">Choose a new password</h1>
               <p className="text-muted-foreground text-sm">
                 Enter a strong password for your Lynx AI account.
               </p>
@@ -145,7 +145,7 @@ export default function ResetPassword() {
 
             <Button
               type="submit"
-              className="w-full lynx-gradient text-white border-0 h-11 font-semibold"
+              className="w-full bg-action hover:bg-action/90 text-white border-0 h-11 font-semibold"
               disabled={loading || !token}
             >
               {loading ? (

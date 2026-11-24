@@ -16,28 +16,32 @@ interface ThemeProviderProps {
   switchable?: boolean;
 }
 
-function getStoredOrSystemTheme(defaultTheme: Theme): Theme {
-  // Only called client-side (inside useEffect), so window/localStorage are safe
-  const stored = localStorage.getItem("lynx-theme") as Theme | null;
-  if (stored === "dark" || stored === "light") return stored;
-  if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) return "dark";
+// Only an EXPLICIT choice is remembered. The old key ("lynx-theme") was written
+// on every page load with whatever the default happened to be, so it recorded
+// defaults as if they were decisions — and would have pinned every returning
+// visitor to the previous default forever. A new key starts clean.
+const STORAGE_KEY = "lynx-theme-choice";
+
+function getStoredTheme(defaultTheme: Theme): Theme {
+  // Only called client-side (inside useEffect), so localStorage is safe
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
+    if (stored === "dark" || stored === "light") return stored;
+  } catch { /* storage blocked — fall through */ }
   return defaultTheme;
 }
 
 export function ThemeProvider({
   children,
-  defaultTheme = "light",
+  defaultTheme = "dark",
   switchable = false,
 }: ThemeProviderProps) {
   // Always start with defaultTheme on both server and client to avoid
-  // hydration mismatch. The real preference (localStorage / system) is
-  // applied in the useEffect below, which only runs on the client.
+  // hydration mismatch. A stored choice is applied in the effect below.
   const [theme, setTheme] = useState<Theme>(defaultTheme);
 
   useEffect(() => {
-    // Apply stored/system preference after hydration
-    const resolved = switchable ? getStoredOrSystemTheme(defaultTheme) : defaultTheme;
-    setTheme(resolved);
+    setTheme(switchable ? getStoredTheme(defaultTheme) : defaultTheme);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally run only once on mount
 
@@ -48,15 +52,15 @@ export function ThemeProvider({
     } else {
       root.classList.remove("dark");
     }
-
-    if (switchable) {
-      localStorage.setItem("lynx-theme", theme);
-    }
-  }, [theme, switchable]);
+  }, [theme]);
 
   const toggleTheme = switchable
     ? () => {
-        setTheme(prev => (prev === "light" ? "dark" : "light"));
+        setTheme(prev => {
+          const next = prev === "light" ? "dark" : "light";
+          try { localStorage.setItem(STORAGE_KEY, next); } catch { /* storage blocked */ }
+          return next;
+        });
       }
     : undefined;
 

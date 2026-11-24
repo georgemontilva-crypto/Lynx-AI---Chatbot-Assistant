@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 
@@ -54,11 +54,18 @@ export function LynxLogo({
   // the name as text instead of the browser's broken-image icon — a broken
   // logo in the header of every page reads as a broken product.
   const [failed, setFailed] = useState(false);
-  useEffect(() => { setFailed(false); }, [src]);
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    setFailed(false);
+    // On a server-rendered page the image can finish failing BEFORE React
+    // attaches onError, and the event never reaches us — check the element.
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth === 0) setFailed(true);
+  }, [src]);
   if (failed) {
     return (
       <span
-        className={`inline-flex items-center font-bold tracking-tight text-lg leading-none ${
+        className={`inline-flex items-center lx-heading text-2xl ${
           wantDark ? "text-white" : "text-foreground"
         }`}
       >
@@ -66,7 +73,7 @@ export function LynxLogo({
       </span>
     );
   }
-  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
+  return <img ref={imgRef} src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
 }
 
 export default LynxLogo;

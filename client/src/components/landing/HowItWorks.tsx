@@ -1,85 +1,79 @@
-import { motion } from "framer-motion";
-import { useInView } from "framer-motion";
-import { useRef } from "react";
-import { Globe, Brain, MessageSquare } from "lucide-react";
-
+/**
+ * Three steps, shown with the real artifact of each one (the address field,
+ * the actual snippet, an answer) instead of icons. The numbers are there
+ * because this genuinely is a sequence.
+ */
 const steps = [
   {
-    number: "01",
-    icon: Globe,
-    title: "Lynx scans your website",
-    description:
-      "It reads your products, pages, policies and documents — exactly as a visitor would see them.",
-    color: "from-blue-500 to-cyan-500",
+    title: "Give Lynx your address",
+    body: "It reads the whole site the way a careful new employee would: every product, every policy page, the FAQ. It takes about a minute.",
   },
   {
-    number: "02",
-    icon: Brain,
-    title: "It learns your environment",
-    description:
-      "Every page becomes something Lynx truly understands — not a script, not a guess.",
-    color: "from-violet-500 to-purple-500",
+    title: "Paste one line into your site",
+    body: "The same line works on Shopify, WordPress, Webflow or a site you built yourself. It loads after your page, so it never slows it down.",
   },
   {
-    number: "03",
-    icon: MessageSquare,
-    title: "Visitors get real answers",
-    description:
-      "On the next scheduled scan, any new content becomes something Lynx can speak to.",
-    color: "from-cyan-500 to-teal-500",
+    title: "It starts answering",
+    body: "From then on it re-reads your site on its own, so a new product or a changed price is picked up without you touching anything.",
   },
 ];
 
-export default function HowItWorks() {
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: "-100px" });
-
+function Artifact({ step }: { step: number }) {
+  if (step === 0) {
+    return (
+      <div className="space-y-2.5">
+        <div className="flex items-center h-10 rounded-md border border-border bg-background px-3 font-mono text-xs text-foreground">
+          https://yourstore.com
+        </div>
+        <div className="text-xs text-sight">18 pages read, 12 products learned</div>
+      </div>
+    );
+  }
+  if (step === 1) {
+    return (
+      <pre className="rounded-md border border-border bg-background p-3 font-mono text-[0.6875rem] leading-relaxed text-muted-foreground overflow-x-auto">
+        <code>
+          {'<script src="https://www.lynxaiassistant.com/api/widget.js"\n        data-api-key="lx_…" defer></script>'}
+        </code>
+      </pre>
+    );
+  }
   return (
-    <section id="how-it-works" className="py-24 section-bg-alt" ref={ref}>
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.7, ease: "easeOut" }}
-          className="text-center mb-16"
-        >
-          <p className="text-sm font-medium text-primary uppercase tracking-widest mb-4">
-            How it works
-          </p>
-          <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-6">
-            From your website to a working assistant
-          </h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            No manual training, no rewriting content — Lynx builds its own knowledge from what's already on your site.
-          </p>
-        </motion.div>
+    <div className="space-y-2">
+      <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-action text-white px-3 py-2 text-xs">
+        Is the 28L pack carry-on size?
+      </div>
+      <div className="w-fit max-w-[90%] rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-xs leading-relaxed">
+        It is. At 50 × 30 × 20 cm it fits most airline cabin limits.
+      </div>
+    </div>
+  );
+}
 
-        {/* Steps */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {steps.map((step, i) => (
-            <motion.div
-              key={step.number}
-              initial={{ opacity: 0, y: 40 }}
-              animate={isInView ? { opacity: 1, y: 0 } : {}}
-              transition={{ delay: i * 0.15, duration: 0.6, ease: "easeOut" }}
-              className="glass-card rounded-2xl p-6 hover:border-primary/30 transition-all duration-300 group"
-            >
-              <div
-                className={`w-10 h-10 rounded-xl bg-gradient-to-br ${step.color} flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-300`}
-              >
-                <span className="text-white text-sm font-bold">{step.number}</span>
+export default function HowItWorks() {
+  return (
+    <section id="how-it-works" className="py-20 sm:py-28 border-t border-border scroll-mt-16">
+      <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
+        <h2 className="lx-heading text-[clamp(2rem,4.4vw,3.25rem)] max-w-[22ch]">
+          Three steps, and one of them is copy and paste.
+        </h2>
+
+        <ol className="mt-12 sm:mt-16 grid md:grid-cols-3 gap-x-8 gap-y-12">
+          {steps.map((s, i) => (
+            <li key={s.title} className="flex flex-col">
+              <div className="flex items-baseline gap-4 border-t border-border pt-5">
+                <span className="lx-display text-5xl text-muted-foreground/50" aria-hidden="true">
+                  {i + 1}
+                </span>
+                <h3 className="lx-heading text-xl">{s.title}</h3>
               </div>
-              <step.icon className="w-5 h-5 text-muted-foreground mb-3" />
-              <h3 className="text-lg font-semibold mb-3">{step.title}</h3>
-              <p className="text-muted-foreground text-sm leading-relaxed">{step.description}</p>
-            </motion.div>
+              <p className="lx-prose mt-3 text-[0.9375rem] leading-relaxed text-muted-foreground">{s.body}</p>
+              <div className="mt-5">
+                <Artifact step={i} />
+              </div>
+            </li>
           ))}
-        </div>
-
-        <div className="hidden md:flex items-center justify-center mt-8 gap-0">
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-        </div>
+        </ol>
       </div>
     </section>
   );

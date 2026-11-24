@@ -86,7 +86,7 @@ function DynamicThemeColor() {
   const { theme } = useTheme();
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const color = theme === "dark" ? "#0d0f14" : "#ffffff";
+    const color = theme === "dark" ? "#0b1220" : "#ffffff";
     let meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
     if (!meta) {
       meta = document.createElement("meta");
@@ -125,7 +125,7 @@ function DynamicFavicon() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="light" switchable>
+      <ThemeProvider defaultTheme="dark" switchable>
         <TooltipProvider>
           <Toaster />
           <DynamicThemeColor />

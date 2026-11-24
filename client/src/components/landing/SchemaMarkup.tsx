@@ -2,6 +2,8 @@
  * SchemaMarkup — JSON-LD structured data for Google rich results
  * Includes: Organization, SoftwareApplication, FAQPage, BreadcrumbList
  */
+import { faqs } from "./Faq";
+
 export default function SchemaMarkup() {
   const organizationSchema = {
     "@context": "https://schema.org",
@@ -79,51 +81,16 @@ export default function SchemaMarkup() {
     ]
   };
 
+  // Built from the same list the page shows: FAQ markup has to match the
+  // visible questions, and two hand-kept copies had already drifted apart.
   const faqSchema = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": "Do I need technical skills to install Lynx AI?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "No. On the Cloud plan you just paste one line of code into your site. On the Embedded plan, a simple install API handles everything automatically."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "What happens when my site content changes?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Lynx re-scans your site automatically — weekly on Cloud, every 24 hours on Embedded and White-Label. You can also trigger a manual re-scan from the dashboard."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Does the chatbot mix my content with other customers’ content?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Never. Each installation has its own fully isolated knowledge base. Your content stays yours alone."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "What languages does Lynx AI support?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Lynx replies in the language the visitor writes in, with no extra setup. It supports over 50 languages."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Can I customize how the chatbot looks?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Yes. Name, colors, avatar, welcome message and behaviour are all editable from the dashboard. On the White-Label plan, branding is fully yours."
-        }
-      }
-    ]
+    "mainEntity": faqs.map((f) => ({
+      "@type": "Question",
+      "name": f.q,
+      "acceptedAnswer": { "@type": "Answer", "text": f.a },
+    })),
   };
 
   const breadcrumbSchema = {
@@ -133,7 +100,7 @@ export default function SchemaMarkup() {
       {
         "@type": "ListItem",
         "position": 1,
-        "name": "Inicio",
+        "name": "Home",
         "item": "https://lynxaiassistant.com/"
       }
     ]

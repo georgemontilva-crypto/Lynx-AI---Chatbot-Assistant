@@ -4,31 +4,9 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, Loader2, Zap, MessageSquare, BarChart3, Globe } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { LynxLogo } from "@/components/LynxLogo";
-
-const LYNX_FEATURES = [
-  {
-    icon: MessageSquare,
-    title: "Conversations that feel human",
-    desc: "Your AI consultant greets, qualifies, and recommends — with real personality, not canned replies.",
-  },
-  {
-    icon: BarChart3,
-    title: "Know your traffic, not just chats",
-    desc: "See real visits, most-viewed pages, and captured leads — all in one live dashboard.",
-  },
-  {
-    icon: Globe,
-    title: "Works on any website",
-    desc: "One lightweight snippet. Loads on Shopify, WordPress, or custom sites without touching your code.",
-  },
-  {
-    icon: Zap,
-    title: "Trained on your business",
-    desc: "Feed it your catalog and voice — it recommends the right product with the exact link, every time.",
-  },
-];
+import AuthAside from "@/components/AuthAside";
 
 export default function Login() {
   const [, navigate] = useLocation();
@@ -42,21 +20,6 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [featureIdx, setFeatureIdx] = useState(0);
-  const { data: siteSettings } = trpc.siteSettings.get.useQuery(undefined, {
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-  const authGradient = siteSettings?.authGradient || "";
-
-  // Rotate through Lynx features with a smooth fade
-  useEffect(() => {
-    const t = setInterval(() => {
-      setFeatureIdx((i) => (i + 1) % LYNX_FEATURES.length);
-    }, 4000);
-    return () => clearInterval(t);
-  }, []);
-
   useEffect(() => {
     if (!authLoading && user) {
       navigate("/dashboard");
@@ -132,95 +95,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Left panel — branding */}
-      <div
-        className="hidden lg:flex lg:w-1/2 lynx-auth-gradient flex-col justify-between p-12 relative overflow-hidden"
-        style={authGradient ? { background: authGradient } : undefined}
-      >
-        {/* Grid pattern (like the home page) */}
-        <div
-          className="absolute inset-0 opacity-[0.12]"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
-            backgroundSize: "44px 44px",
-          }}
-        />
-        {/* Soft glow accents */}
-        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute -bottom-32 -left-16 w-80 h-80 rounded-full bg-white/5 blur-3xl" />
-
-        <div className="relative z-10">
-          <Link href="/">
-            <LynxLogo onDark className="h-9 w-auto object-contain" />
-          </Link>
-        </div>
-
-        {/* Rotating feature with smooth fade */}
-        <div className="relative z-10">
-          <div className="min-h-[180px]">
-            {LYNX_FEATURES.map((f, i) => {
-              const Icon = f.icon;
-              return (
-                <div
-                  key={i}
-                  className="transition-all duration-700 ease-out"
-                  style={{
-                    opacity: i === featureIdx ? 1 : 0,
-                    transform: i === featureIdx ? "translateY(0)" : "translateY(12px)",
-                    position: i === featureIdx ? "relative" : "absolute",
-                    pointerEvents: i === featureIdx ? "auto" : "none",
-                  }}
-                >
-                  <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center mb-5">
-                    <Icon className="w-6 h-6 text-white" />
-                  </div>
-                  <h2 className="text-white text-2xl font-bold mb-3 leading-tight">{f.title}</h2>
-                  <p className="text-white/80 text-base leading-relaxed max-w-md">{f.desc}</p>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Mini animated bar chart accent */}
-          <div className="flex items-end gap-1.5 h-12 mt-8">
-            {[40, 65, 45, 80, 55, 90, 70, 100, 60, 85].map((h, i) => (
-              <div
-                key={i}
-                className="w-2.5 rounded-t bg-white/30"
-                style={{
-                  height: `${h}%`,
-                  animation: `lynxBarPulse 2.4s ease-in-out ${i * 0.12}s infinite`,
-                }}
-              />
-            ))}
-          </div>
-
-          {/* Progress dots */}
-          <div className="flex gap-2 mt-6">
-            {LYNX_FEATURES.map((_, i) => (
-              <div
-                key={i}
-                className="h-1.5 rounded-full transition-all duration-500"
-                style={{
-                  width: i === featureIdx ? "28px" : "8px",
-                  background: i === featureIdx ? "white" : "rgba(255,255,255,0.35)",
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="relative z-10 flex gap-6 text-white/50 text-xs">
-          <span>© 2026 Lynx AI</span>
-          <Link href="/legal/privacy" className="hover:text-white/80 transition-colors">
-            Privacy
-          </Link>
-          <Link href="/legal/terms" className="hover:text-white/80 transition-colors">
-            Terms
-          </Link>
-        </div>
-      </div>
+      <AuthAside statement="Welcome back. Your visitors kept asking while you were away." />
 
       {/* Right panel — form */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
@@ -233,7 +108,7 @@ export default function Login() {
 
         <div className="w-full max-w-sm">
           <div className="mb-8">
-            <h1 className="text-2xl font-bold tracking-tight mb-1">Welcome back</h1>
+            <h1 className="lx-heading text-3xl mb-1.5">Welcome back</h1>
             <p className="text-muted-foreground text-sm">Sign in to your Lynx AI account</p>
           </div>
 
@@ -293,7 +168,7 @@ export default function Login() {
 
             <Button
               type="submit"
-              className="w-full lynx-gradient text-white border-0 h-11 font-semibold"
+              className="w-full bg-action hover:bg-action/90 text-white border-0 h-11 font-semibold"
               disabled={loading}
             >
               {loading ? (
