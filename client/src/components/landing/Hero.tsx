@@ -69,13 +69,13 @@ const CAPS: Capability[] = [
     x: 32, y: 440,
     body: (
       <div className="lx-step flex items-center gap-2.5 rounded-lg border border-border bg-background/50 p-2" style={{ "--s": 0 } as CSSProperties}>
-        <span className="w-9 h-9 rounded-full bg-primary/15 text-primary hidden md:flex items-center justify-center shrink-0 font-semibold">M</span>
-        <span className="min-w-0">
-          <span className="block font-semibold text-foreground truncate">Maria G.</span>
-          <span className="block text-muted-foreground truncate">maria@example.com</span>
+        <span className="relative w-9 h-9 rounded-full bg-primary/15 text-primary hidden md:flex items-center justify-center shrink-0 font-semibold">
+          M
+          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-card" aria-hidden="true" />
         </span>
-        <span className="lx-step ml-auto rounded-full bg-emerald-400/15 text-emerald-500 px-1.5 py-0.5 text-[0.625rem] font-semibold" style={{ "--s": 1 } as CSSProperties}>
-          New
+        <span className="min-w-0">
+          <span className="block font-semibold text-foreground truncate">Maria G. <span className="font-normal text-emerald-500">· new</span></span>
+          <span className="block text-muted-foreground truncate">maria@example.com</span>
         </span>
       </div>
     ),
@@ -191,7 +191,34 @@ function useCycle() {
   return { active, tick, hold, release };
 }
 
+/**
+ * The stage is drawn at a fixed 712 × 600 and scaled to the room it has, so
+ * the cards, wires and core keep their exact relationship at every width.
+ * Below 768px the stage is not used at all (the cards become a grid).
+ */
+function useStageFit() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      if (window.innerWidth < 768) { el.style.removeProperty("--k"); return; }
+      const byWidth = el.clientWidth / STAGE.w;
+      // Beside the headline, keep the whole stage on the first screen.
+      const byHeight = window.innerWidth >= 1280 ? (window.innerHeight - 170) / STAGE.h : 1;
+      el.style.setProperty("--k", Math.max(0.7, Math.min(1, byWidth, byHeight)).toFixed(4));
+    };
+    fit();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fit) : null;
+    ro?.observe(el);
+    window.addEventListener("resize", fit);
+    return () => { ro?.disconnect(); window.removeEventListener("resize", fit); };
+  }, []);
+  return ref;
+}
+
 export default function Hero() {
+  const fitRef = useStageFit();
   const { active, tick, hold, release } = useCycle();
   const cap = CAPS[active];
   const typed = useTyped(cap.phrase, 24);
@@ -216,7 +243,7 @@ export default function Hero() {
   const signal: [number, number] = [anchor(cap).x - CENTER.x, anchor(cap).y - CENTER.y];
 
   return (
-    <section className="lx-hero relative isolate overflow-hidden pt-28 sm:pt-32 pb-14 sm:pb-20">
+    <section className="lx-hero relative isolate overflow-hidden pt-24 sm:pt-32 pb-14 sm:pb-20">
       {/* Backdrop: drifting light and a faint grid. */}
       <div className="absolute inset-0 -z-10" aria-hidden="true">
         <div className="lx-aurora lx-aurora-a w-[42rem] h-[42rem] -top-64 -left-40" />
@@ -226,14 +253,15 @@ export default function Hero() {
       </div>
 
       <div className="mx-auto max-w-[1300px] px-5 sm:px-8">
-        <div className="grid grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_712px] gap-x-4 gap-y-10 items-center">
-          <div>
+        <div className="grid grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(30rem,1fr)_minmax(0,712px)] gap-x-4 gap-y-6 md:gap-y-10 items-center">
+          {/* Stacked on tablets, the copy is centred over the stage. */}
+          <div className="md:max-xl:text-center">
             <div className="lx-rise inline-flex items-center gap-2.5 rounded-full border border-border bg-background/60 backdrop-blur px-3.5 py-1.5 text-sm text-muted-foreground" style={{ "--i": -4 } as CSSProperties}>
               <span className="lx-live" aria-hidden="true" />
               One AI, trained on your own site
             </div>
 
-            <h1 className="lx-display mt-6 text-[clamp(2.125rem,9.6vw,4rem)] xl:text-[3.25rem] 2xl:text-[3.5rem]">
+            <h1 className="lx-display mt-6 text-[clamp(1.875rem,9.4vw,4rem)] xl:text-[3.25rem] 2xl:text-[3.5rem]">
               <span className="block">
                 {["An", "AI", "that", "truly"].map((w, i) => (
                   <span key={w}>
@@ -248,17 +276,17 @@ export default function Hero() {
             </h1>
 
             {/* Names the job the core is doing right now. */}
-            <p className="lx-rise mt-5 font-[family-name:var(--font-display)] font-bold tracking-tight text-xl sm:text-2xl min-h-[2em] sm:min-h-0" style={{ "--i": 1 } as CSSProperties}>
+            <p className="lx-rise mt-4 sm:mt-5 font-[family-name:var(--font-display)] font-bold tracking-tight text-lg sm:text-2xl" style={{ "--i": 1 } as CSSProperties}>
               <span className="text-muted-foreground">So it can </span>
               <span className="lx-caret text-foreground">{typed}</span>
             </p>
 
-            <p className="lx-rise lx-prose mt-5 max-w-[34rem] text-lg leading-relaxed text-muted-foreground" style={{ "--i": 2 } as CSSProperties}>
+            <p className="lx-rise lx-prose mt-5 max-w-[34rem] md:max-xl:mx-auto text-base sm:text-lg leading-relaxed text-muted-foreground" style={{ "--i": 2 } as CSSProperties}>
               Lynx reads every page of your site, then puts what it learned to work around the
               clock: answering visitors, recommending products, collecting leads and checking your
               SEO. One line of code to install, nothing to script.
             </p>
-            <div className="lx-rise mt-8 flex flex-wrap items-center gap-3" style={{ "--i": 3 } as CSSProperties}>
+            <div className="lx-rise mt-8 flex flex-wrap items-center md:max-xl:justify-center gap-3" style={{ "--i": 3 } as CSSProperties}>
               <Link href="/register" className="lx-btn">
                 Start free trial
               </Link>
@@ -278,7 +306,8 @@ export default function Hero() {
           </div>
 
           {/* The stage: the core, and the jobs it runs. */}
-          <div className="lx-orbit lx-rise" style={{ "--i": 3 } as CSSProperties}>
+          <div ref={fitRef} className="lx-orbit-fit lx-rise" style={{ "--i": 3 } as CSSProperties}>
+          <div className="lx-orbit">
             <div className="lx-orbit-core">
               <LynxCore signal={signal} signalKey={tick} className="w-full h-full" />
             </div>
@@ -327,6 +356,7 @@ export default function Hero() {
               })}
             </ul>
             <p className="lx-orbit-note">Shown with an example store.</p>
+          </div>
           </div>
         </div>
       </div>

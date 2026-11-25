@@ -48,8 +48,8 @@ export default function WhiteLabel() {
           </p>
         </Reveal>
 
-        <div className="mt-12 sm:mt-16 grid lg:grid-cols-[1fr_1.05fr] gap-x-16 gap-y-12 items-start">
-          <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-9">
+        <div className="mt-12 sm:mt-16 grid grid-cols-1 lg:grid-cols-[1fr_1.05fr] gap-x-16 gap-y-12 items-start">
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-9">
             {points.map((p, i) => (
               <Reveal order={i} key={p.title}>
                 <dt className="font-semibold text-base">{p.title}</dt>

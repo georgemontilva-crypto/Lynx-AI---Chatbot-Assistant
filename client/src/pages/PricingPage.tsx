@@ -107,7 +107,7 @@ export default function PricingPage() {
           <h2 className="lx-heading text-[clamp(1.875rem,3.6vw,2.75rem)]">Plan by plan.</h2>
 
           {/* Horizontal scroll on small screens so four columns never squash */}
-          <div className="mt-10 overflow-x-auto -mx-5 px-5 sm:mx-0 sm:px-0">
+          <div className="relative mt-10 overflow-x-auto -mx-5 px-5 sm:mx-0 sm:px-0">
             <table className="w-full min-w-[640px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-border">
@@ -145,7 +145,7 @@ export default function PricingPage() {
 
       <section className="py-20 sm:py-28 border-t border-border">
         <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
-          <div className="grid lg:grid-cols-[1fr_2fr] gap-x-16 gap-y-8">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-x-16 gap-y-8">
             <div>
               <h2 className="lx-heading text-[clamp(1.875rem,3.6vw,2.75rem)]">About paying.</h2>
               <p className="mt-5 text-[0.9375rem] leading-relaxed text-muted-foreground max-w-[22rem]">

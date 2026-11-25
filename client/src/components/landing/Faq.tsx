@@ -35,7 +35,7 @@ export default function Faq() {
   return (
     <section className="py-20 sm:py-28 border-t border-border">
       <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
-        <div className="grid lg:grid-cols-[1fr_2fr] gap-x-16 gap-y-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-x-16 gap-y-8">
           <Reveal>
             <h2 className="lx-heading text-[clamp(1.875rem,3.6vw,2.75rem)]">Before you try it.</h2>
           </Reveal>

@@ -60,7 +60,7 @@ export default function Inbox() {
   return (
     <section className="py-20 sm:py-28 border-t border-border">
       <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
-        <div className="grid lg:grid-cols-2 gap-x-16 gap-y-12 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-16 gap-y-12 items-start">
           <div>
             <Reveal>
               <h2 className="lx-heading text-[clamp(1.875rem,3.6vw,2.75rem)] max-w-[16ch]">

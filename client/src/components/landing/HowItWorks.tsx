@@ -113,7 +113,7 @@ export default function HowItWorks() {
           />
         </div>
 
-        <ol className="mt-12 md:mt-8 grid md:grid-cols-3 gap-5">
+        <ol className="mt-12 md:mt-8 grid grid-cols-1 md:grid-cols-3 gap-5">
           {steps.map((s, i) => (
             <Step key={s.title} index={i} title={s.title} body={s.body} />
           ))}

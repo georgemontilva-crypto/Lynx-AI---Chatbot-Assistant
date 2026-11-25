@@ -85,7 +85,7 @@ function PlanColumn({ plan }: { plan: (typeof plans)[number] }) {
 export function PlanPanel() {
   return (
     <Reveal>
-      <div className="rounded-xl border border-border grid md:grid-cols-3 md:divide-x divide-y md:divide-y-0 divide-border overflow-hidden">
+      <div className="rounded-xl border border-border grid grid-cols-1 md:grid-cols-3 md:divide-x divide-y md:divide-y-0 divide-border overflow-hidden">
         {plans.map((p) => (
           <PlanColumn key={p.id} plan={p} />
         ))}

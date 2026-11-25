@@ -525,6 +525,7 @@ html:not(.js) .lx-fill { transform: none; }
 .dark .lx-hero { background: linear-gradient(to bottom, oklch(0.115 0.028 253), var(--background) 70%); }
 
 /* ─── Hero stage: the core and the jobs it runs ───────────────────────────── */
+.lx-orbit-fit { min-width: 0; }
 .lx-orbit { position: relative; min-width: 0; }
 .lx-orbit-core { position: relative; width: 21rem; height: 21rem; max-width: 100%; margin: -1.5rem auto -0.5rem; }
 .lx-orbit-lines { display: none; }
@@ -569,7 +570,13 @@ html:not(.js) .lx-fill { transform: none; }
 }
 @keyframes lxFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
 @media (min-width: 768px) {
-  .lx-orbit { width: 712px; height: 600px; margin-inline: auto; }
+  /* --k is set from the available room (see useStageFit); 1 until then. */
+  .lx-orbit-fit { width: 100%; max-width: 712px; margin-inline: auto; height: calc(600px * var(--k, 1)); }
+  .lx-orbit {
+    width: 712px; height: 600px;
+    transform: scale(var(--k, 1)); transform-origin: top left;
+    margin-left: calc((100% - 712px * var(--k, 1)) / 2);
+  }
   .lx-orbit-core { position: absolute; left: 86px; top: 30px; width: 540px; height: 540px; margin: 0; }
   .lx-orbit-lines { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
   .lx-orbit-cards { display: block; }

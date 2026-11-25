@@ -135,14 +135,14 @@ function SitePanel({
         {/* /products */}
         <div className="lx-read rounded-lg border border-border p-3.5" data-lit={lit === "products"}>
           <PageLabel path="/products" lit={lit === "products"} />
-          <div className="mt-3 grid grid-cols-3 gap-2.5">
+          <div className="mt-3 grid grid-cols-3 gap-1.5 sm:gap-2.5">
             {(Object.keys(PRODUCTS) as Array<keyof typeof PRODUCTS>).map((key) => {
               const p = PRODUCTS[key];
               const on = lit === "products" && litProduct === key;
               return (
                 <div
                   key={key}
-                  className="lx-read rounded-md border border-border/70 p-2.5"
+                  className="lx-read rounded-md border border-border/70 p-1.5 sm:p-2.5 min-w-0"
                   data-lit={on}
                 >
                   <div className="aspect-[4/3] rounded bg-muted flex items-center justify-center">
@@ -156,7 +156,7 @@ function SitePanel({
           </div>
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="lx-read rounded-lg border border-border p-3.5" data-lit={lit === "shipping"}>
             <PageLabel path="/shipping" lit={lit === "shipping"} />
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
@@ -233,7 +233,7 @@ function ChatPanel({
                   <product.icon className="w-5 h-5 text-muted-foreground" strokeWidth={1.5} />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold truncate">{product.name}</div>
+                  <div className="text-sm font-semibold leading-snug">{product.name}</div>
                   <div className="text-xs text-muted-foreground">{product.price}</div>
                 </div>
                 <span className="ml-auto text-xs font-semibold text-primary whitespace-nowrap">View product</span>
@@ -275,7 +275,7 @@ function StatusLine({ exchange, phase }: { exchange: Exchange; phase: Phase }) {
     phase === "asking"
       ? "visitor asked a question"
       : phase === "thinking"
-        ? "searching 18 pages on northwind-outfitters.com"
+        ? "searching the 18 pages it read"
         : `answered from ${SOURCE_PATH[exchange.source]}`;
   const typed = useTyped(text, 14);
   return (
@@ -317,7 +317,7 @@ export default function LiveDemo() {
             <StatusLine exchange={exchange} phase={phase} />
             {/* On a phone the conversation comes first, so the answer and the page
                 it came from are both in view without scrolling between them. */}
-            <div className="relative mt-3 grid lg:grid-cols-[1.15fr_1fr] gap-4 lg:gap-8 items-start">
+            <div className="relative mt-3 grid grid-cols-1 lg:grid-cols-[1.15fr_1fr] gap-4 lg:gap-8 items-start">
               <div className="order-2 lg:order-1">
                 <SitePanel lit={lit} litProduct={litProduct} scanning={phase === "thinking"} scanKey={exchange.id} />
               </div>
