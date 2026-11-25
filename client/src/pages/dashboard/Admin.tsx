@@ -497,7 +497,7 @@ export default function Admin() {
       {/* Change Plan Dialog */}
       {/* Live PayPal subscription state, plus the one action that charges: the outstanding balance */}
       <Dialog open={payPalUserId !== null} onOpenChange={(o) => !o && setPayPalUserId(null)}>
-        <DialogContent className="w-[calc(100vw-2rem)] max-w-lg [&>*]:min-w-0 break-words">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto [&>*]:min-w-0 break-words">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Receipt className="w-4 h-4 text-blue-400" />
