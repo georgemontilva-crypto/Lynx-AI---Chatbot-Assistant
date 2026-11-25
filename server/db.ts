@@ -172,22 +172,50 @@ export async function getChatbotByUserId(userId: number): Promise<Chatbot | unde
 // explicit SITE_WIDGET_API_KEY; otherwise falls back to the admin's own
 // chatbot, so the owner can just personalize it in Chatbot Config and see it
 // live on the marketing site — no API key wiring needed.
+//
+// The explicit key is only trusted if it still belongs to an active chatbot.
+// A key that was regenerated, or whose chatbot was deleted, used to stay wired
+// into every public page: the bubble showed, and every message came back as
+// "Sorry, I could not process your request". A dead key now falls through to
+// the admin's chatbot, and if there is none the site simply shows no bubble.
+let _warnedDeadSiteKey = "";
 export async function getSiteChatbotApiKey(): Promise<string | null> {
-  const explicit = process.env.SITE_WIDGET_API_KEY;
-  if (explicit && explicit.trim()) return explicit.trim();
+  const explicit = process.env.SITE_WIDGET_API_KEY?.trim() || "";
   const db = await getDb();
-  if (!db) return null;
+  if (!db) return explicit || null;
+
+  if (explicit) {
+    try {
+      const rows = await db
+        .select({ isActive: chatbots.isActive })
+        .from(chatbots)
+        .where(eq(chatbots.apiKey, explicit))
+        .limit(1);
+      if (rows[0] && rows[0].isActive !== false) return explicit;
+      if (_warnedDeadSiteKey !== explicit) {
+        _warnedDeadSiteKey = explicit;
+        console.warn(
+          `[SiteWidget] SITE_WIDGET_API_KEY (${explicit.slice(0, 8)}…) does not match an active chatbot` +
+            " — using the admin's chatbot instead. Update or remove the variable."
+        );
+      }
+    } catch {
+      // The check itself failed: don't second-guess the configured key.
+      return explicit;
+    }
+  }
+
   try {
-    // First admin user, then their chatbot's apiKey.
-    const admins = await db.select().from(users).where(eq(users.role, "admin")).limit(1);
-    const admin = admins[0];
-    if (!admin) return null;
-    const bot = await getChatbotByUserId(admin.id);
-    if (bot?.apiKey) return bot.apiKey;
-    if (bot && !bot.apiKey) {
-      await ensureChatbotApiKey(bot.id);
-      const refreshed = await getChatbotByUserId(admin.id);
-      return refreshed?.apiKey ?? null;
+    // The first admin who has an active chatbot of their own.
+    const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin")).orderBy(asc(users.id)).limit(10);
+    for (const admin of admins) {
+      let bot = await getChatbotByUserId(admin.id);
+      if (!bot || bot.isActive === false) continue;
+      if (!bot.apiKey) {
+        await ensureChatbotApiKey(bot.id);
+        bot = await getChatbotByUserId(admin.id);
+      }
+      if (bot?.apiKey) return bot.apiKey;
     }
     return null;
   } catch {

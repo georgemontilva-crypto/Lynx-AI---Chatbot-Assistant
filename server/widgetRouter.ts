@@ -3249,6 +3249,8 @@ const LOADER_SCRIPT = `
     try { if (btn && btn.parentNode) btn.parentNode.removeChild(btn); } catch (e) {}
     try { if (frame && frame.parentNode) frame.parentNode.removeChild(frame); } catch (e) {}
     try { window.localStorage.removeItem(_cfgKey); } catch (e) {}
+    // Pages check for window.LynxAI before offering "ask our assistant".
+    try { delete window.LynxAI; } catch (e) { window.LynxAI = undefined; }
   }
 
   // Auto-open, as configured by the owner (off by default). The switch existed
@@ -3304,9 +3306,15 @@ const LOADER_SCRIPT = `
   var _prefetchedCfg = null;
   try {
     fetch(BASE_URL + '/api/widget/config?apiKey=' + encodeURIComponent(API_KEY))
-      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(r){
+        // 404 = this key has no active chatbot behind it (deleted, switched
+        // off, or the key was regenerated). A bubble that cannot answer is
+        // worse than no bubble, so it is taken off the page.
+        if (r.status === 404) return { chatbotGone: true };
+        return r.ok ? r.json() : null;
+      })
       .then(function(cfg){
-        if (cfg && cfg.serviceSuspended) { removeWidget(); return; }
+        if (cfg && (cfg.serviceSuspended || cfg.chatbotGone)) { removeWidget(); return; }
         _prefetchedCfg = cfg;
         applyBrandToButton(cfg);
         if (cfg) {

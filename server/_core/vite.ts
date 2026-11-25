@@ -108,6 +108,9 @@ function buildHeadTags(head: HeadMeta): string {
 // it periodically, keeping siteWidgetTag() synchronous.
 let _cachedSiteKey: string | null = null;
 let _cachedSiteKeyAt = 0;
+// True once a lookup has finished: from then on its answer is final, even when
+// the answer is "no usable chatbot" (null).
+let _siteKeyResolved = false;
 const SITE_KEY_TTL_MS = 5 * 60 * 1000;
 
 async function refreshSiteKey(): Promise<void> {
@@ -115,6 +118,7 @@ async function refreshSiteKey(): Promise<void> {
     const { getSiteChatbotApiKey } = await import("../db");
     _cachedSiteKey = await getSiteChatbotApiKey();
     _cachedSiteKeyAt = Date.now();
+    _siteKeyResolved = true;
   } catch {
     // keep whatever we had
   }
@@ -126,7 +130,10 @@ function siteWidgetTag(url: string): string {
   // Kick off a refresh if the cache is stale (fire-and-forget; this render uses
   // the current cached value, the next render gets the fresh one).
   if (Date.now() - _cachedSiteKeyAt > SITE_KEY_TTL_MS) void refreshSiteKey();
-  const key = _cachedSiteKey || process.env.SITE_WIDGET_API_KEY;
+  // Until the first lookup lands, the configured key is the best guess. After
+  // that the lookup decides — it has checked the key against real chatbots, so
+  // a dead key is never written into the page.
+  const key = _siteKeyResolved ? _cachedSiteKey : process.env.SITE_WIDGET_API_KEY;
   if (!key) return "";
   return `<script src="/api/widget.js" data-api-key="${key.replace(/"/g, "")}" defer></script>`;
 }
