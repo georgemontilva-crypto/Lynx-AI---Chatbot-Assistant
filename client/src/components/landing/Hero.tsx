@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Backpack, Flame, Shirt, FileText, CornerDownRight } from "lucide-react";
+import type { CSSProperties } from "react";
+import { ScanField, useTyped, useSpotlight } from "./fx";
 
 /**
  * The hero makes the product's one promise literal: an answer never comes from
@@ -101,9 +103,25 @@ function useStage() {
   return { exchange: EXCHANGES[index], index, phase, choose };
 }
 
-function SitePanel({ lit, litProduct }: { lit: SourceId | null; litProduct: Exchange["product"] | null }) {
+function SitePanel({
+  lit,
+  litProduct,
+  scanning,
+  scanKey,
+}: {
+  lit: SourceId | null;
+  litProduct: Exchange["product"] | null;
+  scanning: boolean;
+  scanKey: string;
+}) {
+  const spot = useSpotlight();
   return (
-    <div className="rounded-xl border border-border bg-card/60 overflow-hidden">
+    <div
+      // Re-keyed per question so the beam animation restarts each time.
+      key={scanning ? scanKey : "idle"}
+      {...spot}
+      className={`lx-spot rounded-xl border border-border bg-card/70 backdrop-blur-sm overflow-hidden ${scanning ? "lx-scanning" : ""}`}
+    >
       <div className="flex items-center gap-3 px-4 h-11 border-b border-border">
         <span className="flex gap-1.5" aria-hidden="true">
           <span className="w-2.5 h-2.5 rounded-full bg-border" />
@@ -181,7 +199,8 @@ function ChatPanel({
 }) {
   const product = exchange.product ? PRODUCTS[exchange.product] : null;
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col">
+    <div className="lx-beam rounded-xl">
+    <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col shadow-[0_30px_80px_-30px_oklch(0.55_0.21_258/0.55)]">
       <div className="flex items-center gap-3 px-4 h-11 border-b border-border">
         <span className="w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />
         <span className="text-sm font-semibold">Northwind assistant</span>
@@ -248,6 +267,32 @@ function ChatPanel({
         ))}
       </div>
     </div>
+    </div>
+  );
+}
+
+const HEADLINE_1 = ["Your", "site", "already", "has", "the", "answers."];
+const HEADLINE_2 = ["Lynx", "gives", "them", "to", "every", "visitor."];
+
+function StatusLine({ exchange, phase }: { exchange: Exchange; phase: Phase }) {
+  const text =
+    phase === "asking"
+      ? "visitor asked a question"
+      : phase === "thinking"
+        ? "searching 18 pages on northwind-outfitters.com"
+        : `answered from ${SOURCE_PATH[exchange.source]}`;
+  const typed = useTyped(text, 14);
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-background/60 backdrop-blur px-3.5 h-10 font-mono text-xs overflow-hidden">
+      <span className="lx-live shrink-0" aria-hidden="true" />
+      <span className="text-muted-foreground shrink-0">lynx</span>
+      <span className={`lx-caret truncate ${phase === "answered" ? "text-sight" : "text-foreground"}`}>{typed}</span>
+      <span className="ml-auto hidden sm:flex items-center gap-4 text-muted-foreground shrink-0">
+        <span>18 pages</span>
+        <span>12 products</span>
+        <span>2 policies</span>
+      </span>
+    </div>
   );
 }
 
@@ -274,47 +319,83 @@ export default function Hero() {
   const openLiveChat = () => (window as unknown as { LynxAI?: { open?: () => void } }).LynxAI?.open?.();
 
   return (
-    <section className="relative pt-24 sm:pt-32 pb-16 sm:pb-24">
+    <section className="relative isolate overflow-hidden pt-24 sm:pt-32 pb-16 sm:pb-24">
+      {/* Backdrop: drifting light, a faint grid, and the scan field. */}
+      <div className="absolute inset-0 -z-10" aria-hidden="true">
+        <div className="lx-aurora lx-aurora-a w-[42rem] h-[42rem] -top-64 -left-40" />
+        <div className="lx-aurora lx-aurora-b w-[36rem] h-[36rem] top-10 right-[-12rem]" />
+        <div className="lx-aurora lx-aurora-c w-[28rem] h-[28rem] top-[30rem] left-[35%]" />
+        <div className="lx-grid absolute inset-0" />
+        <ScanField className="absolute inset-0 w-full h-full [mask-image:linear-gradient(to_bottom,#000_55%,transparent)]" />
+      </div>
+
       <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
         <div>
-          {/* Two sentences, one per line once there is room for it. */}
-          <h1 className="lx-display text-[clamp(2.5rem,5.5vw,4.6rem)]">
-            <span className="lg:block">Your site already has the answers. </span>
-            <span className="lg:block">Lynx gives them to every visitor.</span>
+          <div className="lx-rise inline-flex items-center gap-2.5 rounded-full border border-border bg-background/60 backdrop-blur px-3.5 py-1.5 text-sm text-muted-foreground" style={{ "--i": -4 } as CSSProperties}>
+            <span className="lx-live" aria-hidden="true" />
+            Reads your whole site. Answers from it.
+          </div>
+
+          <h1 className="lx-display mt-6 text-[clamp(2.25rem,5vw,4rem)]">
+            <span className="block">
+              {HEADLINE_1.map((w, i) => (
+                <span key={w + i}>
+                  <span className="lx-word" style={{ "--i": i } as CSSProperties}>{w}</span>{" "}
+                </span>
+              ))}
+            </span>
+            {/* One gradient across the whole line, so it reads as a single sweep. */}
+            <span className="block lx-flow" style={{ "--i": HEADLINE_1.length } as CSSProperties}>
+              {HEADLINE_2.join(" ")}
+            </span>
           </h1>
-          <p className="lx-prose mt-6 sm:mt-8 max-w-[38rem] text-lg sm:text-xl leading-relaxed text-muted-foreground">
+          <p className="lx-rise lx-prose mt-6 sm:mt-8 max-w-[38rem] text-lg sm:text-xl leading-relaxed text-muted-foreground" style={{ "--i": 2 } as CSSProperties}>
             Lynx reads your products, prices and policies, then answers each visitor in your
             store&rsquo;s own words, at any hour and in their language. Nothing to script, no
             flows to build.
           </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
+          <div className="lx-rise mt-8 flex flex-wrap items-center gap-3" style={{ "--i": 3 } as CSSProperties}>
             <Link href="/register" className="lx-btn">
               Start free trial
             </Link>
             {liveChat ? (
-              <button onClick={openLiveChat} className="lx-btn-quiet">
+              <button onClick={openLiveChat} className="lx-btn-quiet bg-background/40 backdrop-blur">
                 Ask our assistant a question
               </button>
             ) : (
-              <a href="#how-it-works" className="lx-btn-quiet">
+              <a href="#how-it-works" className="lx-btn-quiet bg-background/40 backdrop-blur">
                 See how it works
               </a>
             )}
           </div>
-          <p className="mt-4 text-sm text-muted-foreground">
+          <p className="lx-rise mt-4 text-sm text-muted-foreground" style={{ "--i": 4 } as CSSProperties}>
             14 days and 50 messages on your own site. No card needed.
           </p>
         </div>
 
         {/* The stage */}
-        {/* On a phone the conversation comes first, so the answer and the page
-            it came from are both in view without scrolling between them. */}
-        <div className="mt-12 sm:mt-14 grid lg:grid-cols-[1.15fr_1fr] gap-4 lg:gap-6 items-start">
-          <div className="order-2 lg:order-1">
-            <SitePanel lit={lit} litProduct={litProduct} />
-          </div>
-          <div className="order-1 lg:order-2">
-            <ChatPanel exchange={exchange} index={index} phase={phase} choose={choose} />
+        <div className="lx-rise mt-12 sm:mt-14" style={{ "--i": 6 } as CSSProperties}>
+          <StatusLine exchange={exchange} phase={phase} />
+          {/* On a phone the conversation comes first, so the answer and the page
+              it came from are both in view without scrolling between them. */}
+          <div className="relative mt-3 grid lg:grid-cols-[1.15fr_1fr] gap-4 lg:gap-8 items-start">
+            <div className="order-2 lg:order-1">
+              <SitePanel lit={lit} litProduct={litProduct} scanning={phase === "thinking"} scanKey={exchange.id} />
+            </div>
+            <div className="order-1 lg:order-2">
+              <ChatPanel exchange={exchange} index={index} phase={phase} choose={choose} />
+            </div>
+            {/* Packets crossing from the page to the answer while it is read. */}
+            {phase === "thinking" && (
+              <div
+                className="hidden lg:flex absolute top-28 left-[53.5%] -translate-x-1/2 w-8 items-center justify-center gap-1 overflow-hidden"
+                aria-hidden="true"
+              >
+                <span className="lx-packet w-1.5 h-1.5 rounded-full bg-sight" />
+                <span className="lx-packet w-1.5 h-1.5 rounded-full bg-sight" />
+                <span className="lx-packet w-1.5 h-1.5 rounded-full bg-sight" />
+              </div>
+            )}
           </div>
         </div>
         <p className="mt-4 text-sm text-muted-foreground max-w-[44rem]">

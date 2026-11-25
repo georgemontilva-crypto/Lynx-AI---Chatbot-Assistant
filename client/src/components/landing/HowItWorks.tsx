@@ -3,6 +3,9 @@
  * the actual snippet, an answer) instead of icons. The numbers are there
  * because this genuinely is a sequence.
  */
+import type { CSSProperties } from "react";
+import { Reveal, useInView, useCountUp, useSpotlight } from "./fx";
+
 const steps = [
   {
     title: "Give Lynx your address",
@@ -18,22 +21,39 @@ const steps = [
   },
 ];
 
-function Artifact({ step }: { step: number }) {
-  if (step === 0) {
-    return (
-      <div className="space-y-2.5">
-        <div className="flex items-center h-10 rounded-md border border-border bg-background px-3 font-mono text-xs text-foreground">
-          https://yourstore.com
-        </div>
-        <div className="text-xs text-sight">18 pages read, 12 products learned</div>
+function ScanResult() {
+  const { ref, shown } = useInView<HTMLDivElement>();
+  const pages = useCountUp(18, shown);
+  const products = useCountUp(12, shown);
+  return (
+    <div ref={ref} className="space-y-2.5">
+      <div className="flex items-center h-10 rounded-md border border-border bg-background px-3 font-mono text-xs text-foreground">
+        https://yourstore.com
       </div>
-    );
-  }
+      {/* The bar is the scan finishing; the counts are what it found. */}
+      <div className="h-1 rounded-full bg-muted overflow-hidden">
+        <div data-shown={shown} className="lx-fill h-full rounded-full bg-sight" />
+      </div>
+      <div className="font-mono text-xs text-sight tabular-nums">
+        {pages} pages read, {products} products learned
+      </div>
+    </div>
+  );
+}
+
+function Artifact({ step }: { step: number }) {
+  if (step === 0) return <ScanResult />;
   if (step === 1) {
     return (
-      <pre className="rounded-md border border-border bg-background p-3 font-mono text-[0.6875rem] leading-relaxed text-muted-foreground overflow-x-auto">
+      <pre className="rounded-md border border-border bg-background p-3 font-mono text-[0.6875rem] leading-relaxed overflow-x-auto">
         <code>
-          {'<script src="https://www.lynxaiassistant.com/api/widget.js"\n        data-api-key="lx_…" defer></script>'}
+          <span className="text-muted-foreground">{"<script "}</span>
+          <span className="text-primary">src</span>
+          <span className="text-muted-foreground">{'="https://www.lynxaiassistant.com/api/widget.js"\n        '}</span>
+          <span className="text-primary">data-api-key</span>
+          <span className="text-muted-foreground">{'="'}</span>
+          <span className="text-sight">lx_…</span>
+          <span className="text-muted-foreground">{'" defer></script>'}</span>
         </code>
       </pre>
     );
@@ -50,28 +70,52 @@ function Artifact({ step }: { step: number }) {
   );
 }
 
-export default function HowItWorks() {
+function Step({ index, title, body }: { index: number; title: string; body: string }) {
+  const spot = useSpotlight();
   return (
-    <section id="how-it-works" className="py-20 sm:py-28 border-t border-border scroll-mt-16">
-      <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
-        <h2 className="lx-heading text-[clamp(2rem,4.4vw,3.25rem)] max-w-[22ch]">
-          Three steps, and one of them is copy and paste.
-        </h2>
+    <Reveal as="li" order={index} className="h-full">
+      <div {...spot} className="lx-spot h-full flex flex-col rounded-xl border border-border bg-card/60 p-6 transition-colors hover:border-primary/50">
+        <div className="flex items-baseline gap-4">
+          <span
+            className="lx-display text-6xl bg-gradient-to-b from-primary to-primary/10 bg-clip-text text-transparent"
+            aria-hidden="true"
+          >
+            {index + 1}
+          </span>
+          <h3 className="lx-heading text-xl">{title}</h3>
+        </div>
+        <p className="lx-prose mt-3 text-[0.9375rem] leading-relaxed text-muted-foreground">{body}</p>
+        <div className="mt-auto pt-5">
+          <Artifact step={index} />
+        </div>
+      </div>
+    </Reveal>
+  );
+}
 
-        <ol className="mt-12 sm:mt-16 grid md:grid-cols-3 gap-x-8 gap-y-12">
+export default function HowItWorks() {
+  const line = useInView<HTMLDivElement>();
+  return (
+    <section id="how-it-works" className="relative py-20 sm:py-28 border-t border-border scroll-mt-16">
+      <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
+        <Reveal>
+          <h2 className="lx-heading text-[clamp(1.875rem,3.6vw,2.75rem)] max-w-[22ch]">
+            Three steps, and one of them is copy and paste.
+          </h2>
+        </Reveal>
+
+        {/* A line that draws itself across the three steps as they arrive. */}
+        <div ref={line.ref} className="mt-12 sm:mt-16 hidden md:block h-px bg-border relative" aria-hidden="true">
+          <div
+            data-shown={line.shown}
+            className="lx-fill absolute inset-0 bg-gradient-to-r from-primary via-sight to-primary"
+            style={{ "--d": 1, transitionDuration: "1.8s" } as CSSProperties}
+          />
+        </div>
+
+        <ol className="mt-12 md:mt-8 grid md:grid-cols-3 gap-5">
           {steps.map((s, i) => (
-            <li key={s.title} className="flex flex-col">
-              <div className="flex items-baseline gap-4 border-t border-border pt-5">
-                <span className="lx-display text-5xl text-muted-foreground/50" aria-hidden="true">
-                  {i + 1}
-                </span>
-                <h3 className="lx-heading text-xl">{s.title}</h3>
-              </div>
-              <p className="lx-prose mt-3 text-[0.9375rem] leading-relaxed text-muted-foreground">{s.body}</p>
-              <div className="mt-5">
-                <Artifact step={i} />
-              </div>
-            </li>
+            <Step key={s.title} index={i} title={s.title} body={s.body} />
           ))}
         </ol>
       </div>

@@ -58,15 +58,17 @@ export default function Navbar() {
   const themeLabel = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
 
   return (
-    <nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-[background-color,border-color] duration-200 border-b ${
-        scrolled || mobileOpen
-          ? "bg-background/90 backdrop-blur-md border-border"
-          : "bg-transparent border-transparent"
-      }`}
-    >
-      <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
-        <div className="flex items-center justify-between h-16">
+    <nav className="fixed top-0 left-0 right-0 z-50 px-3 sm:px-5 pt-3">
+      {/* A floating glass bar: it tightens and gains a border once you scroll. */}
+      <div
+        className={`mx-auto max-w-[1240px] rounded-2xl border transition-all duration-300 ${
+          scrolled || mobileOpen
+            ? "bg-background/75 backdrop-blur-xl border-border shadow-[0_10px_40px_-15px_rgba(0,0,0,0.5)]"
+            : "bg-transparent border-transparent"
+        }`}
+      >
+      <div className="px-4 sm:px-5">
+        <div className={`flex items-center justify-between transition-[height] duration-300 ${scrolled ? "h-14" : "h-16"}`}>
           <Link href="/" className="flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
             <LynxLogo className="h-8 w-auto object-contain" />
           </Link>
@@ -125,8 +127,8 @@ export default function Navbar() {
       </div>
 
       {mobileOpen && (
-        <div className="lg:hidden border-t border-border bg-background">
-          <div className="mx-auto max-w-[1240px] px-5 sm:px-8 py-4 flex flex-col">
+        <div className="lg:hidden border-t border-border">
+          <div className="lx-in px-4 sm:px-5 py-4 flex flex-col">
             {navLinks.map((link) =>
               link.href.startsWith("/") ? (
                 <Link
@@ -158,6 +160,7 @@ export default function Navbar() {
           </div>
         </div>
       )}
+      </div>
     </nav>
   );
 }

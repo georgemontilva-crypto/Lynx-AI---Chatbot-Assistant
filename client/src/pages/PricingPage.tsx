@@ -85,7 +85,7 @@ export default function PricingPage() {
 
       <section className="pt-28 sm:pt-36 pb-16 sm:pb-20">
         <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
-          <h1 className="lx-display text-[clamp(2.5rem,5.5vw,4.6rem)] max-w-[18ch]">
+          <h1 className="lx-display text-[clamp(2.25rem,5vw,4rem)] max-w-[18ch]">
             Free to try. Pay when it&rsquo;s earning its keep.
           </h1>
           <p className="lx-prose mt-6 max-w-[38rem] text-lg sm:text-xl leading-relaxed text-muted-foreground">
@@ -104,7 +104,7 @@ export default function PricingPage() {
 
       <section className="py-20 sm:py-28 border-t border-border">
         <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
-          <h2 className="lx-heading text-[clamp(2rem,4.4vw,3.25rem)]">Plan by plan.</h2>
+          <h2 className="lx-heading text-[clamp(1.875rem,3.6vw,2.75rem)]">Plan by plan.</h2>
 
           {/* Horizontal scroll on small screens so four columns never squash */}
           <div className="mt-10 overflow-x-auto -mx-5 px-5 sm:mx-0 sm:px-0">
@@ -147,7 +147,7 @@ export default function PricingPage() {
         <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
           <div className="grid lg:grid-cols-[1fr_2fr] gap-x-16 gap-y-8">
             <div>
-              <h2 className="lx-heading text-[clamp(2rem,4.4vw,3.25rem)]">About paying.</h2>
+              <h2 className="lx-heading text-[clamp(1.875rem,3.6vw,2.75rem)]">About paying.</h2>
               <p className="mt-5 text-[0.9375rem] leading-relaxed text-muted-foreground max-w-[22rem]">
                 Something else?{" "}
                 <Link href="/contact" className="lx-link text-foreground">

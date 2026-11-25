@@ -3,6 +3,7 @@ import Hero from "@/components/landing/Hero";
 import HowItWorks from "@/components/landing/HowItWorks";
 import Features from "@/components/landing/Features";
 import Inbox from "@/components/landing/Inbox";
+import Platforms from "@/components/landing/Platforms";
 import Faq from "@/components/landing/Faq";
 import WhiteLabel from "@/components/landing/WhiteLabel";
 import Pricing from "@/components/landing/Pricing";
@@ -36,6 +37,7 @@ export default function Home() {
       <SchemaMarkup />
       <Navbar />
       <Hero />
+      <Platforms />
       <HowItWorks />
       <Features />
       <Inbox />

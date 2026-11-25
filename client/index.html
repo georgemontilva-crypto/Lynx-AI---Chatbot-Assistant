@@ -26,7 +26,11 @@
 
     <!-- ── Theme: dark is the default. Apply an explicit light choice before
          first paint so nobody sees a flash of the wrong theme. ─────────── -->
-    <script>try{if(localStorage.getItem("lynx-theme-choice")==="light")document.documentElement.classList.remove("dark")}catch(e){}</script>
+    <script>try{if(localStorage.getItem("lynx-theme-choice")==="light")document.documentElement.classList.remove("dark")}catch(e){}
+      /* "js" lets scroll-reveal hide content until it scrolls into view. If the
+         app has not started within 5s (script blocked or failed), drop the
+         class so nothing stays hidden. */
+      document.documentElement.classList.add("js");setTimeout(function(){if(!window.__lxReady)document.documentElement.classList.remove("js")},5000);</script>
   </head>
   <body>
     <div id="root"><!--app-html--></div>

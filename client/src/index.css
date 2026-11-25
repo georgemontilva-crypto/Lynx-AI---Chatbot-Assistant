@@ -1,8 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-/* Self-hosted type. Bricolage Grotesque carries headlines (it has a width axis,
-   used condensed at large sizes); Instrument Sans carries everything you read. */
-@import "@fontsource-variable/bricolage-grotesque/standard.css";
+/* Type. Headlines use the bold grotesque Lynx launched with: Arial where the
+   device has it (Windows, macOS, iOS), and Arimo — drawn to the same metrics,
+   self-hosted — where it doesn't (Android, Linux), so the headline looks the
+   same everywhere. Arimo is only downloaded on devices without Arial.
+   Instrument Sans carries everything you read. */
+@import "@fontsource-variable/arimo/wght.css";
 @import "@fontsource-variable/instrument-sans/wght.css";
 
 @custom-variant dark (&:is(.dark *));
@@ -49,7 +52,7 @@
      as a generic highlight. */
   --color-sight: var(--sight);
   --color-action: var(--action);
-  --font-display: "Bricolage Grotesque Variable", "Instrument Sans Variable", system-ui, sans-serif;
+  --font-display: Arial, "Arimo Variable", "Helvetica Neue", Helvetica, sans-serif;
   --font-sans: "Instrument Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -334,22 +337,19 @@ body {
 
 
 /* ─── Public site ─────────────────────────────────────────────────────────── */
-/* Display type: condensed and heavy, tight leading. The width axis does the
-   work a second "impact" typeface would otherwise be brought in for. */
+/* Display type: bold, tightly tracked, tight leading. */
 .lx-display {
   font-family: var(--font-display);
-  font-stretch: 82%;
   font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 0.98;
+  letter-spacing: -0.03em;
+  line-height: 1.04;
   text-wrap: balance;
 }
 .lx-heading {
   font-family: var(--font-display);
-  font-stretch: 84%;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  line-height: 1.1;
   text-wrap: balance;
 }
 .lx-prose { text-wrap: pretty; }
@@ -395,4 +395,136 @@ body {
   .lx-in, .lx-typing > span { animation: none; }
   .lx-read { transition: none; }
   html { scroll-behavior: auto; }
+}
+
+/* ─── Public site: motion layer ───────────────────────────────────────────── */
+/* Everything here is switched off under prefers-reduced-motion (see the end). */
+
+/* A light that travels around a panel's border. */
+@property --lx-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes lxSpin { to { --lx-angle: 360deg; } }
+.lx-beam { position: relative; }
+.lx-beam::before {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; pointer-events: none;
+  background: conic-gradient(from var(--lx-angle), transparent 0 58%, oklch(0.66 0.19 258) 76%, oklch(0.86 0.13 200) 90%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: lxSpin 5.5s linear infinite;
+}
+.lx-beam-sight::before {
+  background: conic-gradient(from var(--lx-angle), transparent 0 62%, color-mix(in oklch, var(--sight) 85%, transparent) 84%, transparent 100%);
+  animation-duration: 7s;
+}
+
+/* Section content rises into place as it enters the viewport. The .js class is
+   set before first paint; without JavaScript nothing is ever hidden. */
+.js .lx-reveal {
+  opacity: 0; transform: translateY(28px); filter: blur(8px);
+  transition: opacity 0.8s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1), filter 0.8s ease;
+  transition-delay: calc(var(--d, 0) * 90ms);
+  will-change: opacity, transform;
+}
+.js .lx-reveal[data-shown="true"] { opacity: 1; transform: none; filter: none; }
+
+/* Headline: words arrive one after another. Pure CSS, runs without JS. */
+@keyframes lxWord { from { opacity: 0; transform: translateY(0.45em) rotate(2deg); filter: blur(10px); } to { opacity: 1; transform: none; filter: none; } }
+.lx-word { display: inline-block; animation: lxWord 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 70ms + 120ms); }
+@keyframes lxRise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.lx-rise { animation: lxRise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 110ms + 700ms); }
+
+/* Light flowing through the second line of the headline. */
+@keyframes lxFlow { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
+.lx-flow {
+  background-image: linear-gradient(90deg, oklch(0.80 0.15 222) 0%, oklch(0.72 0.15 264) 50%, oklch(0.80 0.15 222) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
+  animation: lxWord 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both, lxFlow 7s linear infinite;
+  animation-delay: calc(var(--i, 0) * 70ms + 120ms), 0s;
+  /* Descenders (y, g) are clipped by background-clip without a little room. */
+  padding-bottom: 0.08em;
+}
+:root:not(.dark) .lx-flow {
+  background-image: linear-gradient(90deg, oklch(0.58 0.16 228) 0%, oklch(0.48 0.21 262) 50%, oklch(0.58 0.16 228) 100%);
+}
+
+/* Slow drifting light behind the hero. */
+@keyframes lxDriftA { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(6%, 8%, 0) scale(1.15); } }
+@keyframes lxDriftB { 0%, 100% { transform: translate3d(0, 0, 0) scale(1.1); } 50% { transform: translate3d(-8%, -6%, 0) scale(0.95); } }
+.lx-aurora { position: absolute; border-radius: 9999px; filter: blur(90px); pointer-events: none; will-change: transform; }
+.lx-aurora-a { background: oklch(0.55 0.21 258 / 0.38); animation: lxDriftA 16s ease-in-out infinite; }
+.lx-aurora-b { background: oklch(0.70 0.14 200 / 0.22); animation: lxDriftB 20s ease-in-out infinite; }
+.lx-aurora-c { background: color-mix(in oklch, var(--sight) 22%, transparent); animation: lxDriftA 24s ease-in-out infinite reverse; }
+:root:not(.dark) .lx-aurora { opacity: 0.45; }
+
+/* Scan beam sweeping a panel while Lynx is "reading". */
+@keyframes lxScan { from { transform: translateY(-10%); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } to { transform: translateY(1100%); opacity: 0; } }
+.lx-scanning { position: relative; overflow: hidden; }
+.lx-scanning::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 9%; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, color-mix(in oklch, var(--sight) 22%, transparent) 70%, color-mix(in oklch, var(--sight) 90%, transparent));
+  border-bottom: 1px solid var(--sight);
+  box-shadow: 0 6px 30px color-mix(in oklch, var(--sight) 45%, transparent);
+  animation: lxScan 1.15s cubic-bezier(0.4, 0, 0.6, 1) both;
+}
+
+/* Packets travelling from the page to the answer. */
+@keyframes lxPacket { 0% { transform: translateX(-140%); opacity: 0; } 20%, 80% { opacity: 1; } 100% { transform: translateX(140%); opacity: 0; } }
+.lx-packet { animation: lxPacket 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.lx-packet:nth-child(2) { animation-delay: 0.18s; }
+.lx-packet:nth-child(3) { animation-delay: 0.36s; }
+
+/* Pointer-following glow on panels. */
+.lx-spot { position: relative; isolation: isolate; }
+.lx-spot::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1;
+  opacity: 0; transition: opacity 0.35s ease;
+  background: radial-gradient(520px circle at var(--mx, 50%) var(--my, 50%), color-mix(in oklch, var(--primary) 22%, transparent), transparent 62%);
+}
+.lx-spot:hover::after { opacity: 1; }
+
+/* Endless strip. */
+@keyframes lxMarquee { to { transform: translateX(-50%); } }
+.lx-marquee { overflow: hidden; -webkit-mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent); }
+.lx-marquee > div { display: flex; width: max-content; animation: lxMarquee 38s linear infinite; }
+.lx-marquee:hover > div { animation-play-state: paused; }
+
+/* Primary button: glow and a sheen that crosses it on hover. */
+.lx-btn { position: relative; overflow: hidden; box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08) inset, 0 8px 30px -8px color-mix(in oklch, var(--action) 80%, transparent); }
+.lx-btn::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 45%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, oklch(1 0 0 / 0.35), transparent);
+  transform: skewX(-18deg); transition: left 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.lx-btn:hover::after { left: 120%; }
+.lx-btn:hover { box-shadow: 0 0 0 1px oklch(1 0 0 / 0.12) inset, 0 10px 40px -6px color-mix(in oklch, var(--action) 95%, transparent); }
+
+/* Live dot. */
+@keyframes lxPing { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.6); opacity: 0; } }
+.lx-live { position: relative; display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: oklch(0.80 0.17 155); }
+.lx-live::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; animation: lxPing 1.8s ease-out infinite; }
+
+/* Blinking caret for typed text. */
+@keyframes lxCaret { 50% { opacity: 0; } }
+.lx-caret::after { content: "▍"; margin-left: 1px; animation: lxCaret 1s steps(1) infinite; color: var(--sight); }
+
+/* Bars that fill when revealed. */
+.lx-fill { transform-origin: left; transform: scaleX(0); transition: transform 1.2s cubic-bezier(0.2, 0.7, 0.2, 1); transition-delay: calc(var(--d, 0) * 120ms + 200ms); }
+[data-shown="true"] .lx-fill, .lx-fill[data-shown="true"] { transform: scaleX(1); }
+html:not(.js) .lx-fill { transform: none; }
+
+/* Faint technical grid with a soft edge. */
+.lx-grid {
+  background-image: linear-gradient(to right, color-mix(in oklch, var(--foreground) 6%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 6%, transparent) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 30%, #000 20%, transparent 78%);
+  mask-image: radial-gradient(ellipse 75% 70% at 50% 30%, #000 20%, transparent 78%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-beam::before, .lx-aurora, .lx-marquee > div, .lx-live::after, .lx-packet, .lx-caret::after, .lx-scanning::after { animation: none; }
+  .lx-word, .lx-rise { animation: none; }
+  .lx-flow { animation: none; background-position: 30% 50%; }
+  .js .lx-reveal { opacity: 1; transform: none; filter: none; transition: none; }
+  .lx-fill { transform: none; transition: none; }
+  .lx-btn::after { display: none; }
 }

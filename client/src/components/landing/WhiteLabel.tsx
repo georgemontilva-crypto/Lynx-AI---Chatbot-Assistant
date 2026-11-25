@@ -1,4 +1,6 @@
 import { Link } from "wouter";
+import type { CSSProperties } from "react";
+import { Reveal, useSpotlight } from "./fx";
 
 /**
  * For agencies and freelancers reselling the assistant. The panel mirrors the
@@ -32,30 +34,32 @@ const points = [
 ];
 
 export default function WhiteLabel() {
+  const spot = useSpotlight();
   return (
     <section id="whitelabel" className="py-20 sm:py-28 border-t border-border scroll-mt-16">
       <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
-        <div className="max-w-[46rem]">
-          <h2 className="lx-heading text-[clamp(2rem,4.4vw,3.25rem)]">
+        <Reveal className="max-w-[46rem]">
+          <h2 className="lx-heading text-[clamp(1.875rem,3.6vw,2.75rem)]">
             Run an agency? Sell it as your own product.
           </h2>
           <p className="lx-prose mt-5 text-lg leading-relaxed text-muted-foreground">
             The White-Label plan is for people who build or manage sites for others and want to
             offer an assistant without building one.
           </p>
-        </div>
+        </Reveal>
 
         <div className="mt-12 sm:mt-16 grid lg:grid-cols-[1fr_1.05fr] gap-x-16 gap-y-12 items-start">
           <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-9">
-            {points.map((p) => (
-              <div key={p.title}>
+            {points.map((p, i) => (
+              <Reveal order={i} key={p.title}>
                 <dt className="font-semibold text-base">{p.title}</dt>
                 <dd className="lx-prose mt-1.5 text-[0.9375rem] leading-relaxed text-muted-foreground">{p.body}</dd>
-              </div>
+              </Reveal>
             ))}
           </dl>
 
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <Reveal order={1}>
+          <div {...spot} className="lx-spot rounded-xl border border-border bg-card overflow-hidden">
             <div className="px-5 h-12 flex items-center justify-between border-b border-border">
               <span className="text-sm font-semibold">Client websites</span>
               <span className="text-xs text-muted-foreground">3 of 15 used</span>
@@ -75,16 +79,20 @@ export default function WhiteLabel() {
                       </div>
                     </div>
                     <div className="mt-3 h-1.5 rounded-full bg-muted overflow-hidden" role="img" aria-label={`${pct}% of monthly messages used`}>
-                      <div
-                        className={`h-full rounded-full ${pct >= 80 ? "bg-amber-400" : "bg-primary"}`}
-                        style={{ width: `${pct}%` }}
-                      />
+                      {/* The bar grows to its value when the panel scrolls into view. */}
+                      <div style={{ width: `${pct}%` }} className="h-full">
+                        <div
+                          className={`lx-fill h-full rounded-full ${pct >= 80 ? "bg-amber-400" : "bg-primary"}`}
+                          style={{ "--d": i + 2 } as CSSProperties}
+                        />
+                      </div>
                     </div>
                   </li>
                 );
               })}
             </ul>
           </div>
+          </Reveal>
         </div>
 
         <div className="mt-12">

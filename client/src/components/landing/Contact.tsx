@@ -96,7 +96,7 @@ export default function Contact() {
           transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }}
           className="mb-14 max-w-[46rem]"
         >
-          <h2 className="lx-display text-[clamp(2.5rem,5.5vw,4.6rem)]">
+          <h2 className="lx-display text-[clamp(2.25rem,5vw,4rem)]">
             Ask us anything before you start.
           </h2>
           <p className="lx-prose mt-6 text-muted-foreground text-lg sm:text-xl leading-relaxed">

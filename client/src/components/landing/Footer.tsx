@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { LynxLogo } from "@/components/LynxLogo";
+import { Reveal } from "./fx";
 
 /**
  * Closing invitation + site footer, shared by every public page. Only links
@@ -38,10 +39,15 @@ const columns = [
 export default function Footer() {
   return (
     <>
-      <section className="border-t border-border">
-        <div className="mx-auto max-w-[1240px] px-5 sm:px-8 py-20 sm:py-28">
-          <h2 className="lx-display text-[clamp(2.4rem,6vw,4.75rem)] max-w-[16ch]">
-            See what it says about your own site.
+      <section className="relative isolate overflow-hidden border-t border-border">
+        <div className="absolute inset-0 -z-10" aria-hidden="true">
+          <div className="lx-aurora lx-aurora-a w-[40rem] h-[40rem] -bottom-72 left-[10%]" />
+          <div className="lx-aurora lx-aurora-b w-[30rem] h-[30rem] -top-40 right-[5%]" />
+          <div className="lx-grid absolute inset-0" />
+        </div>
+        <Reveal className="mx-auto max-w-[1240px] px-5 sm:px-8 py-24 sm:py-36">
+          <h2 className="lx-display text-[clamp(2.25rem,5vw,4rem)] max-w-[16ch]">
+            See what it says about <span className="lx-flow">your own site.</span>
           </h2>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link href="/register" className="lx-btn">
@@ -52,7 +58,7 @@ export default function Footer() {
             </Link>
           </div>
           <p className="mt-4 text-sm text-muted-foreground">14 days and 50 messages. No card needed.</p>
-        </div>
+        </Reveal>
       </section>
 
       <footer className="border-t border-border">

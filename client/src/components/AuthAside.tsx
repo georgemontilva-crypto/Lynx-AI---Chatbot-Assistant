@@ -31,7 +31,7 @@ export default function AuthAside({ statement }: { statement: string }) {
       </Link>
 
       <div className="max-w-[30rem]">
-        <p className="lx-display text-[clamp(2.25rem,3.6vw,3.5rem)]">{statement}</p>
+        <p className="lx-display text-[clamp(2rem,3.2vw,3rem)]">{statement}</p>
 
         <div className="mt-10 space-y-2.5 text-sm" aria-hidden="true">
           <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-white/15 px-3.5 py-2.5">
