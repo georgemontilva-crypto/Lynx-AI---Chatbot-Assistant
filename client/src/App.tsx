@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
+import type { ComponentType, JSX } from "react";
 import { trpc } from "@/lib/trpc";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -8,27 +9,10 @@ import { useSeoMeta } from "./hooks/useSeoMeta";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
-import DashboardOverview from "./pages/dashboard/Overview";
-import DashboardChatbot from "./pages/dashboard/ChatbotConfig";
-import DashboardScanner from "./pages/dashboard/Scanner";
-import DashboardSEO from "./pages/dashboard/SEO";
-import DashboardConversations from "./pages/dashboard/Conversations";
-import DashboardTraining from "./pages/dashboard/Training";
-import DashboardSnippet from "./pages/dashboard/Snippet";
-import DashboardNotifications from "./pages/dashboard/Notifications";
-import DashboardBilling from "./pages/dashboard/Billing";
-import DashboardClients from "@/pages/dashboard/Clients";
-import DashboardAdmin from "@/pages/dashboard/Admin";
-import DashboardOnboarding from "@/pages/dashboard/Onboarding";
-import DashboardProfile from "@/pages/dashboard/Profile";
-import DashboardLeads from "@/pages/dashboard/Leads";
 import BlogPage from "@/pages/BlogPage";
 import BlogPostPage from "@/pages/BlogPostPage";
 import PricingPage from "@/pages/PricingPage";
 import ContactPage from "@/pages/ContactPage";
-import DashboardBlog from "@/pages/dashboard/Blog";
-import DashboardWebSetup from "@/pages/dashboard/WebSetup";
-import ClientReport from "@/pages/dashboard/ClientReport";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import ForgotPassword from "@/pages/ForgotPassword";
@@ -37,7 +21,54 @@ import Terms from "@/pages/legal/Terms";
 import Privacy from "@/pages/legal/Privacy";
 import Cookies from "@/pages/legal/Cookies";
 import Refunds from "@/pages/legal/Refunds";
-import TestPayment from "@/pages/TestPayment";
+
+/**
+ * Pages behind the login are loaded on demand. They used to ship inside the
+ * one bundle every visitor downloaded, charts and all — about 1.7 MB of
+ * JavaScript before the landing page became interactive on a phone.
+ *
+ * They render only after mount: the server sends the same small placeholder
+ * the browser first paints, so hydration always matches.
+ */
+function PageLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background" role="status" aria-label="Loading">
+      <span className="w-6 h-6 rounded-full border-2 border-border border-t-primary animate-spin" />
+    </div>
+  );
+}
+function lazyPage<P extends object>(load: () => Promise<{ default: ComponentType<P> }>) {
+  const Page = lazy(load);
+  return function LazyPage(props: P) {
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => setMounted(true), []);
+    if (!mounted) return <PageLoading />;
+    return (
+      <Suspense fallback={<PageLoading />}>
+        <Page {...(props as P & JSX.IntrinsicAttributes)} />
+      </Suspense>
+    );
+  };
+}
+
+const DashboardOverview = lazyPage(() => import("./pages/dashboard/Overview"));
+const DashboardChatbot = lazyPage(() => import("./pages/dashboard/ChatbotConfig"));
+const DashboardScanner = lazyPage(() => import("./pages/dashboard/Scanner"));
+const DashboardSEO = lazyPage(() => import("./pages/dashboard/SEO"));
+const DashboardConversations = lazyPage(() => import("./pages/dashboard/Conversations"));
+const DashboardTraining = lazyPage(() => import("./pages/dashboard/Training"));
+const DashboardSnippet = lazyPage(() => import("./pages/dashboard/Snippet"));
+const DashboardNotifications = lazyPage(() => import("./pages/dashboard/Notifications"));
+const DashboardBilling = lazyPage(() => import("./pages/dashboard/Billing"));
+const DashboardClients = lazyPage(() => import("@/pages/dashboard/Clients"));
+const DashboardAdmin = lazyPage(() => import("@/pages/dashboard/Admin"));
+const DashboardOnboarding = lazyPage(() => import("@/pages/dashboard/Onboarding"));
+const DashboardProfile = lazyPage(() => import("@/pages/dashboard/Profile"));
+const DashboardLeads = lazyPage(() => import("@/pages/dashboard/Leads"));
+const DashboardBlog = lazyPage(() => import("@/pages/dashboard/Blog"));
+const DashboardWebSetup = lazyPage(() => import("@/pages/dashboard/WebSetup"));
+const ClientReport = lazyPage(() => import("@/pages/dashboard/ClientReport"));
+const TestPayment = lazyPage(() => import("@/pages/TestPayment"));
 
 function Router() {
   useSeoMeta();

@@ -3326,7 +3326,12 @@ const LOADER_SCRIPT = `
             }));
           } catch (e) {}
         }
-        ensureFrame();
+        // The chat document is built when the browser is idle, not while the
+        // host page is still loading: on a phone it competed with the page's
+        // own scripts. Opening the chat creates it immediately if it is not
+        // there yet (openChat calls ensureFrame).
+        if (window.requestIdleCallback) window.requestIdleCallback(function(){ ensureFrame(); }, { timeout: 4000 });
+        else setTimeout(function(){ ensureFrame(); }, 1500);
         scheduleAutoOpen(cfg);
       })
       .catch(function(){ ensureFrame(); });

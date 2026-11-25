@@ -217,11 +217,20 @@ function useStageFit() {
   return ref;
 }
 
+/**
+ * The typed phrase lives in its own component: it updates on every keystroke,
+ * and kept inside Hero that meant re-rendering the whole stage (six cards, the
+ * wires, the canvas wrapper) about forty times a second while it typed.
+ */
+function TypedPhrase({ text }: { text: string }) {
+  const typed = useTyped(text, 24);
+  return <span className="lx-caret text-foreground">{typed}</span>;
+}
+
 export default function Hero() {
   const fitRef = useStageFit();
   const { active, tick, hold, release } = useCycle();
   const cap = CAPS[active];
-  const typed = useTyped(cap.phrase, 24);
 
   // The real assistant runs on this page as the floating bubble. Offer it by
   // name only once we know it actually loaded.
@@ -276,9 +285,11 @@ export default function Hero() {
             </h1>
 
             {/* Names the job the core is doing right now. */}
+            {/* On phones the phrase sits on its own line, so the hero keeps one
+                height while it types instead of jumping between one line and two. */}
             <p className="lx-rise mt-4 sm:mt-5 font-[family-name:var(--font-display)] font-bold tracking-tight text-lg sm:text-2xl" style={{ "--i": 1 } as CSSProperties}>
               <span className="text-muted-foreground">So it can </span>
-              <span className="lx-caret text-foreground">{typed}</span>
+              <span className="block sm:inline min-h-[1.6em] sm:min-h-0"><TypedPhrase text={cap.phrase} /></span>
             </p>
 
             <p className="lx-rise lx-prose mt-5 max-w-[34rem] md:max-xl:mx-auto text-base sm:text-lg leading-relaxed text-muted-foreground" style={{ "--i": 2 } as CSSProperties}>

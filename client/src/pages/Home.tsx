@@ -34,7 +34,7 @@ export default function Home() {
   }, [meQuery.data, navigate]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="lx-page min-h-screen bg-background text-foreground">
       <SchemaMarkup />
       <Navbar />
       <Hero />

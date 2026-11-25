@@ -61,11 +61,12 @@ export default defineConfig({
     cssMinify: true,
     rollupOptions: {
       output: {
+        // Only React is pinned to its own chunk. Naming chunks for the chart and
+        // animation libraries made Rollup park shared helpers inside them, so the
+        // landing page ended up preloading ~500 KB it never used. Left alone,
+        // they are split along the lazy-loaded dashboard pages instead.
         manualChunks: {
           "react-vendor": ["react", "react-dom"],
-          "motion": ["framer-motion"],
-          "charts": ["recharts"],
-          "date": ["date-fns"],
         },
       },
     },

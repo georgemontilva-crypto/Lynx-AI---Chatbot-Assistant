@@ -61,7 +61,8 @@ export default function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 px-3 sm:px-5 pt-3">
       {/* A floating glass bar: it tightens and gains a border once you scroll. */}
       <div
-        className={`mx-auto max-w-[1240px] rounded-2xl border transition-all duration-300 ${
+        data-solid={scrolled || mobileOpen}
+        className={`lx-nav-glass mx-auto max-w-[1240px] rounded-2xl border transition-all duration-300 ${
           scrolled || mobileOpen
             ? "bg-background/75 backdrop-blur-xl border-border shadow-[0_10px_40px_-15px_rgba(0,0,0,0.5)]"
             : "bg-transparent border-transparent"

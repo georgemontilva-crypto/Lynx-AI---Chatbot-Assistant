@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion } from "@/lib/motion-lite";
 import { Link, useParams } from "wouter";
 import DOMPurify from "isomorphic-dompurify";
 import { Badge } from "@/components/ui/badge";

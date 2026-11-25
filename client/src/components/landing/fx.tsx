@@ -146,7 +146,9 @@ export function LynxCore({
     const small = window.innerWidth < 768;
 
     // Points spread evenly over a sphere (Fibonacci lattice).
-    const N = small ? 1100 : 2200;
+    // Phones get fewer points, a lower pixel density, no blurred rim and half the
+    // frame rate: the sphere reads the same and costs a fraction of the GPU time.
+    const N = small ? 620 : 2200;
     const base = new Float32Array(N * 3);
     const seed = new Float32Array(N);
     const golden = Math.PI * (3 - Math.sqrt(5));
@@ -179,7 +181,7 @@ export function LynxCore({
     let w = 0, h = 0, dpr = 1;
     const resize = () => {
       const r = canvas.getBoundingClientRect();
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      dpr = Math.min(window.devicePixelRatio || 1, small ? 1.5 : 2);
       w = r.width; h = r.height;
       canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
     };
@@ -237,7 +239,7 @@ export function LynxCore({
       ctx.strokeStyle = rim;
       ctx.lineWidth = 1.25;
       ctx.shadowColor = dark ? "rgba(56,189,248,0.9)" : "rgba(37,99,235,0.4)";
-      ctx.shadowBlur = 22;
+      ctx.shadowBlur = small ? 0 : 22;
       ctx.beginPath(); ctx.arc(cx, cy, R * 1.035, 0, TAU); ctx.stroke();
       ctx.shadowBlur = 0;
 
@@ -304,8 +306,13 @@ export function LynxCore({
     };
 
     let raf = 0;
+    let lastDraw = 0;
+    const minGap = small ? 30 : 0; // ~30 fps on phones
     const loop = (now: number) => {
-      if (visible && !document.hidden) draw(now);
+      if (visible && !document.hidden && now - lastDraw >= minGap) {
+        lastDraw = now;
+        draw(now);
+      }
       raf = requestAnimationFrame(loop);
     };
     if (reduce) draw(0);
