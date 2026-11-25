@@ -6,12 +6,28 @@ import { parse as parseCookieHeader } from "cookie";
 import { COOKIE_NAME } from "@shared/const";
 import { ENV } from "./env";
 import { getUserById } from "../db";
+import { accessPlan } from "../overdueState";
+
+/**
+ * The signed-in user as procedures see it. `plan` is the plan the account can
+ * USE: an account paused for non-payment reads as "free" here, with its real
+ * plan kept in `paidPlan`. Every plan check in the routers therefore locks a
+ * paused account without knowing anything about billing.
+ */
+export type SessionUser = User & { paidPlan?: User["plan"]; planPaused?: boolean };
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
-  user: User | null;
+  user: SessionUser | null;
 };
+
+function withAccessPlan(user: User | null): SessionUser | null {
+  if (!user) return null;
+  const usable = accessPlan(user);
+  if (usable === user.plan) return user;
+  return { ...user, plan: usable as User["plan"], paidPlan: user.plan, planPaused: true };
+}
 
 async function authenticateLocalJwt(req: CreateExpressContextOptions["req"]): Promise<User | null> {
   // Try cookie first, then Authorization header
@@ -68,6 +84,6 @@ export async function createContext(
   return {
     req: opts.req,
     res: opts.res,
-    user,
+    user: withAccessPlan(user),
   };
 }

@@ -80,3 +80,27 @@ describe("overdueState", () => {
     expect(s.daysPastDue).toBe(5);
   });
 });
+
+// ── The plan an account can actually use ────────────────────────────────────
+import { accessPlan } from "./overdueState";
+
+describe("accessPlan", () => {
+  const now = new Date("2026-11-25T12:00:00Z");
+  const daysAgo = (n: number) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
+  const paying = { plan: "whitelabel", role: "user", subscriptionId: "I-ABC" };
+
+  it("keeps the paid plan while nothing is overdue", () => {
+    expect(accessPlan({ ...paying, pastDueSince: null }, now)).toBe("whitelabel");
+  });
+  it("keeps the paid plan during the grace period", () => {
+    expect(accessPlan({ ...paying, pastDueSince: daysAgo(2) }, now)).toBe("whitelabel");
+  });
+  it("drops to free once the grace period is over", () => {
+    expect(accessPlan({ ...paying, pastDueSince: daysAgo(3) }, now)).toBe("free");
+    expect(accessPlan({ ...paying, plan: "cloud", pastDueSince: daysAgo(10) }, now)).toBe("free");
+  });
+  it("never locks an admin, or a plan granted by hand", () => {
+    expect(accessPlan({ ...paying, role: "admin", pastDueSince: daysAgo(30) }, now)).toBe("whitelabel");
+    expect(accessPlan({ plan: "embedded", role: "user", subscriptionId: null, pastDueSince: daysAgo(30) }, now)).toBe("embedded");
+  });
+});

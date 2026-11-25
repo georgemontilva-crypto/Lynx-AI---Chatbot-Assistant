@@ -57,9 +57,20 @@ export default function Admin() {
       payPalQuery.refetch();
     },
   });
+  // Cancelling cannot be undone, so it also takes two clicks.
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const cancelNow = trpc.admin.cancelSubscriptionNow.useMutation({
+    onSettled: () => {
+      setConfirmingCancel(false);
+      payPalQuery.refetch();
+      utils.admin.listUsers.invalidate();
+    },
+  });
   useEffect(() => {
     setConfirmingCharge(false);
+    setConfirmingCancel(false);
     chargeOutstanding.reset();
+    cancelNow.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payPalUserId]);
 
@@ -507,7 +518,12 @@ export default function Admin() {
           )}
 
           {payPalQuery.data && !payPalQuery.isFetching && (
-            payPalQuery.data.hasSubscription === false ? (
+            cancelNow.data?.cancelled ? (
+              <p className="text-xs text-emerald-400 leading-relaxed py-2">
+                {cancelNow.data.subscriptionId} was cancelled in PayPal. The account is now on the Free plan and can
+                subscribe again from its Billing page.
+              </p>
+            ) : payPalQuery.data.hasSubscription === false ? (
               <p className="text-sm text-muted-foreground">
                 This user has no PayPal subscription on file — their plan was set manually, so nothing is charged automatically.
               </p>
@@ -649,6 +665,59 @@ export default function Admin() {
                 )}
                 {chargeOutstanding.error && (
                   <p className="text-xs text-red-400 leading-relaxed">{chargeOutstanding.error.message}</p>
+                )}
+
+                {/* Cancel the subscription now, so the customer can subscribe again */}
+                {payPalQuery.data.status !== "CANCELLED" && payPalQuery.data.status !== "EXPIRED" && (
+                  <div className="rounded-xl border border-border/40 p-3 space-y-2.5">
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      Cancel this subscription in PayPal right away. PayPal stops trying to charge it, the account goes
+                      back to the Free plan, and the customer can subscribe again from their Billing page.
+                    </p>
+                    {!confirmingCancel ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-400"
+                        onClick={() => { cancelNow.reset(); setConfirmingCancel(true); }}
+                      >
+                        Cancel subscription now
+                      </Button>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs text-red-400">
+                          This cannot be undone. {payPalQuery.data.subscriptionId} will be cancelled for good.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-red-600 hover:bg-red-600/90 text-white"
+                            disabled={cancelNow.isPending}
+                            onClick={() =>
+                              payPalUserId !== null &&
+                              cancelNow.mutate({
+                                userId: payPalUserId,
+                                confirmSubscriptionId:
+                                  (payPalQuery.data as { subscriptionId?: string } | undefined)?.subscriptionId ?? "",
+                              })
+                            }
+                          >
+                            {cancelNow.isPending ? (
+                              <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> Cancelling…</>
+                            ) : (
+                              <>Yes, cancel it</>
+                            )}
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={cancelNow.isPending} onClick={() => setConfirmingCancel(false)}>
+                            Keep it
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {cancelNow.error && (
+                  <p className="text-xs text-red-400 leading-relaxed">{cancelNow.error.message}</p>
                 )}
               </div>
             )

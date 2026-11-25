@@ -2225,6 +2225,61 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
         }
       }),
 
+    /**
+     * Cancel a customer's PayPal subscription immediately — no 15-day window,
+     * no waiting for PayPal's retries — and drop the account to Free so it can
+     * subscribe again from Billing. Cannot be undone, so the admin has to send
+     * back the exact subscription id that is being cancelled.
+     */
+    cancelSubscriptionNow: adminProcedure
+      .input(z.object({ userId: z.number().int(), confirmSubscriptionId: z.string().min(3).max(64) }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        const { eq: eqOp } = await import("drizzle-orm");
+        const { users } = await import("../drizzle/schema");
+        const [user] = await db.select().from(users).where(eqOp(users.id, input.userId)).limit(1);
+        if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+        if (!user.subscriptionId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This user has no PayPal subscription to cancel." });
+        }
+        if (user.subscriptionId !== input.confirmSubscriptionId.trim()) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `This user's subscription is now ${user.subscriptionId}. Reopen the dialog and confirm again.`,
+          });
+        }
+        const { cancelPayPalSubscription } = await import("./billingRouter");
+        let result: { ok: boolean; detail?: string };
+        try {
+          result = await cancelPayPalSubscription(user.subscriptionId, "Cancelled by the merchant so the customer can subscribe again");
+        } catch (e) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: (e as Error).message || "Could not reach PayPal" });
+        }
+        console.log(
+          `[Billing] Admin ${ctx.user.id} cancelled ${user.subscriptionId} (user ${user.id}, plan ${user.plan}): ` +
+            (result.ok ? "ok" : `refused ${result.detail}`)
+        );
+        if (!result.ok) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `PayPal did not cancel the subscription (${result.detail}). Nothing was changed.` });
+        }
+        // Only after PayPal confirmed: the account goes back to Free, with
+        // nothing left pointing at the dead subscription.
+        await db
+          .update(users)
+          .set({
+            plan: "free",
+            subscriptionId: null,
+            subscriptionStatus: "cancelled",
+            nextBillingDate: null,
+            cancelScheduledAt: null,
+            pastDueSince: null,
+            pastDueStage: 0,
+          })
+          .where(eqOp(users.id, user.id));
+        return { cancelled: true as const, subscriptionId: user.subscriptionId, previousPlan: user.plan };
+      }),
+
     updatePlan: adminProcedure
       .input(z.object({ userId: z.number().int(), plan: z.enum(["free", "cloud", "embedded", "whitelabel"]) }))
       .mutation(async ({ input }) => {

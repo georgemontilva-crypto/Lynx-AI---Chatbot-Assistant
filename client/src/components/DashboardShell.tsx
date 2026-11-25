@@ -25,6 +25,7 @@ import {
   Users2,
   Users,
   Zap,
+  AlertTriangle,
   ShieldCheck,
   UserCircle,
   BookOpen,
@@ -589,8 +590,29 @@ export default function DashboardShell({ children, title }: DashboardShellProps)
           style={{ overscrollBehavior: "none" }}
         >
 
+          {/* Paused for non-payment: the paid plan is on hold, features are Free-only */}
+          {planFeatures.paused && !planFeatures.loading && (
+            <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 flex items-center gap-3">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-500" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-red-500">
+                  Your payment is overdue — your account is limited to the Free plan
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Your assistant is paused and paid features are locked. Everything comes back as soon as the payment
+                  goes through.
+                </p>
+              </div>
+              <Link href="/dashboard/billing">
+                <Button size="sm" className="lynx-gradient text-white border-0 text-xs shrink-0">
+                  Go to billing
+                </Button>
+              </Link>
+            </div>
+          )}
+
           {/* Free plan trial banner */}
-          {planFeatures.isFree && !planFeatures.loading && (
+          {planFeatures.isFree && !planFeatures.paused && !planFeatures.loading && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}

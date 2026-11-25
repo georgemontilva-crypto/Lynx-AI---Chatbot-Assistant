@@ -78,3 +78,18 @@ export function overdueState(user: OverdueUser, now: Date = new Date()): Overdue
     daysLeft: Math.max(0, Math.ceil(GRACE_DAYS - elapsedDays)),
   };
 }
+
+/**
+ * The plan an account can actually USE right now.
+ *
+ * Once the grace period is over the account keeps its paid plan on record —
+ * so everything comes back by itself the moment the payment lands — but it is
+ * treated as Free everywhere features are gated. Before this, a paused account
+ * had its widget switched off while its whole dashboard stayed open.
+ */
+export function accessPlan<P extends string | null | undefined>(
+  user: OverdueUser & { plan?: P },
+  now: Date = new Date()
+): P | "free" {
+  return overdueState(user, now).isSuspended ? "free" : (user.plan as P);
+}

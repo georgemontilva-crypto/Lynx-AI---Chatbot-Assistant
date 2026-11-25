@@ -23,7 +23,7 @@ import { jwtVerify } from "jose";
 import { parse as parseCookieHeader } from "cookie";
 import { COOKIE_NAME } from "@shared/const";
 import type { User } from "../drizzle/schema";
-import { overdueState, GRACE_DAYS } from "./overdueState";
+import { overdueState, GRACE_DAYS, accessPlan } from "./overdueState";
 
 // Dual-auth helper: tries local JWT first, then Manus OAuth
 async function authenticateAny(req: Request): Promise<User | null> {
@@ -250,6 +250,22 @@ export async function capturePayPalOutstanding(
     return { ok: false, httpStatus: res.status, reason };
   }
   return { ok: true, transactionId: body.id, transactionStatus: body.status };
+}
+
+/**
+ * Cancel a subscription in PayPal right away. Cannot be undone: the customer
+ * has to subscribe again. Returns true when PayPal confirms, or when it says
+ * the subscription was already cancelled (422).
+ */
+export async function cancelPayPalSubscription(subscriptionId: string, reason: string): Promise<{ ok: boolean; detail?: string }> {
+  const token = await getPayPalToken();
+  const res = await fetch(`${PAYPAL_BASE}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: reason.slice(0, 128) }),
+  });
+  if (res.ok || res.status === 422) return { ok: true };
+  return { ok: false, detail: `${res.status} ${(await res.text()).slice(0, 200)}` };
 }
 
 /** Reactivate a subscription PayPal suspended after failed payments. */
@@ -1069,7 +1085,10 @@ export function registerBillingRoutes(app: Express) {
       const overdue = overdueState(user as Parameters<typeof overdueState>[0]);
 
       return res.json({
+        // `plan` is what the account pays for; `accessPlan` is what it can use
+        // right now ("free" while paused for non-payment).
         plan: user.plan,
+        accessPlan: accessPlan(user as Parameters<typeof overdueState>[0] & { plan: string }),
         subscriptionId: user.subscriptionId ?? null,
         subscriptionStatus: user.subscriptionStatus ?? null,
         subscriptionPlanId: user.subscriptionPlanId ?? null,

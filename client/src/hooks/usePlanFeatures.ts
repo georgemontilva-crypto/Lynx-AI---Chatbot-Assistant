@@ -64,11 +64,18 @@ export interface PlanFeatures {
   planBg: string;
   loading: boolean;
 
+  /**
+   * The account is paused for non-payment: it keeps its paid plan on record
+   * (`paidPlan`) but every feature is gated as Free until the payment lands.
+   */
+  paused: boolean;
+  paidPlan: PlanId;
+
   // Trigger a manual refetch (e.g. after admin changes plan)
   refresh: () => void;
 }
 
-const PLAN_MATRIX: Record<PlanId, Omit<PlanFeatures, "plan" | "isActive" | "isFree" | "trialDaysLeft" | "trialExpired" | "canRescan" | "loading" | "refresh">> = {
+const PLAN_MATRIX: Record<PlanId, Omit<PlanFeatures, "plan" | "isActive" | "isFree" | "trialDaysLeft" | "trialExpired" | "canRescan" | "loading" | "refresh" | "paused" | "paidPlan">> = {
   free: {
     msgLimit: 50,
     chatbot: true,
@@ -139,6 +146,9 @@ interface BillingStatusResponse {
   plan: PlanId;
   subscriptionStatus: "active" | "cancelled" | "suspended" | "expired" | "pending" | null;
   createdAt?: string; // ISO string — used to calculate trial days left
+  /** What the account can use right now: "free" while paused for non-payment. */
+  accessPlan?: PlanId;
+  isSuspended?: boolean;
 }
 
 // Global refresh signal — incrementing this forces all mounted usePlanFeatures hooks to refetch
@@ -190,7 +200,10 @@ export function usePlanFeatures(): PlanFeatures {
 
   const refresh = useCallback(() => setFetchTick((t) => t + 1), []);
 
-  const plan: PlanId = status?.plan ?? "free";
+  const paidPlan: PlanId = status?.plan ?? "free";
+  // Paused for non-payment: gate everything as Free until the payment lands.
+  const paused = status?.isSuspended === true && paidPlan !== "free";
+  const plan: PlanId = paused ? "free" : (status?.accessPlan ?? paidPlan);
 
   // isActive: true if PayPal subscription is active OR if plan was manually assigned
   const hasPaypalActive = status?.subscriptionStatus === "active";
@@ -201,7 +214,8 @@ export function usePlanFeatures(): PlanFeatures {
   const isFree = plan === "free";
   let trialDaysLeft: number | null = null;
   let trialExpired = false;
-  if (isFree && status?.createdAt) {
+  // A paused paid account is not "on trial": it gets its own message instead.
+  if (isFree && !paused && status?.createdAt) {
     const daysSinceSignup = (Date.now() - new Date(status.createdAt).getTime()) / (1000 * 60 * 60 * 24);
     trialDaysLeft = Math.max(0, Math.ceil(14 - daysSinceSignup));
     trialExpired = daysSinceSignup > 14;
@@ -222,11 +236,13 @@ export function usePlanFeatures(): PlanFeatures {
       trialExpired: false,
       canRescan: true,
       loading: false,
+      paused: false,
+      paidPlan: "whitelabel",
       refresh,
       ...adminMatrix,
     };
   }
 
   const matrix = PLAN_MATRIX[plan];
-  return { plan, isActive, isFree, trialDaysLeft, trialExpired, canRescan, loading, refresh, ...matrix };
+  return { plan, isActive, isFree, trialDaysLeft, trialExpired, canRescan, loading, paused, paidPlan, refresh, ...matrix };
 }
