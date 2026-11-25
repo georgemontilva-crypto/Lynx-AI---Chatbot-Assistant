@@ -47,7 +47,7 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  /* "Sight": the amber of a lynx's eye. Reserved for one meaning across the
+  /* "Sight": the cyan accent. Reserved for one meaning across the
      product — something Lynx has read from the customer's site. Never use it
      as a generic highlight. */
   --color-sight: var(--sight);
@@ -91,48 +91,48 @@
   --sidebar-ring: oklch(0.55 0.20 240);
   --lynx-gradient: linear-gradient(135deg, oklch(0.45 0.22 260), oklch(0.55 0.18 240), oklch(0.62 0.16 200));
   --lynx-glow: 0 0 40px oklch(0.55 0.20 240 / 0.25);
-  --sight: oklch(0.58 0.14 70);
+  --sight: oklch(0.52 0.12 222);
   --action: oklch(0.52 0.21 258);
 }
 
 /* Dark mode: applies when .dark IS on <html> */
 :root.dark {
-  /* Night: a blue-black, not a neutral one. Every surface keeps the same hue
+  /* Night: a deep navy (#080f1a), not a neutral black. Every surface keeps the same hue
      and only steps up in lightness, so depth reads as "closer", not "greyer". */
-  --background: oklch(0.165 0.030 262);
-  --foreground: oklch(0.955 0.010 262);
-  --card: oklch(0.205 0.034 262);
-  --card-foreground: oklch(0.955 0.010 262);
-  --popover: oklch(0.215 0.036 262);
-  --popover-foreground: oklch(0.955 0.010 262);
+  --background: oklch(0.158 0.027 259);
+  --foreground: oklch(0.955 0.010 259);
+  --card: oklch(0.198 0.030 258);
+  --card-foreground: oklch(0.955 0.010 259);
+  --popover: oklch(0.208 0.032 258);
+  --popover-foreground: oklch(0.955 0.010 259);
   --primary: oklch(0.66 0.17 256);
-  --primary-foreground: oklch(0.99 0.004 262);
-  --secondary: oklch(0.245 0.036 262);
-  --secondary-foreground: oklch(0.90 0.015 262);
-  --muted: oklch(0.225 0.034 262);
-  --muted-foreground: oklch(0.715 0.030 262);
-  --accent: oklch(0.265 0.040 262);
-  --accent-foreground: oklch(0.93 0.012 262);
+  --primary-foreground: oklch(0.99 0.004 259);
+  --secondary: oklch(0.245 0.036 259);
+  --secondary-foreground: oklch(0.90 0.015 259);
+  --muted: oklch(0.222 0.032 258);
+  --muted-foreground: oklch(0.715 0.030 259);
+  --accent: oklch(0.265 0.040 259);
+  --accent-foreground: oklch(0.93 0.012 259);
   --destructive: oklch(0.64 0.21 25);
-  --border: oklch(0.305 0.040 262);
-  --input: oklch(0.265 0.040 262);
+  --border: oklch(0.285 0.042 256);
+  --input: oklch(0.265 0.040 259);
   --ring: oklch(0.66 0.17 256);
   --chart-1: oklch(0.66 0.17 256);
   --chart-2: oklch(0.82 0.15 80);
   --chart-3: oklch(0.70 0.13 200);
   --chart-4: oklch(0.75 0.12 300);
   --chart-5: oklch(0.72 0.15 160);
-  --sidebar: oklch(0.185 0.032 262);
-  --sidebar-foreground: oklch(0.90 0.015 262);
+  --sidebar: oklch(0.178 0.029 259);
+  --sidebar-foreground: oklch(0.90 0.015 259);
   --sidebar-primary: oklch(0.66 0.17 256);
-  --sidebar-primary-foreground: oklch(0.99 0.004 262);
-  --sidebar-accent: oklch(0.245 0.036 262);
-  --sidebar-accent-foreground: oklch(0.90 0.015 262);
-  --sidebar-border: oklch(0.285 0.038 262);
+  --sidebar-primary-foreground: oklch(0.99 0.004 259);
+  --sidebar-accent: oklch(0.245 0.036 259);
+  --sidebar-accent-foreground: oklch(0.90 0.015 259);
+  --sidebar-border: oklch(0.285 0.038 259);
   --sidebar-ring: oklch(0.66 0.17 256);
   --lynx-gradient: linear-gradient(135deg, oklch(0.55 0.22 260), oklch(0.65 0.18 240), oklch(0.72 0.16 200));
   --lynx-glow: 0 0 40px oklch(0.65 0.18 240 / 0.3);
-  --sight: oklch(0.83 0.15 82);
+  --sight: oklch(0.84 0.13 205);
   /* Filled buttons: deep enough for white text to pass contrast. */
   --action: oklch(0.56 0.21 258);
 }
@@ -378,7 +378,7 @@ body {
 .lx-link { text-decoration: underline; text-decoration-color: color-mix(in oklch, currentColor 35%, transparent); text-underline-offset: 0.2em; }
 .lx-link:hover { text-decoration-color: currentColor; }
 
-/* The hero stage: a page lights up in amber the moment Lynx answers from it. */
+/* The hero stage: a page lights up the moment Lynx answers from it. */
 .lx-read { transition: background-color 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease, color 0.5s ease; }
 .lx-read[data-lit="true"] {
   border-color: color-mix(in oklch, var(--sight) 70%, transparent);
@@ -451,9 +451,9 @@ body {
 @keyframes lxDriftA { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(6%, 8%, 0) scale(1.15); } }
 @keyframes lxDriftB { 0%, 100% { transform: translate3d(0, 0, 0) scale(1.1); } 50% { transform: translate3d(-8%, -6%, 0) scale(0.95); } }
 .lx-aurora { position: absolute; border-radius: 9999px; filter: blur(90px); pointer-events: none; will-change: transform; }
-.lx-aurora-a { background: oklch(0.55 0.21 258 / 0.38); animation: lxDriftA 16s ease-in-out infinite; }
-.lx-aurora-b { background: oklch(0.70 0.14 200 / 0.22); animation: lxDriftB 20s ease-in-out infinite; }
-.lx-aurora-c { background: color-mix(in oklch, var(--sight) 22%, transparent); animation: lxDriftA 24s ease-in-out infinite reverse; }
+.lx-aurora-a { background: oklch(0.46 0.17 256 / 0.24); animation: lxDriftA 16s ease-in-out infinite; }
+.lx-aurora-b { background: oklch(0.62 0.13 215 / 0.13); animation: lxDriftB 20s ease-in-out infinite; }
+.lx-aurora-c { background: oklch(0.42 0.15 254 / 0.22); animation: lxDriftA 24s ease-in-out infinite reverse; }
 :root:not(.dark) .lx-aurora { opacity: 0.45; }
 
 /* Scan beam sweeping a panel while Lynx is "reading". */
@@ -514,10 +514,72 @@ html:not(.js) .lx-fill { transform: none; }
 
 /* Faint technical grid with a soft edge. */
 .lx-grid {
-  background-image: linear-gradient(to right, color-mix(in oklch, var(--foreground) 6%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 6%, transparent) 1px, transparent 1px);
-  background-size: 56px 56px;
-  -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 30%, #000 20%, transparent 78%);
-  mask-image: radial-gradient(ellipse 75% 70% at 50% 30%, #000 20%, transparent 78%);
+  --lx-grid-line: oklch(0.30 0.068 254 / 0.5);
+  background-image: linear-gradient(to right, var(--lx-grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--lx-grid-line) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 80% at 50% 35%, #000 25%, transparent 85%);
+  mask-image: radial-gradient(ellipse 85% 80% at 50% 35%, #000 25%, transparent 85%);
+}
+:root:not(.dark) .lx-grid { --lx-grid-line: oklch(0.55 0.10 256 / 0.14); }
+/* The hero deepens toward the top, the way the navy does in the brand reference. */
+.dark .lx-hero { background: linear-gradient(to bottom, oklch(0.115 0.028 253), var(--background) 70%); }
+
+/* ─── Hero stage: the core and the jobs it runs ───────────────────────────── */
+.lx-orbit { position: relative; min-width: 0; }
+.lx-orbit-core { position: relative; width: 21rem; height: 21rem; max-width: 100%; margin: -1.5rem auto -0.5rem; }
+.lx-orbit-lines { display: none; }
+.lx-orbit-cards { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.625rem; }
+.lx-orbit-note { margin-top: 0.875rem; font-size: 0.75rem; color: var(--muted-foreground); text-align: center; }
+.lx-cap {
+  height: 100%; min-height: 8.5rem; padding: 0.75rem; border-radius: 0.875rem;
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--card) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  transition: border-color 0.45s ease, box-shadow 0.45s ease, transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.45s ease;
+}
+.lx-cap-icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; flex: none;
+  border-radius: 0.4375rem; background: color-mix(in oklch, var(--primary) 16%, transparent); color: var(--primary);
+  transition: background-color 0.45s ease, color 0.45s ease;
+}
+/* The card switches on as the signal reaches it, not when it leaves the core. */
+.lx-cap[data-active="true"] {
+  border-color: color-mix(in oklch, var(--sight) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--sight) 22%, transparent), 0 18px 50px -18px color-mix(in oklch, var(--primary) 80%, transparent);
+  transition-delay: 0.5s;
+}
+.lx-cap[data-active="true"] .lx-cap-icon { background: var(--sight); color: var(--background); transition-delay: 0.5s; }
+.lx-cap-play .lx-step { animation: lxIn 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(0.6s + var(--s, 0) * 0.45s); }
+@keyframes lxBar { from { transform: scaleY(0.08); } to { transform: none; } }
+.lx-bar { transform-origin: bottom; }
+.lx-cap-play .lx-bar { animation: lxBar 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(0.6s + var(--s, 0) * 0.06s); }
+.lx-ring { stroke-dasharray: 86 100; }
+@keyframes lxRing { from { stroke-dasharray: 0 100; } to { stroke-dasharray: 86 100; } }
+.lx-cap-play .lx-ring { animation: lxRing 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.6s both; }
+.lx-wire { stroke: var(--border); stroke-width: 1; transition: stroke 0.45s ease 0.3s; }
+.lx-wire[data-active="true"] { stroke: color-mix(in oklch, var(--sight) 55%, transparent); }
+.lx-node { fill: var(--border); transition: fill 0.45s ease 0.5s; }
+.lx-node[data-active="true"] { fill: var(--sight); filter: drop-shadow(0 0 6px var(--sight)); }
+@keyframes lxSignal { to { stroke-dashoffset: -100; } }
+.lx-signal {
+  stroke: url(#lx-line); stroke-width: 2.5; stroke-linecap: round;
+  stroke-dasharray: 16 100; stroke-dashoffset: 16;
+  filter: drop-shadow(0 0 6px var(--sight));
+  animation: lxSignal 0.7s cubic-bezier(0.45, 0, 0.6, 1) 0.05s forwards;
+}
+@keyframes lxFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@media (min-width: 768px) {
+  .lx-orbit { width: 712px; height: 600px; margin-inline: auto; }
+  .lx-orbit-core { position: absolute; left: 86px; top: 30px; width: 540px; height: 540px; margin: 0; }
+  .lx-orbit-lines { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
+  .lx-orbit-cards { display: block; }
+  .lx-cap-float {
+    position: absolute; left: var(--x); top: var(--y); width: 212px; height: 136px;
+    animation: lxFloat calc(6s + var(--f, 0) * 0.7s) ease-in-out calc(var(--f, 0) * -1.3s) infinite;
+  }
+  .lx-cap { min-height: 0; opacity: 0.86; }
+  .lx-cap[data-active="true"] { opacity: 1; transform: scale(1.045); }
+  .lx-orbit-note { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -527,4 +589,6 @@ html:not(.js) .lx-fill { transform: none; }
   .js .lx-reveal { opacity: 1; transform: none; filter: none; transition: none; }
   .lx-fill { transform: none; transition: none; }
   .lx-btn::after { display: none; }
+  .lx-cap-float, .lx-signal, .lx-cap-play .lx-step, .lx-cap-play .lx-bar, .lx-cap-play .lx-ring { animation: none; }
+  .lx-signal { display: none; }
 }

@@ -48,7 +48,7 @@ export default function Features() {
           <dl className="border-t border-border">
             {rows.map((r, i) => (
               <Reveal key={r.knows} order={i % 3}>
-                {/* The amber marker slides in on hover: this row is something Lynx read. */}
+                {/* The marker slides in on hover: this row is something Lynx read. */}
                 <div className="group relative grid sm:grid-cols-[14rem_1fr] gap-x-8 gap-y-1.5 py-6 border-b border-border transition-[padding] duration-300 hover:pl-5">
                   <span
                     className="absolute left-0 top-6 bottom-6 w-0.5 rounded-full bg-sight origin-top scale-y-0 transition-transform duration-300 group-hover:scale-y-100"

@@ -82,7 +82,7 @@ export default function WhiteLabel() {
                       {/* The bar grows to its value when the panel scrolls into view. */}
                       <div style={{ width: `${pct}%` }} className="h-full">
                         <div
-                          className={`lx-fill h-full rounded-full ${pct >= 80 ? "bg-amber-400" : "bg-primary"}`}
+                          className={`lx-fill h-full rounded-full ${pct >= 80 ? "bg-sight" : "bg-primary"}`}
                           style={{ "--d": i + 2 } as CSSProperties}
                         />
                       </div>

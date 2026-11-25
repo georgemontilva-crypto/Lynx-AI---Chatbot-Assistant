@@ -86,7 +86,7 @@ function DynamicThemeColor() {
   const { theme } = useTheme();
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const color = theme === "dark" ? "#0b1220" : "#ffffff";
+    const color = theme === "dark" ? "#080f1a" : "#ffffff";
     let meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
     if (!meta) {
       meta = document.createElement("meta");
