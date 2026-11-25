@@ -86,3 +86,23 @@ describe("alert preferences", () => {
     expect(resolveAlertPrefs({ newLead: "no" }).newLead).toBe(true);
   });
 });
+
+// ── Admin access from configuration ─────────────────────────────────────────
+import { adminEmails } from "./adminBootstrap";
+
+describe("adminEmails", () => {
+  it("is empty when the variable is not set", () => {
+    expect(adminEmails(undefined)).toEqual([]);
+    expect(adminEmails("")).toEqual([]);
+  });
+  it("accepts commas, semicolons and spaces, lowercases and de-duplicates", () => {
+    expect(adminEmails(" Jorge@Example.com, ana@example.com;JORGE@example.com  luis@example.com ")).toEqual([
+      "jorge@example.com",
+      "ana@example.com",
+      "luis@example.com",
+    ]);
+  });
+  it("ignores entries that are not email addresses", () => {
+    expect(adminEmails("admin, ,@, a@b, jorge@example.com")).toEqual(["jorge@example.com"]);
+  });
+});

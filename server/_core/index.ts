@@ -15,6 +15,7 @@ import { runOverdueBillingCheck } from "../overdueBilling";
 import { runWeeklyReports } from "../weeklyReport";
 import { ensureSchema } from "../ensureSchema";
 import { runAutoRescan } from "../autoRescan";
+import { ensureAdminAccess } from "../adminBootstrap";
 import { pushRouter } from "../pushRouter";
 import { authRouter } from "../authRouter";
 import { appRouter } from "../routers";
@@ -44,6 +45,8 @@ async function startServer() {
   // Bring the database up to the columns this build expects BEFORE serving a
   // single request — a missing column otherwise breaks login for everyone.
   await ensureSchema().catch(err => console.error("[Schema] Startup check failed:", err));
+  // Accounts listed in ADMIN_EMAILS get admin access and a chatbot of their own.
+  await ensureAdminAccess().catch(err => console.error("[AdminBootstrap] Startup check failed:", err));
 
   const app = express();
   const server = createServer(app);

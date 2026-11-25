@@ -4,6 +4,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { ensureAdminAccess } from "./adminBootstrap";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
@@ -186,6 +187,12 @@ authRouter.get("/verify-email", async (req: Request, res: Response) => {
     if (!user) {
       res.redirect("/?verified=invalid");
       return;
+    }
+    // The mailbox is proven: if this address is on ADMIN_EMAILS, grant it now.
+    if (user.email) {
+      await ensureAdminAccess({ onlyEmail: user.email }).catch((err) =>
+        console.error("[AdminBootstrap] Post-verification grant failed:", err)
+      );
     }
     res.redirect("/dashboard?verified=1");
   } catch (err) {
