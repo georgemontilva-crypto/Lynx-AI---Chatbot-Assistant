@@ -71,9 +71,27 @@ export default function Onboarding() {
   const { data: progress } = trpc.onboarding.get.useQuery();
   const { data: chatbotData } = trpc.chatbotConfig.get.useQuery();
   const { data: originData } = trpc.chatbotConfig.widgetOrigin.useQuery();
-  const updateMutation = trpc.onboarding.update.useMutation();
+  // The dashboard reads the same progress query to decide whether to send a
+  // new account back here. Every change is written into that cache first;
+  // otherwise leaving the wizard lands on a stale "nothing done yet" and the
+  // dashboard bounces straight back — which is exactly what made "Skip" look
+  // like it did nothing.
+  const updateMutation = trpc.onboarding.update.useMutation({
+    onSuccess: (data) => {
+      utils.onboarding.get.setData(undefined, data);
+    },
+  });
   const skipMutation = trpc.onboarding.skip.useMutation({
-    onSuccess: () => navigate("/dashboard"),
+    onSuccess: () => {
+      utils.onboarding.get.setData(undefined, {
+        step1Done: true,
+        step2Done: true,
+        step3Done: true,
+        completedAt: new Date(),
+      });
+      navigate("/dashboard");
+    },
+    onError: (e) => toast.error(e.message || "Could not skip the setup. Please try again."),
   });
   const scanMutation = trpc.scanner.scan.useMutation({
     onSuccess: async () => {
