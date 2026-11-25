@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SiteBrandingCard } from "@/components/dashboard/SiteBrandingCard";
 import DashboardShell from "@/components/DashboardShell";
 import { trpc } from "@/lib/trpc";
@@ -48,6 +48,20 @@ export default function Admin() {
     { userId: payPalUserId ?? 0 },
     { enabled: payPalUserId !== null, retry: false }
   );
+  // Charging the outstanding balance moves money, so it takes two clicks: the
+  // second one names the exact amount.
+  const [confirmingCharge, setConfirmingCharge] = useState(false);
+  const chargeOutstanding = trpc.admin.chargeOutstanding.useMutation({
+    onSettled: () => {
+      setConfirmingCharge(false);
+      payPalQuery.refetch();
+    },
+  });
+  useEffect(() => {
+    setConfirmingCharge(false);
+    chargeOutstanding.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payPalUserId]);
 
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
@@ -470,7 +484,7 @@ export default function Admin() {
       </Card>
 
       {/* Change Plan Dialog */}
-      {/* Live PayPal subscription state — read-only, never charges anything */}
+      {/* Live PayPal subscription state, plus the one action that charges: the outstanding balance */}
       <Dialog open={payPalUserId !== null} onOpenChange={(o) => !o && setPayPalUserId(null)}>
         <DialogContent className="w-[calc(100vw-2rem)] max-w-lg [&>*]:min-w-0 break-words">
           <DialogHeader>
@@ -551,11 +565,69 @@ export default function Admin() {
                 {(payPalQuery.data.failedPaymentsCount ?? 0) > 0 && (
                   <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3">
                     <p className="text-[11px] text-amber-400 leading-relaxed">
-                      A charge was declined. PayPal cannot retry a declined payment method — the customer has to update
-                      their card in their own PayPal account, and the outstanding balance is collected then. To get paid
-                      for this period now, send them a one-off PayPal invoice.
+                      A charge was declined. PayPal retries by itself every 5 days, twice per billing period. If the
+                      customer has fixed their payment method, you can charge the outstanding balance now instead of
+                      waiting.
                     </p>
                   </div>
+                )}
+
+                {/* Send the charge again: collect the outstanding balance now */}
+                {payPalQuery.data.outstandingValue && Number.parseFloat(payPalQuery.data.outstandingValue) > 0 && (
+                  <div className="rounded-xl border border-border/40 bg-muted/20 p-3 space-y-2.5">
+                    <p className="text-xs leading-relaxed">
+                      This customer owes <span className="font-semibold">{payPalQuery.data.outstandingBalance}</span>.
+                      Charging it asks PayPal to collect that amount from the payment method on their subscription.
+                    </p>
+                    {!confirmingCharge ? (
+                      <Button size="sm" onClick={() => { chargeOutstanding.reset(); setConfirmingCharge(true); }}>
+                        Charge {payPalQuery.data.outstandingBalance} now
+                      </Button>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          disabled={chargeOutstanding.isPending}
+                          onClick={() =>
+                            payPalUserId !== null &&
+                            chargeOutstanding.mutate({
+                              userId: payPalUserId,
+                              confirmAmount: (payPalQuery.data as { outstandingBalance?: string } | undefined)?.outstandingBalance ?? "",
+                            })
+                          }
+                        >
+                          {chargeOutstanding.isPending ? (
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> Charging…</>
+                          ) : (
+                            <>Confirm: charge {payPalQuery.data.outstandingBalance}</>
+                          )}
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={chargeOutstanding.isPending} onClick={() => setConfirmingCharge(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {chargeOutstanding.data?.charged === true && (
+                  <p className="text-xs text-emerald-400 leading-relaxed">
+                    {chargeOutstanding.data.pending ? "PayPal accepted the charge of " : "Charged "}
+                    {chargeOutstanding.data.amount}
+                    {chargeOutstanding.data.pending ? " and is still processing it." : "."}
+                    {chargeOutstanding.data.reactivated ? " The subscription was reactivated." : ""}
+                    {" "}PayPal now says {chargeOutstanding.data.subscriptionStatus}.
+                  </p>
+                )}
+                {chargeOutstanding.data?.charged === false && (
+                  <p className="text-xs text-red-400 leading-relaxed">
+                    PayPal did not complete the charge of {chargeOutstanding.data.amount}: {chargeOutstanding.data.reason}{" "}
+                    Nothing was collected. The customer has to update the payment method in their own PayPal account;
+                    then charge again.
+                  </p>
+                )}
+                {chargeOutstanding.error && (
+                  <p className="text-xs text-red-400 leading-relaxed">{chargeOutstanding.error.message}</p>
                 )}
               </div>
             )

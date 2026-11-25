@@ -161,6 +161,9 @@ export async function fetchPayPalSubscription(subscriptionId: string): Promise<{
   lastPaymentTime?: string;
   lastPaymentAmount?: string;
   outstandingBalance?: string;
+  /** The same balance as raw PayPal values, for arithmetic and for capturing. */
+  outstandingValue?: string;
+  outstandingCurrency?: string;
   failedPaymentsCount?: number;
   lastFailedTime?: string;
 }> {
@@ -195,9 +198,69 @@ export async function fetchPayPalSubscription(subscriptionId: string): Promise<{
     outstandingBalance: b.outstanding_balance?.value
       ? `${b.outstanding_balance.value} ${b.outstanding_balance.currency_code ?? ""}`.trim()
       : undefined,
+    outstandingValue: b.outstanding_balance?.value,
+    outstandingCurrency: b.outstanding_balance?.currency_code,
     failedPaymentsCount: b.failed_payments_count,
     lastFailedTime: b.last_failed_payment?.time,
   };
+}
+
+/**
+ * Charge a subscription's outstanding balance now.
+ *
+ * This is the "send the charge again" action: when a renewal was declined,
+ * PayPal retries on its own schedule (every 5 days, twice per cycle) and has
+ * no button for the merchant to retry sooner on Subscriptions-API ("I-…")
+ * subscriptions. This endpoint is the documented way to do it.
+ *
+ * It MOVES MONEY, so it is only ever called from an explicit admin action that
+ * has confirmed the exact amount (see admin.chargeOutstanding). The amount may
+ * not exceed the balance PayPal itself reports.
+ */
+export async function capturePayPalOutstanding(
+  subscriptionId: string,
+  amount: { value: string; currency: string },
+  requestId: string
+): Promise<
+  | { ok: true; transactionId?: string; transactionStatus?: string }
+  | { ok: false; httpStatus: number; reason: string }
+> {
+  const token = await getPayPalToken();
+  const res = await fetch(`${PAYPAL_BASE}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}/capture`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      // Same request id = same charge: a double click or a retried request
+      // inside the window cannot bill the customer twice.
+      "PayPal-Request-Id": requestId,
+    },
+    body: JSON.stringify({
+      note: "Charging the outstanding balance",
+      capture_type: "OUTSTANDING_BALANCE",
+      amount: { currency_code: amount.currency, value: amount.value },
+    }),
+  });
+  const text = await res.text();
+  let body: { id?: string; status?: string; message?: string; name?: string; details?: { issue?: string; description?: string }[] } = {};
+  try { body = text ? JSON.parse(text) : {}; } catch { /* non-JSON body */ }
+  if (!res.ok) {
+    const detail = body.details?.[0];
+    const reason = detail?.description || detail?.issue || body.message || body.name || text.slice(0, 200) || "PayPal rejected the charge";
+    return { ok: false, httpStatus: res.status, reason };
+  }
+  return { ok: true, transactionId: body.id, transactionStatus: body.status };
+}
+
+/** Reactivate a subscription PayPal suspended after failed payments. */
+export async function activatePayPalSubscription(subscriptionId: string): Promise<boolean> {
+  const token = await getPayPalToken();
+  const res = await fetch(`${PAYPAL_BASE}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}/activate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: "Outstanding balance paid" }),
+  });
+  return res.ok;
 }
 
 export function registerBillingRoutes(app: Express) {

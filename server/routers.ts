@@ -1040,6 +1040,9 @@ const siteUrlSchema = z.preprocess((v) => {
   }
 }, z.string().url({ message: "Enter a valid website, e.g. acme.com or https://acme.com" }));
 
+/** Subscriptions with an admin-triggered charge in progress (double-submit guard). */
+const chargesInFlight = new Set<string>();
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -2128,6 +2131,95 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
             code: "INTERNAL_SERVER_ERROR",
             message: (e as Error).message || "Could not reach PayPal",
           });
+        }
+      }),
+
+    /**
+     * Charge a customer's outstanding PayPal balance now ("send the charge
+     * again"). Admin only, and only for the exact amount the admin confirmed:
+     * the server re-reads the balance from PayPal and refuses if it no longer
+     * matches what was on screen.
+     */
+    chargeOutstanding: adminProcedure
+      .input(z.object({ userId: z.number().int(), confirmAmount: z.string().min(1).max(40) }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        const { eq: eqOp } = await import("drizzle-orm");
+        const { users } = await import("../drizzle/schema");
+        const [user] = await db.select().from(users).where(eqOp(users.id, input.userId)).limit(1);
+        if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+        if (!user.subscriptionId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This user has no PayPal subscription to charge." });
+        }
+        const subscriptionId = user.subscriptionId;
+        const { fetchPayPalSubscription, capturePayPalOutstanding, activatePayPalSubscription } = await import("./billingRouter");
+
+        if (chargesInFlight.has(subscriptionId)) {
+          throw new TRPCError({ code: "CONFLICT", message: "A charge for this subscription is already in progress." });
+        }
+        chargesInFlight.add(subscriptionId);
+        try {
+          const live = await fetchPayPalSubscription(subscriptionId);
+          const owed = Number.parseFloat(live.outstandingValue ?? "0") || 0;
+          if (!live.outstandingValue || !live.outstandingCurrency || owed <= 0) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "PayPal shows no outstanding balance on this subscription, so there is nothing to charge.",
+            });
+          }
+          const current = `${live.outstandingValue} ${live.outstandingCurrency}`;
+          if (current !== input.confirmAmount.trim()) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: `The balance in PayPal is now ${current}. Check the amount and confirm again.`,
+            });
+          }
+
+          // One request id per subscription, amount and 10-minute window.
+          const requestId = `lynx-cap-${subscriptionId}-${live.outstandingValue}-${Math.floor(Date.now() / 600_000)}`;
+          const result = await capturePayPalOutstanding(
+            subscriptionId,
+            { value: live.outstandingValue, currency: live.outstandingCurrency },
+            requestId
+          );
+          console.log(
+            `[Billing] Admin ${ctx.user.id} charged outstanding ${current} on ${subscriptionId} (user ${user.id}): ` +
+              (result.ok ? `ok ${result.transactionStatus ?? ""} ${result.transactionId ?? ""}` : `refused ${result.httpStatus} ${result.reason}`)
+          );
+          if (!result.ok) {
+            return { charged: false as const, amount: current, reason: result.reason };
+          }
+          const status = (result.transactionStatus ?? "").toUpperCase();
+          if (status && status !== "COMPLETED" && status !== "PENDING") {
+            return { charged: false as const, amount: current, reason: `PayPal answered "${status}" — the payment did not go through.` };
+          }
+
+          // Paid: lift PayPal's suspension if there was one, and refresh our own flags.
+          let reactivated = false;
+          let subscriptionStatus = live.status;
+          try {
+            if (live.status === "SUSPENDED") reactivated = await activatePayPalSubscription(subscriptionId);
+            subscriptionStatus = (await fetchPayPalSubscription(subscriptionId)).status;
+          } catch { /* the charge itself succeeded; status is refreshed by the hourly check */ }
+          try {
+            const { recheckUserBilling } = await import("./overdueBilling");
+            await recheckUserBilling(user.id);
+          } catch { /* same */ }
+
+          return {
+            charged: true as const,
+            amount: current,
+            pending: status === "PENDING",
+            transactionId: result.transactionId ?? null,
+            subscriptionStatus,
+            reactivated,
+          };
+        } catch (e) {
+          if (e instanceof TRPCError) throw e;
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: (e as Error).message || "Could not reach PayPal" });
+        } finally {
+          chargesInFlight.delete(subscriptionId);
         }
       }),
 

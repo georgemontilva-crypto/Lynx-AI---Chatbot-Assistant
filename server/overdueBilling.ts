@@ -45,7 +45,8 @@ export async function getBillingSnapshot(
       status: d.status ?? "UNKNOWN",
       nextBillingTime: next && Number.isFinite(next.getTime()) ? next : null,
       failedPaymentsCount: d.failedPaymentsCount ?? 0,
-      outstandingBalance: Number(d.outstandingBalance ?? "0") || 0,
+      // The raw value: the display string ("199.00 USD") is not a number.
+      outstandingBalance: Number.parseFloat(d.outstandingValue ?? "0") || 0,
     };
   } catch {
     return null;
