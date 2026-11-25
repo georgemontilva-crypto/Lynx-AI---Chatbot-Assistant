@@ -525,7 +525,13 @@ export default function Admin() {
                       {payPalQuery.data.status}
                     </span>
                   </div>
-                  {payPalQuery.data.localStatus &&
+                  {payPalQuery.data.pausedForNonPayment ? (
+                    <p className="text-[11px] text-amber-400 mt-2 flex items-start gap-1.5">
+                      <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                      Lynx paused this account: its payment is more than 3 days late. It resumes by itself as soon as
+                      PayPal collects the payment.
+                    </p>
+                  ) : payPalQuery.data.localStatus &&
                     payPalQuery.data.status.toLowerCase() !== payPalQuery.data.localStatus && (
                     <p className="text-[11px] text-amber-400 mt-2 flex items-start gap-1.5">
                       <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
@@ -568,6 +574,21 @@ export default function Admin() {
                       A charge was declined. PayPal retries by itself every 5 days, twice per billing period. If the
                       customer has fixed their payment method, you can charge the outstanding balance now instead of
                       waiting.
+                    </p>
+                  </div>
+                )}
+
+                {/* Due date passed, but PayPal has not turned it into a balance yet */}
+                {payPalQuery.data.nextBillingTime &&
+                  new Date(payPalQuery.data.nextBillingTime).getTime() < Date.now() &&
+                  !(Number.parseFloat(payPalQuery.data.outstandingValue ?? "0") > 0) && (
+                  <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3">
+                    <p className="text-[11px] text-amber-400 leading-relaxed">
+                      The charge due on {new Date(payPalQuery.data.nextBillingTime).toLocaleDateString()} has not gone
+                      through, and PayPal has not recorded it as an outstanding balance yet. PayPal retries a failed
+                      charge every 5 days, twice, before adding it to the balance — until then there is nothing to
+                      charge from here. The customer can settle it sooner by updating the payment method in their own
+                      PayPal account.
                     </p>
                   </div>
                 )}

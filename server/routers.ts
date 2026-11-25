@@ -2124,6 +2124,8 @@ ${effectiveContext ? `\n\nSite context:\n${effectiveContext}` : ""}`;
             subscriptionId: user.subscriptionId,
             localStatus: user.subscriptionStatus ?? null,
             localNextBilling: user.nextBillingDate ?? null,
+            // True when it was Lynx's own overdue check that paused the account.
+            pausedForNonPayment: (user.pastDueStage ?? 0) >= 2,
             ...live,
           };
         } catch (e) {
